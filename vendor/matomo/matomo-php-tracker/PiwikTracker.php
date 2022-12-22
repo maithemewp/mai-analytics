@@ -48,4 +48,3 @@ function Piwik_getUrlTrackGoal($idSite, $idGoal, $revenue = 0.0)
  * @deprecated use MatomoTracker instead
  */
 class PiwikTracker extends MatomoTracker {}
-

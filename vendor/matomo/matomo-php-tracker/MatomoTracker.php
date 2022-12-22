@@ -2380,4 +2380,3 @@ function Matomo_getUrlTrackGoal($idSite, $idGoal, $revenue = 0.0)
 if (!class_exists('\PiwikTracker')) {
     include_once('PiwikTracker.php');
 }
-

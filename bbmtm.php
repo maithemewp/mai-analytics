@@ -25,6 +25,8 @@
 
 define ('bbmtm_DEBUG', true);
 
+require_once __DIR__ . '/vendor/autoload.php';
+
 class bbmtm {
 
     const bbmtm_DEBUG = 0;      // Works INSIDE of a class definition.

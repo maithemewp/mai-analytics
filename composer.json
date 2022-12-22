@@ -1,0 +1,5 @@
+{
+    "require": {
+        "matomo/matomo-php-tracker": "^3.1"
+    }
+}
