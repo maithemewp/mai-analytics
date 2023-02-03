@@ -23,9 +23,6 @@
  * @package MatomoTracker
  */
 
-define ('bbmtm_DEBUG', true);
-
-require_once __DIR__ . '/vendor/autoload.php';
 
 class bbmtm {
 
@@ -242,14 +239,3 @@ class bbmtm {
 
 }
 
-/**
- * Instantiate the class.
- *
- * @return  void
- */
-
-add_action( 'after_setup_theme', function() {
-// add_action( 'template_redirect', function() {
-	new bbmtm;
-
-});
