@@ -6,7 +6,7 @@
  *
  * @package   BizBudding
  * @link      https://bizbudding.com/
- * @version   0.01
+ * @version   0.02
  * @author    BizBudding
  * @copyright Copyright © 2022 BizBudding
  * @license   GPL-2.0-or-later
@@ -23,10 +23,13 @@
  * @package MatomoTracker
  */
 
+ require_once __DIR__ . '/bbmtm-woocommerce.php';
+
+
 
 class bbmtm {
 
-    const bbmtm_DEBUG = 0;      // Works INSIDE of a class definition.
+    const bbmtm_DEBUG = true;      // Works INSIDE of a class definition.
     private $matomoTracker;
     private $matomoSiteId;
     private $matomoUrl;
@@ -36,8 +39,6 @@ class bbmtm {
     function __construct() {
 
         global $matomoTracker;
-
-        require_once __DIR__ . '/matomo-php-tracker/MatomoTracker.php';
 
         // bail if not using Matomo Analytics (defined in WP Config)
         if (! defined('MAI_MATOMO')) {
@@ -95,6 +96,9 @@ class bbmtm {
 	 */
      function doHeadTrackPageView ( ) {
 
+        $membership_ids = NULL;
+        $organization_name = NULL;    
+
         // bail if we are not supposed to track it
         if (! $this->track_it() ) return;
 
@@ -105,9 +109,40 @@ class bbmtm {
 
             if (bbmtm_DEBUG) $this->console_log(sprintf("current user email is %s", $current_user->user_email));
             $this->matomoTracker->setUserId( $current_user->user_email );
+            
+            // todo: track the login as a registered event and not a pageview
+
+            if (bbmtm_DEBUG) $this->console_log(sprintf("BB-Debug: matomo checking for woo membershi\n"));
+
+            // check if we have any Woo Memberships
+            $membership_ids = get_membership_ids( $current_user->ID );
+
+//            if (bbmtm_DEBUG) $this->console_log(sprintf("BB-Debug: matomo results for woo membership: %s", implode(" ", $membership_ids)));
+
+            if (is_null($membership_ids)) {
+                if (bbmtm_DEBUG) $this->console_log(sprintf("BB-Debug: matomoTracker no memberships\n")); }
+            else {
+                if (bbmtm_DEBUG)  $this->console_log(sprintf("BB-Debug: matomoTracker memberships (%s)\n", implode(" ", $membership_ids))); 
+            
+                // we need to get the organization id
+                $organization_name = get_organization_data ($membership_ids);
+
+                if (is_null($organization_name)) {
+                    if (bbmtm_DEBUG) $this->console_log(sprintf("BB-Debug: matomoTracker no organization name found\n")); }
+                else {
+                    if (bbmtm_DEBUG)  $this->console_log(sprintf("BB-Debug: matomoTracker organization name (%s)\n", $organization_name)); 
+
+                    // set the organization data as the 5th custom dimension
+
+                    $this->matomoTracker->setCustomDimension(5, $organization_name);
+
+
+                }
+
+            }
+
         }
 
-        // todo: track the login as a registered event and not a pageview
         $this->matomoTracker->doTrackPageView ($this->get_title());
 
         return;
