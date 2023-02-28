@@ -90,5 +90,7 @@ function mai_analytics_get_title() {
 		$title = apply_filters( 'genesis_404_entry_title', esc_html__( 'Not found, error 404', 'mai-engine' ) );
 	}
 
-	return $title;
+	$title = apply_filter( 'mai_analytics_page_title', $title );
+
+	return esc_attr( $title );
 }
