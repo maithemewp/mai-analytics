@@ -1,5 +1,8 @@
 <?php
 
+// Exit if accessed directly.
+if ( ! defined( 'ABSPATH' ) ) exit;
+
 /**
  * Add organization data to Google Tag Manager dataLayer.
  *
@@ -178,6 +181,6 @@ class qc_GTM_Memberships {
  *
  * @return  void
  */
-add_action( 'after_setup_theme', function() {
-	new qc_GTM_Memberships;
-});
+// add_action( 'after_setup_theme', function() {
+// 	new qc_GTM_Memberships;
+// });

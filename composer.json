@@ -1,5 +1,6 @@
 {
     "require": {
-        "matomo/matomo-php-tracker": "^3.1"
+        "matomo/matomo-php-tracker": "^3.1",
+        "yahnis-elsts/plugin-update-checker": "^5.0"
     }
 }
