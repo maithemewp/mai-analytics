@@ -202,7 +202,7 @@ final class Mai_Analytics {
 	 * @return void
 	 */
 	function classes() {
-		$this->tracker = new Mai_Analytics_Tracker;
+		$track = new Mai_Analytics_Track;
 		// $register = new Mai_Analytics_Register;
 		// $fields   = new Mai_Analytics_Fields;
 		// $block    = new Mai_Ad_Block;
