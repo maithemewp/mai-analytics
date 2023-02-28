@@ -6,6 +6,10 @@ namespace Composer\Autoload;
 
 class ComposerStaticInit300e4e250d9eeac43d7bac96dfe77492
 {
+    public static $files = array (
+        '5ff2501974ebd86c0be698ddfca6451e' => __DIR__ . '/..' . '/yahnis-elsts/plugin-update-checker/load-v5p0.php',
+    );
+
     public static $classMap = array (
         'Composer\\InstalledVersions' => __DIR__ . '/..' . '/composer/InstalledVersions.php',
         'MatomoTracker' => __DIR__ . '/..' . '/matomo/matomo-php-tracker/MatomoTracker.php',
