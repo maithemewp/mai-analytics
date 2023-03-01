@@ -8,7 +8,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
  *
  * @since 0.1.0
  *
- * @return object
+ * @return object|MatomoTracker
  */
 function mai_analytics_tracker() {
 	static $cache = null;
