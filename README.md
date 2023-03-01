@@ -48,7 +48,7 @@ Use `mai_analytics_tracker()` to return the Matomo instance for custom tracking.
 add_action( 'wp_head', function() {
 	$analytics = function_exists( 'mai_analytics_tracker' ) ? mai_analytics_tracker() : false;
 
-	// Bail if the Matomo instance is not available of not authenticated.
+	// Bail if the Matomo instance is not available or not authenticated.
 	if ( ! $analytics ) {
 		return;
 	}
