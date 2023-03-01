@@ -151,7 +151,7 @@ final class Mai_Analytics {
 		// Include vendor libraries.
 		require_once __DIR__ . '/vendor/autoload.php';
 		// Includes.
-		// foreach ( glob( MAI_ANALYTICS_INCLUDES_DIR . '*.php' ) as $file ) { include $file; }
+		foreach ( glob( MAI_ANALYTICS_INCLUDES_DIR . '*.php' ) as $file ) { include $file; }
 		// Classes.
 		foreach ( glob( MAI_ANALYTICS_CLASSES_DIR . '*.php' ) as $file ) { include $file; }
 	}
