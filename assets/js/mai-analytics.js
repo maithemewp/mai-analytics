@@ -19,4 +19,13 @@
 
 	console.log( tracker );
 
+	// Get all elements by query selector.
+	var elements = document.querySelectorAll( '.some-class-or-data-attribute' );
+
+	if ( elements.length ) {
+		elements.forEach( function( element ) {
+			// tracker.doSomethingHere();
+		});
+	}
+
 } )();
