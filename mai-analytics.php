@@ -24,7 +24,8 @@ use YahnisElsts\PluginUpdateChecker\v5\PucFactory;
 final class Mai_Analytics {
 
 	/**
-	 * @var   Mai_Analytics The one true Mai_Analytics
+	 * @var Mai_Analytics The one true Mai_Analytics
+	 *
 	 * @since 0.1.0
 	 */
 	private static $instance;
@@ -35,13 +36,17 @@ final class Mai_Analytics {
 	 * Insures that only one instance of Mai_Analytics exists in memory at any one
 	 * time. Also prevents needing to define globals all over the place.
 	 *
-	 * @since   0.1.0
-	 * @static  var array $instance
-	 * @uses    Mai_Analytics::setup_constants() Setup the constants needed.
-	 * @uses    Mai_Analytics::includes() Include the required files.
-	 * @uses    Mai_Analytics::hooks() Activate, deactivate, etc.
-	 * @see     Mai_Analytics()
-	 * @return  object | Mai_Analytics The one true Mai_Analytics
+	 * @since 0.1.0
+	 *
+	 * @static var array $instance
+	 *
+	 * @uses Mai_Analytics::setup_constants() Setup the constants needed.
+	 * @uses Mai_Analytics::includes() Include the required files.
+	 * @uses Mai_Analytics::hooks() Activate, deactivate, etc.
+	 *
+	 * @see Mai_Analytics()
+	 *
+	 * @return object | Mai_Analytics The one true Mai_Analytics
 	 */
 	public static function instance() {
 		if ( ! isset( self::$instance ) ) {
@@ -52,6 +57,7 @@ final class Mai_Analytics {
 			self::$instance->includes();
 			self::$instance->hooks();
 		}
+
 		return self::$instance;
 	}
 
@@ -61,9 +67,11 @@ final class Mai_Analytics {
 	 * The whole idea of the singleton design pattern is that there is a single
 	 * object therefore, we don't want the object to be cloned.
 	 *
-	 * @since   0.1.0
-	 * @access  protected
-	 * @return  void
+	 * @since 0.1.0
+	 *
+	 * @access protected
+	 *
+	 * @return void
 	 */
 	public function __clone() {
 		// Cloning instances of the class is forbidden.
@@ -73,9 +81,11 @@ final class Mai_Analytics {
 	/**
 	 * Disable unserializing of the class.
 	 *
-	 * @since   0.1.0
-	 * @access  protected
-	 * @return  void
+	 * @since 0.1.0
+	 *
+	 * @access protected
+	 *
+	 * @return void
 	 */
 	public function __wakeup() {
 		// Unserializing instances of the class is forbidden.
@@ -85,9 +95,11 @@ final class Mai_Analytics {
 	/**
 	 * Setup plugin constants.
 	 *
-	 * @access  private
-	 * @since   0.1.0
-	 * @return  void
+	 * @access private
+	 *
+	 * @since 0.1.0
+	 *
+	 * @return void
 	 */
 	private function setup_constants() {
 		// Plugin version.
@@ -129,9 +141,11 @@ final class Mai_Analytics {
 	/**
 	 * Include required files.
 	 *
-	 * @access  private
-	 * @since   0.1.0
-	 * @return  void
+	 * @access private
+	 *
+	 * @since 0.1.0
+	 *
+	 * @return void
 	 */
 	private function includes() {
 		// Include vendor libraries.
@@ -145,8 +159,9 @@ final class Mai_Analytics {
 	/**
 	 * Run the hooks.
 	 *
-	 * @since   0.1.0
-	 * @return  void
+	 * @since 0.1.0
+	 *
+	 * @return void
 	 */
 	public function hooks() {
 		add_action( 'plugins_loaded', [ $this, 'updater' ] );
@@ -198,10 +213,7 @@ final class Mai_Analytics {
 	 * @return void
 	 */
 	function classes() {
-		$track = new Mai_Analytics_Track;
-		// $register = new Mai_Analytics_Register;
-		// $fields   = new Mai_Analytics_Fields;
-		// $block    = new Mai_Ad_Block;
+		$track = new Mai_Analytics_Tracking;
 	}
 }
 
