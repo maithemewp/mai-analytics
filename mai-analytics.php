@@ -104,7 +104,7 @@ final class Mai_Analytics {
 	private function setup_constants() {
 		// Plugin version.
 		if ( ! defined( 'MAI_ANALYTICS_VERSION' ) ) {
-			define( 'MAI_ANALYTICS_VERSION', '0.8.0' );
+			define( 'MAI_ANALYTICS_VERSION', '0.1.0' );
 		}
 
 		// Plugin Folder Path.
