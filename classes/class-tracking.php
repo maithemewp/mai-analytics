@@ -42,8 +42,8 @@ class Mai_Analytics_Tracking {
 	 * @return void
 	 */
 	function hooks() {
-		add_action( 'wp_login', [ $this, 'login' ], 10, 2 );
-		add_action( 'wp_head',  [ $this, 'page_view' ], 90 );
+		add_action( 'wp_login',  [ $this, 'login' ], 10, 2 );
+		add_action( 'wp_footer', [ $this, 'page_view' ], 99 );
 		// add_action( 'woocommerce_payment_complete', [ $this, 'payment_complete' ] );
 	}
 
