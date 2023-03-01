@@ -35,7 +35,7 @@ MAI_ANALYTICS_DEBUG
 `bool`: Whether Mai Analytics should log via the console and Spatie Ray, if available.
 
 ## Functions
-Use `mai_analytics()` to return the Matomo instance for custom tracking.
+Use `mai_analytics_tracker()` to return the Matomo instance for custom tracking.
 
 ```
 /**
@@ -46,7 +46,7 @@ Use `mai_analytics()` to return the Matomo instance for custom tracking.
  * @return void
  */
 add_action( 'wp_head', function() {
-	$analytics = function_exists( 'mai_analytics' ) ? mai_analytics() : false;
+	$analytics = function_exists( 'mai_analytics_tracker' ) ? mai_analytics_tracker() : false;
 
 	// Bail if the Matomo instance is not available of not authenticated.
 	if ( ! $analytics ) {

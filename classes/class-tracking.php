@@ -67,7 +67,7 @@ class Mai_Analytics_Tracking {
 
 		// Set the user id based upon the WordPress email for the user.
 		$tracker->setUserId( $user->user_email );
-		$this->debug( sprintf( 'tracker->setUserID result (%s)%s', $tracker->userId, EOL ) );
+		$this->debug( sprintf( 'tracker->setUserID result (%s)%s', $tracker->userId, PHP_EOL ) );
 
 		// todo: track the login as a registered event and not a pageview
 		$tracker->doTrackPageView( 'Account Log In' );
@@ -109,24 +109,27 @@ class Mai_Analytics_Tracking {
 
 			// Handles plan IDs.
 			if ( $plan_ids ) {
-				$this->debug( sprintf( 'Woo Membership Plan IDs (%s)\n', implode( ', ', $plan_ids ) ) );
+				$this->debug( sprintf( 'Woo Membership Plan IDs (%s)%s', implode( ', ', $plan_ids ), PHP_EOL ) );
 			} else {
-				$this->debug( sprintf( 'No Membership Plans%s', EOL ) );
+				$this->debug( sprintf( 'No Membership Plans%s', PHP_EOL ) );
 			}
 
 			// Handles teams as custom dimension.
 			if ( $team ) {
-				$this->debug( sprintf( 'Team name%s%s', EOL, $team ) );
+				$this->debug( sprintf( 'Team name%s%s', $team, PHP_EOL ) );
 
 				// Set the Team data as the 5th custom dimension
 				$tracker->setCustomDimension( 5, $team );
 			} else {
-				$this->debug( sprintf( 'No Team name found%s', EOL ) );
+				$this->debug( sprintf( 'No Team name found%s', PHP_EOL ) );
 			}
 		}
 
 		// Track title. Should we strip query strings here, or does Matomo handle it? Or maybe we want them?
-		$tracker->doTrackPageView( mai_analytics_get_title() );
+		// $tracker->doTrackPageView( mai_analytics_get_title() );
+
+		// Tracking with the URL from Matomo.
+		$tracker->doTrackPageView( $tracker->pageUr );
 	}
 
 	/**

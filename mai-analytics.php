@@ -223,6 +223,8 @@ final class Mai_Analytics {
  * The main function responsible for returning the one true Mai_Analytics
  * Instance to functions everywhere.
  *
+ * @access private
+ *
  * @since 0.1.0
  *
  * @return object|Mai_Analytics The one true Mai_Analytics Instance.

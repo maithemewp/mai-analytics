@@ -29,14 +29,10 @@ function mai_analytics_tracker() {
 		return $cache;
 	}
 
-	// Tracker object.
-	$object = new Mai_Analytics_Tracker;
-	// Site ID
+	// Set vars.
 	$site_id = defined( 'MAI_ANALYTICS_SITE_ID' ) ? (int) MAI_ANALYTICS_SITE_ID : 0;
-	// Matomo URL.
-	$url = defined( 'MAI_ANALYTICS_URL' ) ? esc_url( MAI_ANALYTICS_URL ) : 'https://analytics.bizbudding.com';
-	// Authentication token
-	$token = defined( 'MAI_ANALYTICS_TOKEN' ) ? MAI_ANALYTICS_TOKEN : '';
+	$url     = defined( 'MAI_ANALYTICS_URL' ) ? esc_url( MAI_ANALYTICS_URL ) : 'https://analytics.bizbudding.com';
+	$token   = defined( 'MAI_ANALYTICS_TOKEN' ) ? MAI_ANALYTICS_TOKEN : '';
 
 	// Bail if we don't have the data we need.
 	if ( ! ( $site_id && $url && $token ) ) {
@@ -50,7 +46,9 @@ function mai_analytics_tracker() {
 	// Set authentication token.
 	$tracker->setTokenAuth( $token );
 
+	// Set cache.
 	$cache = $tracker;
+
 	return $cache;
 }
 
@@ -130,7 +128,7 @@ function mai_analytics_get_title() {
 		$title = apply_filters( 'genesis_404_entry_title', esc_html__( 'Not found, error 404', 'mai-engine' ) );
 	}
 
-	$title = apply_filter( 'mai_analytics_page_title', $title );
+	$title = apply_filters( 'mai_analytics_page_title', $title );
 
 	return esc_attr( $title );
 }
