@@ -129,7 +129,7 @@ class Mai_Analytics_Tracking {
 		// $tracker->doTrackPageView( mai_analytics_get_title() );
 
 		// Tracking with the URL from Matomo.
-		$tracker->doTrackPageView( $tracker->pageUr );
+		$tracker->doTrackPageView( $tracker->pageUrl );
 	}
 
 	/**
