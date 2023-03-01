@@ -60,11 +60,7 @@ function mai_analytics_tracker() {
  * @return string
  */
 function mai_analytics_get_title() {
-	// Get current url with all query args (if any).
-	$title = home_url( add_query_arg( null, null ) );
-
-	// Get current url without any query args.
-	// $current_url = home_url( add_query_arg( [] ) );
+	$title = '';
 
 	if ( is_singular() ) {
 		$title = get_the_title();
