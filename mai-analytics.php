@@ -16,8 +16,6 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 // Must be at the top of the file.
 use YahnisElsts\PluginUpdateChecker\v5\PucFactory;
 
-define( 'MAI_ANALYTICS_DEBUG', true );
-
 /**
  * Main Mai_Analytics Class.
  *
@@ -30,8 +28,6 @@ final class Mai_Analytics {
 	 * @since 0.1.0
 	 */
 	private static $instance;
-
-	public $tracker;
 
 	/**
 	 * Main Mai_Analytics Instance.

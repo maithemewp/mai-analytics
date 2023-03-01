@@ -26,20 +26,11 @@
 // Exit if accessed directly.
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-class Mai_Analytics_Track {
-	private $tracker;
-	private $user;
+class Mai_Analytics_Tracking {
+	public $user;
 
 	function __construct() {
-		$this->tracker = mai_analytics();
-
-		// Bail if tracker is not authenticated.
-		if ( ! $this->tracker ) {
-			return;
-		}
-
 		$this->user = wp_get_current_user(); // Returns 0 if not logged in.
-
 		$this->hooks();
 	}
 
@@ -66,14 +57,20 @@ class Mai_Analytics_Track {
 	 * @return void
 	 */
 	function login( $user_login, $user ) {
+		$tracker = mai_analytics_tracker();
+
+		if ( ! $tracker ) {
+			return;
+		}
+
 		$this->user = $user;
 
 		// Set the user id based upon the WordPress email for the user.
-		$this->tracker->setUserId( $user->user_email );
-		$this->tracker->debug( sprintf( 'tracker->setUserID result (%s)%s', $this->tracker->userId, EOL ) );
+		$tracker->setUserId( $user->user_email );
+		$this->debug( sprintf( 'tracker->setUserID result (%s)%s', $tracker->userId, EOL ) );
 
 		// todo: track the login as a registered event and not a pageview
-		$this->tracker->doTrackPageView( 'Account Log In' );
+		$tracker->doTrackPageView( 'Account Log In' );
 	}
 
 	/**
@@ -89,16 +86,22 @@ class Mai_Analytics_Track {
 			return;
 		}
 
+		$tracker = mai_analytics_tracker();
+
+		if ( ! $tracker ) {
+			return;
+		}
+
 		// If we have a logged-in user, prep the username to be added to tracking
 		if ( $this->user ) {
 
-			$this->tracker->debug( sprintf( 'Current user email is %s', $this->user->user_email ) );
+			$this->debug( sprintf( 'Current user email is %s', $this->user->user_email ) );
 
-			$this->tracker->setUserId( $this->user->user_email );
+			$tracker->setUserId( $this->user->user_email );
 
 			// todo: track the login as a registered event and not a pageview
 
-			$this->tracker->debug( 'Checking for Woo Memberships Plans and Teams' );
+			$this->debug( 'Checking for Woo Memberships Plans and Teams' );
 
 			// check if we have any Woo Memberships plans/organizations.
 			$plan_ids = $this->get_membership_plan_ids();
@@ -106,24 +109,24 @@ class Mai_Analytics_Track {
 
 			// Handles plan IDs.
 			if ( $plan_ids ) {
-				$this->tracker->debug( sprintf( 'Woo Membership Plan IDs (%s)\n', implode( ', ', $plan_ids ) ) );
+				$this->debug( sprintf( 'Woo Membership Plan IDs (%s)\n', implode( ', ', $plan_ids ) ) );
 			} else {
-				$this->tracker->debug( sprintf( 'No Membership Plans%s', EOL ) );
+				$this->debug( sprintf( 'No Membership Plans%s', EOL ) );
 			}
 
 			// Handles teams as custom dimension.
 			if ( $team ) {
-				$this->tracker->debug( sprintf( 'Team name%s%s', EOL, $team ) );
+				$this->debug( sprintf( 'Team name%s%s', EOL, $team ) );
 
 				// Set the Team data as the 5th custom dimension
-				$this->tracker->setCustomDimension( 5, $team );
+				$tracker->setCustomDimension( 5, $team );
 			} else {
-				$this->tracker->debug( sprintf( 'No Team name found%s', EOL ) );
+				$this->debug( sprintf( 'No Team name found%s', EOL ) );
 			}
 		}
 
 		// Track title. Should we strip query strings here, or does Matomo handle it? Or maybe we want them?
-		$this->tracker->doTrackPageView( mai_analytics_get_title() );
+		$tracker->doTrackPageView( mai_analytics_get_title() );
 	}
 
 	/**
@@ -250,7 +253,13 @@ class Mai_Analytics_Track {
 	 *
 	 * @return void
 	 */
-	function payment_complete( $order_id ){
+	function payment_complete( $order_id ) {
+		$tracker = mai_analytics_tracker();
+
+		if ( ! $tracker ) {
+			return;
+		}
+
 		$order = wc_get_order( $order_id );
 		$user  = $order->get_user();
 
@@ -297,5 +306,50 @@ class Mai_Analytics_Track {
 		$cache = true;
 
 		return $cache;
+	}
+
+	/**
+	 * Push a log message to Spatie Ray and the console.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param string $log The log string.
+	 * @param bool   $script Whether to add script tags if logging in console.
+	 *
+	 * @return void
+	 */
+	public function debug( $log, $script = true ) {
+		if ( ! MAI_ANALYTICS_DEBUG ) {
+			return;
+		}
+
+		$this->ray( $log );
+
+		$console_log = sprintf( 'console.log( %s )', json_encode( "Mai Analytics: {$log}", JSON_HEX_TAG ) );
+
+		if ( $script ) {
+			$console_log = '<script>' .  $console_log . '</script>';
+		}
+
+		echo $console_log;
+	}
+
+	/**
+	 * Debug via Spatie Ray.
+	 *
+	 * @link https://spatie.be/docs/ray/v1/the-ray-desktop-app/discovering-the-ray-app#content-connecting-to-remote-servers
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param mixed $log
+	 *
+	 * @return void
+	 */
+	public function ray( $log ) {
+		if ( ! function_exists( 'ray' ) ) {
+			return;
+		}
+
+		ray( $log );
 	}
 }
