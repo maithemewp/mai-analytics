@@ -4,7 +4,11 @@
 if ( ! defined( 'ABSPATH' ) ) exit;
 
 class Mai_Analytics_Content_Tracking {
-
+	/**
+	 * Construct the class.
+	 *
+	 * @return void
+	 */
 	function __construct() {
 		$this->hooks();
 	}
@@ -17,15 +21,66 @@ class Mai_Analytics_Content_Tracking {
 	 * @return void
 	 */
 	function hooks() {
-		add_filter( 'maicca_content', [ $this, 'add_attributes' ], 10, 2 );
+		add_filter( 'maicca_content', [ $this, 'add_cca_attributes' ], 12, 2 );
+		add_filter( 'maiam_ad',       [ $this, 'add_ad_attributes' ], 12, 2 );
 	}
 
-	function add_attributes( $content, $args ) {
-		if ( ! $content ) {
+	/**
+	 * Maybe add attributes to Mai CCA.
+	 *
+	 * @since TBD
+	 *
+	 * @param string $content The CCA content.
+	 * @param array  $args    The CCA args.
+	 *
+	 * @return string
+	 */
+	function add_cca_attributes( $content, $args ) {
+		// Bail if no name.
+		if ( ! isset( $args['id'] ) || empty( $args['id'] ) ) {
 			return $content;
 		}
 
-		if ( ! isset( $args['id'] ) || empty( $args['id'] ) ) {
+		return $this->add_attributes( $content, $args['id'] );
+	}
+
+	/**
+	 * Maybe add attributes to Mai Ad.
+	 *
+	 * @since TBD
+	 *
+	 * @param string $content The CCA content.
+	 * @param string $args    The CCA args.
+	 *
+	 * @return string
+	 */
+	function add_ad_attributes( $content, $args ) {
+		// Bail if no name.
+		if ( ! isset( $args['name'] ) || empty( $args['name'] ) ) {
+			return $content;
+		}
+
+		return $this->add_attributes( $content, $args['name'] );
+	}
+
+	/**
+	 * Adds element attributes.
+	 *
+	 * If you set the same attribute or the same class on multiple elements within one block,
+	 * the first element found will always win. Nested content blocks are currently not supported in Matomo.
+	 * This would happen if a Mai Ad block was used inside of a Mai CCA,
+	 * the CCA would take precedence and the Ad links will have the content piece.
+	 *
+	 * @since TBD
+	 *
+	 * @param string $content The content.
+	 * @param string $name    The name.
+	 *
+	 * @return string
+	 */
+	function add_attributes( $content, $name ) {
+		// Bail if no content.
+		if ( ! $content ) {
 			return $content;
 		}
 
@@ -41,7 +96,7 @@ class Mai_Analytics_Content_Tracking {
 			// Get first element and set main attributes.
 			$first = $children->item(0);
 			$first->setAttribute( 'data-track-content', '' );
-			$first->setAttribute( 'data-content-name', get_the_title( $args['id'] ) );
+			$first->setAttribute( 'data-content-name', esc_attr( $name ) );
 		} else {
 			foreach ( $children as $node ) {
 				// Skip if not an element we can add attributes to.
@@ -51,7 +106,7 @@ class Mai_Analytics_Content_Tracking {
 
 				// Set main attributes to all top level child elements.
 				$node->setAttribute( 'data-track-content', '' );
-				$node->setAttribute( 'data-content-name', get_the_title( $args['id'] ) );
+				$node->setAttribute( 'data-content-name', esc_attr( $name ) );
 			}
 		}
 
