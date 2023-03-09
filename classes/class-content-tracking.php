@@ -3,6 +3,19 @@
 // Exit if accessed directly.
 if ( ! defined( 'ABSPATH' ) ) exit;
 
+/**
+ * The content tracking class.
+ * This requires Matomo tracking code on the site:
+ *
+ * @link https://developer.matomo.org/guides/tracking-javascript-guide
+ *
+ * 1. Matomo with your admin or Super User account.
+ * 2. Click on the "administration" (cog icon) in the top right menu.
+ * 3. Click on "Tracking Code" in the left menu (under the "Measurables" or "Websites" menu).
+ * 4. Click on "JavaScript Tracking" section.
+ * 5. Select the website you want to track.
+ * 6. Copy and paste the JavaScript tracking code into your pages, just after the opening <body> tag (or within the <head> section).
+ */
 class Mai_Analytics_Content_Tracking {
 	/**
 	 * Construct the class.
@@ -21,6 +34,7 @@ class Mai_Analytics_Content_Tracking {
 	 * @return void
 	 */
 	function hooks() {
+		// add_action( 'wp_enqueue_scripts', [ $this, 'enqueue' ] );
 		add_filter( 'maicca_content', [ $this, 'add_cca_attributes' ], 12, 2 );
 		add_filter( 'maiam_ad',       [ $this, 'add_ad_attributes' ], 12, 2 );
 	}
@@ -92,6 +106,9 @@ class Mai_Analytics_Content_Tracking {
 			return $content;
 		}
 
+		// Enqueue JS.
+		// $this->enqueue();
+
 		if ( 1 === $children->length ) {
 			// Get first element and set main attributes.
 			$first = $children->item(0);
@@ -134,5 +151,41 @@ class Mai_Analytics_Content_Tracking {
 		$content = $dom->saveHTML( $dom->documentElement );
 
 		return $content;
+	}
+
+	/**
+	 * Enqueues script in footer if we're tracking the current page.
+	 *
+	 * This should not be necessary yet, if we have the main Matomo header script.
+	 *
+	 * @since TBD
+	 *
+	 * @return void
+	 */
+	function enqueue() {
+		$tracker = mai_analytics_tracker();
+
+		if ( ! $tracker ) {
+			return;
+		}
+
+		$version   = MAI_ANALYTICS_VERSION;
+		$handle    = 'mai-analytics';
+		$file      = "/assets/js/{$handle}.js"; // TODO: Add min suffix if not script debugging.
+		$file_path = MAI_ANALYTICS_PLUGIN_DIR . $file;
+		$file_url  = MAI_ANALYTICS_PLUGIN_URL . $file;
+
+		if ( file_exists( $file_path ) ) {
+			$version .= '.' . date( 'njYHi', filemtime( $file_path ) );
+
+			wp_enqueue_script( $handle, $file_url, [], $version, true );
+			wp_localize_script( $handle, 'maiAnalyticsVars',
+				[
+					'siteID' => mai_analytics_site_id(),
+					'url'    => mai_analytics_url(),
+					// 'token'  => mai_analytics_token(),
+				]
+			);
+		}
 	}
 }

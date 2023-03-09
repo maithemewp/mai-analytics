@@ -42,44 +42,9 @@ class Mai_Analytics_Tracking {
 	 * @return void
 	 */
 	function hooks() {
-		add_action( 'wp_enqueue_scripts', [ $this, 'enqueue' ] );
-		add_action( 'wp_login',           [ $this, 'login' ], 10, 2 );
-		add_action( 'wp_footer',          [ $this, 'page_view' ], 99 );
+		add_action( 'wp_login',  [ $this, 'login' ], 10, 2 );
+		add_action( 'wp_footer', [ $this, 'page_view' ], 99 );
 		// add_action( 'woocommerce_payment_complete', [ $this, 'payment_complete' ] );
-	}
-
-	/**
-	 * Enqueues script in footer if we're tracking the current page.
-	 *
-	 * @since 0.1.0
-	 *
-	 * @return void
-	 */
-	function enqueue() {
-		$tracker = mai_analytics_tracker();
-
-		if ( ! $tracker ) {
-			return;
-		}
-
-		$version   = MAI_ANALYTICS_VERSION;
-		$handle    = 'mai-analytics';
-		$file      = "/assets/js/{$handle}.js"; // TODO: Add min suffix if not script debugging.
-		$file_path = MAI_ANALYTICS_PLUGIN_DIR . $file;
-		$file_url  = MAI_ANALYTICS_PLUGIN_URL . $file;
-
-		if ( file_exists( $file_path ) ) {
-			$version .= '.' . date( 'njYHi', filemtime( $file_path ) );
-
-			wp_enqueue_script( $handle, $file_url, [], $version, true );
-			wp_localize_script( $handle, 'maiAnalyticsVars',
-				[
-					'siteID' => mai_analytics_site_id(),
-					'url'    => mai_analytics_url(),
-					// 'token'  => mai_analytics_token(),
-				]
-			);
-		}
 	}
 
 	/**
