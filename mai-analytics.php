@@ -17,41 +17,41 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 use YahnisElsts\PluginUpdateChecker\v5\PucFactory;
 
 /**
- * Main Mai_Analytics Class.
+ * Main Mai_Analytics_Plugin Class.
  *
  * @since 0.1.0
  */
-final class Mai_Analytics {
+final class Mai_Analytics_Plugin {
 
 	/**
-	 * @var Mai_Analytics The one true Mai_Analytics
+	 * @var Mai_Analytics_Plugin The one true Mai_Analytics_Plugin
 	 *
 	 * @since 0.1.0
 	 */
 	private static $instance;
 
 	/**
-	 * Main Mai_Analytics Instance.
+	 * Main Mai_Analytics_Plugin Instance.
 	 *
-	 * Insures that only one instance of Mai_Analytics exists in memory at any one
+	 * Insures that only one instance of Mai_Analytics_Plugin exists in memory at any one
 	 * time. Also prevents needing to define globals all over the place.
 	 *
 	 * @since 0.1.0
 	 *
 	 * @static var array $instance
 	 *
-	 * @uses Mai_Analytics::setup_constants() Setup the constants needed.
-	 * @uses Mai_Analytics::includes() Include the required files.
-	 * @uses Mai_Analytics::hooks() Activate, deactivate, etc.
+	 * @uses Mai_Analytics_Plugin::setup_constants() Setup the constants needed.
+	 * @uses Mai_Analytics_Plugin::includes() Include the required files.
+	 * @uses Mai_Analytics_Plugin::hooks() Activate, deactivate, etc.
 	 *
-	 * @see Mai_Analytics()
+	 * @see Mai_Analytics_Plugin()
 	 *
-	 * @return object | Mai_Analytics The one true Mai_Analytics
+	 * @return object | Mai_Analytics_Plugin The one true Mai_Analytics_Plugin
 	 */
 	public static function instance() {
 		if ( ! isset( self::$instance ) ) {
 			// Setup the setup.
-			self::$instance = new Mai_Analytics;
+			self::$instance = new Mai_Analytics_Plugin;
 			// Methods.
 			self::$instance->setup_constants();
 			self::$instance->includes();
@@ -189,6 +189,9 @@ final class Mai_Analytics {
 		// Setup the updater.
 		$updater = PucFactory::buildUpdateChecker( 'https://github.com/maithemewp/mai-analytics/', __FILE__, 'mai-analytics' );
 
+		// Set the stable branch.
+		$updater->setBranch( 'main' );
+
 		// Maybe set github api token.
 		if ( defined( 'MAI_GITHUB_API_TOKEN' ) ) {
 			$updater->setAuthentication( MAI_GITHUB_API_TOKEN );
@@ -219,20 +222,20 @@ final class Mai_Analytics {
 }
 
 /**
- * The main function for that returns Mai_Analytics
+ * The main function for that returns Mai_Analytics_Plugin
  *
- * The main function responsible for returning the one true Mai_Analytics
+ * The main function responsible for returning the one true Mai_Analytics_Plugin
  * Instance to functions everywhere.
  *
  * @access private
  *
  * @since 0.1.0
  *
- * @return object|Mai_Analytics The one true Mai_Analytics Instance.
+ * @return object|Mai_Analytics_Plugin The one true Mai_Analytics_Plugin Instance.
  */
 function mai_analytics_plugin() {
-	return Mai_Analytics::instance();
+	return Mai_Analytics_Plugin::instance();
 }
 
-// Get Mai_Analytics Running.
+// Get Mai_Analytics_Plugin Running.
 mai_analytics_plugin();
