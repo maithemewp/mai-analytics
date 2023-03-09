@@ -213,7 +213,8 @@ final class Mai_Analytics {
 	 * @return void
 	 */
 	function classes() {
-		$track = new Mai_Analytics_Tracking;
+		$track   = new Mai_Analytics_Tracking;
+		$content = new Mai_Analytics_Content_Tracking;
 	}
 }
 
