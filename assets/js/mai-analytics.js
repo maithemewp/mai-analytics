@@ -7,6 +7,10 @@
 ( function() {
 	var _paq = window._paq = window._paq || [];
 
+	if ( maiAnalyticsVars.userID ) {
+		_paq.push( [ 'setUserId', maiAnalyticsVars.userId ] );
+	}
+
 	// Adds all custom dimensions passed through PHP. Must be before trackPageView.
 	for ( const key in maiAnalyticsVars.dimensions ) {
 		_paq.push( [ 'setCustomDimension', key, maiAnalyticsVars.dimensions[ key ] ] );
@@ -20,7 +24,7 @@
 	(function() {
 		var u = maiAnalyticsVars.trackerUrl;
 		_paq.push( [ 'setTrackerUrl', u + 'matomo.php' ] );
-		_paq.push( [ 'setSiteId', maiAnalyticsVars.siteID ] );
+		_paq.push( [ 'setSiteId', maiAnalyticsVars.siteId ] );
 		var d=document, g=d.createElement('script'), s=d.getElementsByTagName('script')[0];
 		g.async=true; g.src=u+'matomo.js'; s.parentNode.insertBefore(g,s);
 	})();

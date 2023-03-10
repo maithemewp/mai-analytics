@@ -78,10 +78,10 @@ class Mai_Analytics_Tracking {
 
 		// Set vars for JS.
 		$vars = [
-			'siteID'     => mai_analytics_site_id(),
+			'siteId'     => mai_analytics_site_id(),
 			'trackerUrl' => mai_analytics_url(),
 			'token'      => mai_analytics_token(),
-			'userID'     => $this->user ? $this->user->user_email : '',
+			'userId'     => $this->user ? $this->user->user_email : '',
 			'dimensions' => $this->get_custom_dimensions(),
 		];
 
@@ -94,7 +94,7 @@ class Mai_Analytics_Tracking {
 		if ( file_exists( $file_path ) ) {
 			$version .= '.' . date( 'njYHi', filemtime( $file_path ) );
 
-			wp_enqueue_script( $handle, $file_url, [], $version, true );
+			wp_enqueue_script( $handle, $file_url, [], $version, false );
 			wp_localize_script( $handle, 'maiAnalyticsVars', $vars );
 		}
 	}
