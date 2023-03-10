@@ -94,7 +94,7 @@ class Mai_Analytics_Tracking {
 		if ( file_exists( $file_path ) ) {
 			$version .= '.' . date( 'njYHi', filemtime( $file_path ) );
 
-			wp_enqueue_script( $handle, $file_url, [], $version, false );
+			wp_enqueue_script( $handle, $file_url, [], $version, true );
 			wp_localize_script( $handle, 'maiAnalyticsVars', $vars );
 		}
 	}
