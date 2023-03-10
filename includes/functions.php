@@ -75,7 +75,8 @@ function mai_analytics_site_id() {
  * @return string
  */
 function mai_analytics_url() {
-	return defined( 'MAI_ANALYTICS_URL' ) ? esc_url( MAI_ANALYTICS_URL ) : 'https://analytics.bizbudding.com';
+	$url = defined( 'MAI_ANALYTICS_URL' ) ? esc_url( MAI_ANALYTICS_URL ) : 'https://analytics.bizbudding.com/';
+	return trailingslashit( $url );
 }
 
 /**
