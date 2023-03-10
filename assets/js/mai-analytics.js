@@ -2,30 +2,26 @@
  * Run Matomo instance.
  * This file will only be loaded if the PHP tracker properly authenticated.
  *
- * @since 0.1.0
+ * @since TBD
  */
 ( function() {
-	/**
-	 * Bail if Matomo is not defined.
-	 * This likely means the Matomo Tracking Code is not loaded.
-	 */
-	if ( 'undefined' === typeof Matomo ) {
-		return
+	var _paq = window._paq = window._paq || [];
+
+	// Adds all custom dimensions passed through PHP. Must be before trackPageView.
+	for ( const key in maiAnalyticsVars.dimensions ) {
+		_paq.push( [ 'setCustomDimension', key, maiAnalyticsVars.dimensions[ key ] ] );
 	}
 
-	// Setup tracker with url/siteID localized from PHP.
-	const tracker = Matomo.getTracker( maiAnalyticsVars.url, maiAnalyticsVars.siteID );
-	// const tracker = Matomo.getAsyncTracker( maiAnalyticsVars.url, maiAnalyticsVars.siteID );
+	_paq.push( [ 'enableLinkTracking' ] );
+	_paq.push( [ 'trackPageView' ] );
+	_paq.push( [ 'trackVisibleContentImpressions' ] );
+	// _paq.push( [ 'trackAllContentImpressions' ] );
 
-	console.log( tracker );
-
-	// Get all elements by query selector.
-	var elements = document.querySelectorAll( '.some-class-or-data-attribute' );
-
-	if ( elements.length ) {
-		elements.forEach( function( element ) {
-			// tracker.doSomethingHere();
-		});
-	}
-
+	(function() {
+		var u = maiAnalyticsVars.url;
+		_paq.push( [ 'setTrackerUrl', u + 'matomo.php' ] );
+		_paq.push( [ 'setSiteId', maiAnalyticsVars.siteID ] );
+		var d=document, g=d.createElement('script'), s=d.getElementsByTagName('script')[0];
+		g.async=true; g.src=u+'matomo.js'; s.parentNode.insertBefore(g,s);
+	})();
 } )();
