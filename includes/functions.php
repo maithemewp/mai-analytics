@@ -150,7 +150,7 @@ function mai_analytics_debug( $log, $script = true ) {
 
 	mai_analytics_ray( $log );
 
-	$console_log = sprintf( 'console.log( %s )', json_encode( "Mai Analytics: {$log}", JSON_HEX_TAG ) );
+	$console_log = sprintf( 'console.log( %s )', json_encode( "Mai Analytics / {$log}", JSON_HEX_TAG ) );
 
 	if ( $script ) {
 		$console_log = '<script>' .  $console_log . '</script>';
