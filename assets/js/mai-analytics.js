@@ -7,16 +7,14 @@
 ( function() {
 	var _paq = window._paq = window._paq || [];
 
+	// Sets user ID as user email.
 	if ( maiAnalyticsVars.userId ) {
 		_paq.push( [ 'setUserId', maiAnalyticsVars.userId ] );
 	}
 
 	// Adds all custom dimensions passed through PHP. Must be before trackPageView.
 	for ( const key in maiAnalyticsVars.dimensions ) {
-		var customDimensionId    = key;
-		var customDimensionValue = maiAnalyticsVars.dimensions[ key ];
-		// _paq.push( [ 'setCustomDimension', key, maiAnalyticsVars.dimensions[ key ] ] );
-		_paq.push( [ 'setCustomDimension', customDimensionId, customDimensionValue ] );
+		_paq.push( [ 'setCustomDimension', key, maiAnalyticsVars.dimensions[ key ] ] );
 	}
 
 	_paq.push( [ 'enableLinkTracking' ] );
