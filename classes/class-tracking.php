@@ -87,7 +87,7 @@ class Mai_Analytics_Tracking {
 
 		$version   = MAI_ANALYTICS_VERSION;
 		$handle    = 'mai-analytics';
-		$file      = "/assets/js/{$handle}.js"; // TODO: Add min suffix if not script debugging.
+		$file      = "assets/js/{$handle}.js"; // TODO: Add min suffix if not script debugging.
 		$file_path = MAI_ANALYTICS_PLUGIN_DIR . $file;
 		$file_url  = MAI_ANALYTICS_PLUGIN_URL . $file;
 
