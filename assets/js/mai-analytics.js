@@ -18,7 +18,7 @@
 	// _paq.push( [ 'trackAllContentImpressions' ] );
 
 	(function() {
-		var u = maiAnalyticsVars.url;
+		var u = maiAnalyticsVars.trackerUrl;
 		_paq.push( [ 'setTrackerUrl', u + 'matomo.php' ] );
 		_paq.push( [ 'setSiteId', maiAnalyticsVars.siteID ] );
 		var d=document, g=d.createElement('script'), s=d.getElementsByTagName('script')[0];
