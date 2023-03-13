@@ -19,6 +19,7 @@
  * @package MatomoTracker
  * @api
  */
+#[AllowDynamicProperties]
 class MatomoTracker
 {
     /**
@@ -169,6 +170,11 @@ class MatomoTracker
 
         $this->outgoingTrackerCookies = [];
         $this->incomingTrackerCookies = [];
+    }
+
+    public function setApiUrl(string $url)
+    {
+        self::$URL = $url;
     }
 
     /**
