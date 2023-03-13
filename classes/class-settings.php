@@ -32,7 +32,7 @@ class Mai_Analytics_Settings {
 		add_submenu_page(
 			class_exists( 'Mai_Engine' ) ? 'mai-theme' : 'options-general.php',
 			__( 'Mai Analytics', 'mai-analytics' ), // page_title
-			__( 'Analytics', 'mai-analytics' ), // menu_title
+			class_exists( 'Mai_Engine' ) ? __( 'Mai Analytics', 'mai-analytics' ) : __( 'Analytics', 'mai-analytics' ), // menu_title
 			'manage_options', // capability
 			'mai-analytics', // menu_slug
 			[ $this, 'add_content' ], // callback
