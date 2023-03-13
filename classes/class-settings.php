@@ -17,7 +17,7 @@ class Mai_Analytics_Settings {
 	 * @return void
 	 */
 	public function __construct() {
-		add_action( 'admin_menu', [ $this, 'add_menu_item' ] );
+		add_action( 'admin_menu', [ $this, 'add_menu_item' ], 12 );
 		add_action( 'admin_init', [ $this, 'init' ] );
 	}
 
@@ -29,12 +29,13 @@ class Mai_Analytics_Settings {
 	 * @return void
 	 */
 	public function add_menu_item() {
-		add_options_page(
+		add_submenu_page(
+			class_exists( 'Mai_Engine' ) ? 'mai-theme' : 'options-general.php',
 			__( 'Mai Analytics', 'mai-analytics' ), // page_title
-			__( 'Mai Analytics', 'mai-analytics' ), // menu_title
+			__( 'Analytics', 'mai-analytics' ), // menu_title
 			'manage_options', // capability
 			'mai-analytics', // menu_slug
-			[ $this, 'add_content' ] // callback
+			[ $this, 'add_content' ], // callback
 		);
 	}
 
