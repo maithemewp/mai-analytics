@@ -10,6 +10,11 @@ MAI_ANALYTICS
 `bool`: Must be true for Mai Analytics to be used.
 
 ```
+MAI_ANALYTICS_ADMIN
+```
+`bool`: Must be true for Mai Analytics to track back end data.
+
+```
 MAI_ANALYTICS_SITE_ID
 ```
 `integer`: The site ID.
@@ -25,12 +30,7 @@ MAI_ANALYTICS_TOKEN
 `string`: The Matomo analytics token.
 
 ```
-MAI_ANALYTICS_ADMIN
-```
-`bool`: Must be true for Mai Analytics to track back end data.
-
-```
-MAI_ANALYTICS_DEBUG
+MAI_ANALYTICS_LOG
 ```
 `bool`: Whether Mai Analytics should log via the console and Spatie Ray, if available.
 

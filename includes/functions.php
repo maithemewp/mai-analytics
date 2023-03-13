@@ -17,8 +17,8 @@ function mai_analytics_tracker() {
 		return $cache;
 	}
 
-	// Bail if not using Matomo Analytics (defined in wp-config.php).
-	if ( ! ( defined( 'MAI_ANALYTICS' ) && MAI_ANALYTICS ) ) {
+	// Bail if not using Matomo Analytics.
+	if ( ! mai_analytics_get_option( 'enabled' ) ) {
 		$cache = false;
 		return $cache;
 	}
@@ -30,9 +30,9 @@ function mai_analytics_tracker() {
 	}
 
 	// Set vars.
-	$site_id = mai_analytics_site_id();
-	$url     = mai_analytics_url();
-	$token   = mai_analytics_token();
+	$site_id = mai_analytics_get_option( 'site_id' );
+	$url     = mai_analytics_get_option( 'url' );
+	$token   = mai_analytics_get_option( 'token' );
 
 	// Bail if we don't have the data we need.
 	if ( ! ( $site_id && $url && $token ) ) {
@@ -53,43 +53,106 @@ function mai_analytics_tracker() {
 }
 
 /**
- * Gets the site ID for Matomo.
+ * Gets a single option value by key.
  *
- * @access private
+ * @since TBD
  *
- * @since 0.1.0
+ * @param string $key
+ * @param mixed  $default
  *
- * @return int
+ * @return mixed
  */
-function mai_analytics_site_id() {
-	return defined( 'MAI_ANALYTICS_SITE_ID' ) ? (int) MAI_ANALYTICS_SITE_ID : 0;
+function mai_analytics_get_option( $key, $default = null ) {
+	$options = mai_analytics_get_options();
+	return isset( $options[ $key ] ) ? $options[ $key ] : $default;
 }
 
 /**
- * Gets the URL for Matomo.
+ * Gets all options.
  *
- * @access private
+ * @since TBD
  *
- * @since 0.1.0
- *
- * @return string
+ * @return array
  */
-function mai_analytics_url() {
-	$url = defined( 'MAI_ANALYTICS_URL' ) ? esc_url( MAI_ANALYTICS_URL ) : 'https://analytics.bizbudding.com/';
-	return trailingslashit( $url );
+function mai_analytics_get_options() {
+	static $cache = null;
+
+	if ( ! is_null( $cache ) ) {
+		return $cache;
+	}
+
+	// Get all options, with defaults.
+	$options   = (array) get_option( 'mai_analytics', mai_analytics_get_options_defaults() );
+
+	// Setup keys and constants.
+	$constants = [
+		'enabled'       => 'MAI_ANALYTICS',
+		'enabled_admin' => 'MAI_ANALYTICS_ADMIN',
+		'enabled_log'   => 'MAI_ANALYTICS_LOG',
+		'site_id'       => 'MAI_ANALYTICS_SITE_ID',
+		'url'           => 'MAI_ANALYTICS_URL',
+		'token'         => 'MAI_ANALYTICS_TOKEN',
+	];
+
+	// Override any existing constants.
+	foreach ( $constants as $key => $constant ) {
+		if ( defined( $constant ) ) {
+			$options[ $key ] = constant( $constant );
+		}
+	}
+
+	// Sanitize.
+	$cache = mai_analytics_sanitize_options( $options );
+
+	return $cache;
 }
 
 /**
- * Gets the token for Matomo.
+ * Gets default options.
  *
- * @access private
+ * @since TBD
  *
- * @since 0.1.0
- *
- * @return string
+ * @return array
  */
-function mai_analytics_token() {
-	return defined( 'MAI_ANALYTICS_TOKEN' ) ? MAI_ANALYTICS_TOKEN : '';
+function mai_analytics_get_options_defaults() {
+	static $cache = null;
+
+	if ( ! is_null( $cache ) ) {
+		return $cache;
+	}
+
+	$cache = [
+		'enabled'       => defined( 'MAI_ANALYTICS' ) ? MAI_ANALYTICS : 0,
+		'enabled_admin' => defined( 'MAI_ANALYTICS_ADMIN' ) ? MAI_ANALYTICS_ADMIN : 0,
+		'enabled_log'   => defined( 'MAI_ANALYTICS_LOG' ) ? MAI_ANALYTICS_LOG : 0,
+		'site_id'       => defined( 'MAI_ANALYTICS_SITE_ID' ) ? MAI_ANALYTICS_SITE_ID : 0,
+		'url'           => defined( 'MAI_ANALYTICS_URL' ) ? MAI_ANALYTICS_URL : '',
+		'token'         => defined( 'MAI_ANALYTICS_TOKEN' ) ? MAI_ANALYTICS_TOKEN : '',
+	];
+
+	return $cache;
+}
+
+/**
+ * Parses and sanitize all options.
+ * Not cached for use when saving values in settings page.
+ *
+ * @since TBD
+ *
+ * @return array
+ */
+function mai_analytics_sanitize_options( $options ) {
+	$options = wp_parse_args( $options, mai_analytics_get_options_defaults() );
+
+	// Sanitize.
+	$options['enabled']       = rest_sanitize_boolean( $options['enabled'] );
+	$options['enabled_admin'] = rest_sanitize_boolean( $options['enabled_admin'] );
+	$options['enabled_log']   = rest_sanitize_boolean( $options['enabled_log'] );
+	$options['site_id']       = absint( $options['site_id'] );
+	$options['url']           = trailingslashit( esc_url( $options['url'] ) );
+	$options['token']         = sanitize_key( $options['token'] );
+
+	return $options;
 }
 
 /**
@@ -110,25 +173,27 @@ function mai_analytics_should_track() {
 
 	$cache = false;
 
-	// bail if we are in an ajax call
+	// Bail if we are in an ajax call.
 	if ( wp_doing_ajax() ) {
 		return $cache;
 	}
 
+	// Bail if this is a JSON request.
 	if ( wp_is_json_request() ) {
 		return $cache;
 	}
 
+	// Bail if this running via a CLI command.
 	if ( defined( 'WP_CLI' ) && WP_CLI ) {
 		return $cache;
 	}
 
-	// Bail if admin page and we're not tracking
-	if ( defined( 'MAI_ANALYTICS_ADMIN' ) && ! MAI_ANALYTICS_ADMIN && is_admin() ) {
+	// Bail if admin page and we're not tracking.
+	if ( ! mai_analytics_get_option( 'enabled_admin' ) && is_admin() ) {
 		return $cache;
 	}
 
-	// we got here, set cache and let's track it
+	// We got here, set cache and let's track it.
 	$cache = true;
 
 	return $cache;
@@ -144,8 +209,8 @@ function mai_analytics_should_track() {
  *
  * @return void
  */
-function mai_analytics_debug( $log, $script = true ) {
-	if ( ! MAI_ANALYTICS_DEBUG ) {
+function mai_analytics_log( $log, $script = true ) {
+	if ( ! mai_analytics_get_option( 'log' ) ) {
 		return;
 	}
 
