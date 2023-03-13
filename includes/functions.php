@@ -5,6 +5,8 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 
 /**
  * Function to return the static instance for the tracker.
+ * This apparently does not authenticate the tracker,
+ * and still returns the object.
  *
  * @since 0.1.0
  *

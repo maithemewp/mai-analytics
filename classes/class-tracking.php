@@ -52,8 +52,7 @@ class Mai_Analytics_Tracking {
 	}
 
 	/**
-	 * Enqueues script in footer if we're tracking the current page.
-	 *
+	 * Enqueues script if we're tracking the current page.
 	 * This should not be necessary yet, if we have the main Matomo header script.
 	 *
 	 * @since TBD
@@ -68,7 +67,7 @@ class Mai_Analytics_Tracking {
 
 		$tracker = mai_analytics_tracker();
 
-		// Bail if no a valid tracker.
+		// Bail if no tracker.
 		if ( ! $tracker ) {
 			return;
 		}
