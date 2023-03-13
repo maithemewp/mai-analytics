@@ -157,9 +157,9 @@ class Mai_Analytics_Settings {
 		);
 
 		add_settings_field(
-			'enabled_log', // id
+			'debug', // id
 			__( 'Enable debugging', 'mai-analytics' ), // title
-			[ $this, 'enabled_log_callback' ], // callback
+			[ $this, 'debug_callback' ], // callback
 			'mai-analytics-section', // page
 			'mai_analytics_settings' // section
 		);
@@ -254,12 +254,12 @@ class Mai_Analytics_Settings {
 	 *
 	 * @return void
 	 */
-	public function enabled_log_callback() {
-		$constant = defined( 'MAI_ANALYTICS_LOG' );
-		$value    = $constant ? rest_sanitize_boolean( MAI_ANALYTICS_LOG ) : $this->options['enabled_log'];
+	public function debug_callback() {
+		$constant = defined( 'MAI_ANALYTICS_DEBUG' );
+		$value    = $constant ? rest_sanitize_boolean( MAI_ANALYTICS_DEBUG ) : $this->options['debug'];
 
 		printf(
-			'<input type="checkbox" name="mai_analytics[enabled_log]" id="enabled_log" value="enabled_log"%s%s> <label for="enabled_log">%s%s</label>',
+			'<input type="checkbox" name="mai_analytics[debug]" id="debug" value="debug"%s%s> <label for="debug">%s%s</label>',
 			$value ? ' checked' : '',
 			$constant ? ' disabled' : '',
 			__( 'Enable debugging to print data to the Console and Spatie Ray.', 'mai-analytics' ),

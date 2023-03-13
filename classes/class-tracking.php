@@ -150,13 +150,13 @@ class Mai_Analytics_Tracking {
 
 		// Handles group as custom dimension.
 		if ( $group ) {
-			mai_analytics_log( sprintf( 'Group name / %s', $group ) );
+			mai_analytics_debug( sprintf( 'Group name / %s', $group ) );
 
 			// Set the Group data.
 			$dimensions[5] = $group;
 
 		} else {
-			mai_analytics_log( 'No Group name found' );
+			mai_analytics_debug( 'No Group name found' );
 		}
 
 		return $dimensions;
@@ -177,9 +177,9 @@ class Mai_Analytics_Tracking {
 		// Handles plan IDs.
 		if ( $plan_ids ) {
 			$args['plan_ids'] = $plan_ids;
-			mai_analytics_log( sprintf( 'Woo Membership Plan IDs / %s', implode( ', ', $args['plan_ids'] ) ) );
+			mai_analytics_debug( sprintf( 'Woo Membership Plan IDs / %s', implode( ', ', $args['plan_ids'] ) ) );
 		} else {
-			mai_analytics_log( 'No Woo Membership Plans' );
+			mai_analytics_debug( 'No Woo Membership Plans' );
 		}
 
 		return $args;
@@ -201,7 +201,7 @@ class Mai_Analytics_Tracking {
 		if ( $taxonomies ) {
 			foreach ( $taxonomies as $name => $values ) {
 				$args[ $name ] = $values;
-				mai_analytics_log( sprintf( 'User Taxonomy / %s / %s', $name, implode( ', ', array_values( $values ) ) ) );
+				mai_analytics_debug( sprintf( 'User Taxonomy / %s / %s', $name, implode( ', ', array_values( $values ) ) ) );
 			}
 		}
 

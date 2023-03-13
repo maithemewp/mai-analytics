@@ -90,7 +90,7 @@ function mai_analytics_get_options() {
 	$constants = [
 		'enabled'       => 'MAI_ANALYTICS',
 		'enabled_admin' => 'MAI_ANALYTICS_ADMIN',
-		'enabled_log'   => 'MAI_ANALYTICS_LOG',
+		'debug'         => 'MAI_ANALYTICS_DEBUG',
 		'site_id'       => 'MAI_ANALYTICS_SITE_ID',
 		'url'           => 'MAI_ANALYTICS_URL',
 		'token'         => 'MAI_ANALYTICS_TOKEN',
@@ -126,7 +126,7 @@ function mai_analytics_get_options_defaults() {
 	$cache = [
 		'enabled'       => defined( 'MAI_ANALYTICS' ) ? MAI_ANALYTICS : 0,
 		'enabled_admin' => defined( 'MAI_ANALYTICS_ADMIN' ) ? MAI_ANALYTICS_ADMIN : 0,
-		'enabled_log'   => defined( 'MAI_ANALYTICS_LOG' ) ? MAI_ANALYTICS_LOG : 0,
+		'debug'         => defined( 'MAI_ANALYTICS_DEBUG' ) ? MAI_ANALYTICS_DEBUG : 0,
 		'site_id'       => defined( 'MAI_ANALYTICS_SITE_ID' ) ? MAI_ANALYTICS_SITE_ID : 0,
 		'url'           => defined( 'MAI_ANALYTICS_URL' ) ? MAI_ANALYTICS_URL : '',
 		'token'         => defined( 'MAI_ANALYTICS_TOKEN' ) ? MAI_ANALYTICS_TOKEN : '',
@@ -149,7 +149,7 @@ function mai_analytics_sanitize_options( $options ) {
 	// Sanitize.
 	$options['enabled']       = rest_sanitize_boolean( $options['enabled'] );
 	$options['enabled_admin'] = rest_sanitize_boolean( $options['enabled_admin'] );
-	$options['enabled_log']   = rest_sanitize_boolean( $options['enabled_log'] );
+	$options['debug']   = rest_sanitize_boolean( $options['debug'] );
 	$options['site_id']       = absint( $options['site_id'] );
 	$options['url']           = trailingslashit( esc_url( $options['url'] ) );
 	$options['token']         = sanitize_key( $options['token'] );
@@ -202,7 +202,7 @@ function mai_analytics_should_track() {
 }
 
 /**
- * Push a log message to Spatie Ray and the console.
+ * Push a debug message to Spatie Ray and the Console.
  *
  * @since TBD
  *
@@ -211,8 +211,8 @@ function mai_analytics_should_track() {
  *
  * @return void
  */
-function mai_analytics_log( $log, $script = true ) {
-	if ( ! mai_analytics_get_option( 'log' ) ) {
+function mai_analytics_debug( $log, $script = true ) {
+	if ( ! mai_analytics_get_option( 'debug' ) ) {
 		return;
 	}
 

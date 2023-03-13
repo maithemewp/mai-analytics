@@ -30,7 +30,7 @@ MAI_ANALYTICS_TOKEN
 `string`: The Matomo analytics token.
 
 ```
-MAI_ANALYTICS_LOG
+MAI_ANALYTICS_DEBUG
 ```
 `bool`: Whether Mai Analytics should log via the console and Spatie Ray, if available.
 
