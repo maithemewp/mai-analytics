@@ -191,8 +191,14 @@ class Mai_Analytics_Tracking {
 	 * @return array
 	 */
 	function set_dimension_6() {
+		$date = get_the_date( 'F j, Y' );
+
+		if ( ! $date ) {
+			return;
+		}
+
 		$range  = false;
-		$date   = new DateTime( get_the_date() );
+		$date   = new DateTime( $date );
 		$today  = new DateTime( 'now' );
 		$days   = $today->diff( $date )->format( '%a' );
 		$ranges = [
