@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.2.2 (4/26/23)
+* Added: Plugin action link to settings page from main plugins list.
+
 ## 0.2.1 (4/25/23)
 * Fixed: Error if a post is not formatted correctly and does not have a proper date stored in the database.
 
