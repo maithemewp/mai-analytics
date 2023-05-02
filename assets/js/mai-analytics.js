@@ -2,7 +2,7 @@
  * Run Matomo instance.
  * This file will only be loaded if the PHP tracker properly authenticated.
  *
- * @since TBD
+ * @since 0.1.0
  */
 ( function() {
 	var _paq = window._paq = window._paq || [];

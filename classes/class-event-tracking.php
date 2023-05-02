@@ -21,7 +21,7 @@ class Mai_Analytics_Event_Tracking {
 	/**
 	 * Runs frontend hooks.
 	 *
-	 * @since TBD
+	 * @since 0.1.0
 	 *
 	 * @return void
 	 */
@@ -34,7 +34,7 @@ class Mai_Analytics_Event_Tracking {
 	 * Updates user property if user is not logged in when class is instantiated.
 	 * Sends an event to Motomo to set the userID email based upon the login of a current user.
 	 *
-	 * @since TBD
+	 * @since 0.1.0
 	 *
 	 * @param string  $user_login Username.
 	 * @param WP_User $user       Object of the logged-in user.
@@ -56,7 +56,7 @@ class Mai_Analytics_Event_Tracking {
 	/**
 	 * Track data when payment is complete.
 	 *
-	 * @since TBD
+	 * @since 0.1.0
 	 *
 	 * @param int $order_id
 	 *

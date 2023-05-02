@@ -57,7 +57,7 @@ function mai_analytics_tracker() {
 /**
  * Gets a single option value by key.
  *
- * @since TBD
+ * @since 0.1.0
  *
  * @param string $key
  * @param mixed  $default
@@ -72,7 +72,7 @@ function mai_analytics_get_option( $key, $default = null ) {
 /**
  * Gets all options.
  *
- * @since TBD
+ * @since 0.1.0
  *
  * @return array
  */
@@ -112,7 +112,7 @@ function mai_analytics_get_options() {
 /**
  * Gets default options.
  *
- * @since TBD
+ * @since 0.1.0
  *
  * @return array
  */
@@ -139,7 +139,7 @@ function mai_analytics_get_options_defaults() {
  * Parses and sanitize all options.
  * Not cached for use when saving values in settings page.
  *
- * @since TBD
+ * @since 0.1.0
  *
  * @return array
  */
@@ -162,7 +162,7 @@ function mai_analytics_sanitize_options( $options ) {
  *
  * @access private
  *
- * @since TBD
+ * @since 0.1.0
  *
  * @return bool
  */
@@ -205,7 +205,7 @@ function mai_analytics_should_track() {
  * Get processed content.
  * Take from mai_get_processed_content() in Mai Engine.
  *
- * @since TBD
+ * @since 0.1.0
  *
  * @return string
  */
@@ -238,7 +238,7 @@ function mai_analytics_get_processed_content( $content ) {
 /**
  * Push a debug message to Spatie Ray and the Console.
  *
- * @since TBD
+ * @since 0.1.0
  *
  * @param string $log The log string.
  * @param bool   $script Whether to add script tags if logging in console.
@@ -266,7 +266,7 @@ function mai_analytics_debug( $log, $script = true ) {
  *
  * @link https://spatie.be/docs/ray/v1/the-ray-desktop-app/discovering-the-ray-app#content-connecting-to-remote-servers
  *
- * @since TBD
+ * @since 0.1.0
  *
  * @param mixed $log
  *
@@ -286,7 +286,7 @@ function mai_analytics_ray( $log ) {
  *
  * @access private
  *
- * @since TBD
+ * @since 0.1.0
  *
  * @param string $html Any given HTML string.
  *
@@ -321,7 +321,7 @@ function mai_analytics_get_dom_document( $html ) {
  * Gets membership plan IDs.
  * Cached incase we need to call this again later on same page load.
  *
- * @since TBD
+ * @since 0.1.0
  *
  * @param int $user_id The logged in user ID.
  *
@@ -368,7 +368,7 @@ function mai_analytics_get_membership_plan_ids( $user_id ) {
  *   ],
  * ]
  *
- * @since TBD
+ * @since 0.1.0
  *
  * @return array
  */

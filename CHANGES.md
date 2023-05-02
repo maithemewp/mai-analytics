@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.2.3 (5/2/23)
+* Fixed: Additional `<html><body>` tags were added to Mai Custom Content Areas in some configurations.
+
 ## 0.2.2 (4/26/23)
 * Added: Plugin action link to settings page from main plugins list.
 

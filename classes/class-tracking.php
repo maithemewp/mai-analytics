@@ -55,7 +55,7 @@ class Mai_Analytics_Tracking {
 	 * Enqueues script if we're tracking the current page.
 	 * This should not be necessary yet, if we have the main Matomo header script.
 	 *
-	 * @since TBD
+	 * @since 0.1.0
 	 *
 	 * @return void
 	 */
@@ -101,7 +101,7 @@ class Mai_Analytics_Tracking {
 	/**
 	 * Gets custom dimensions.
 	 *
-	 * @since TBD
+	 * @since 0.1.0
 	 *
 	 * @return array
 	 */
@@ -147,7 +147,7 @@ class Mai_Analytics_Tracking {
 	 * This leaves us open to use dimension 5 for any sort of User Grouping we want, not just WooCommerce.
 	 * We could use WP User Groups (taxonomy) or anything else, without modifying the plugin code.
 	 *
-	 * @since TBD
+	 * @since 0.1.0
 	 *
 	 * @return array
 	 */
@@ -186,7 +186,7 @@ class Mai_Analytics_Tracking {
 	/**
 	 * Gets content age.
 	 *
-	 * @since TBD
+	 * @since 0.1.0
 	 *
 	 * @return array
 	 */
@@ -240,7 +240,7 @@ class Mai_Analytics_Tracking {
 	 *
 	 * @todo Add support for CPT and Custom Taxonomies?
 	 *
-	 * @since TBD
+	 * @since 0.1.0
 	 *
 	 * @return array
 	 */
@@ -261,7 +261,7 @@ class Mai_Analytics_Tracking {
 	/**
 	 * Gets content length.
 	 *
-	 * @since TBD
+	 * @since 0.1.0
 	 *
 	 * @return array
 	 */
@@ -305,7 +305,7 @@ class Mai_Analytics_Tracking {
 	/**
 	 * Gets content type.
 	 *
-	 * @since TBD
+	 * @since 0.1.0
 	 *
 	 * @return array
 	 */
@@ -371,7 +371,7 @@ class Mai_Analytics_Tracking {
 	/**
 	 * Sets membership plan IDs in args.
 	 *
-	 * @since TBD
+	 * @since 0.1.0
 	 *
 	 * @param array $args
 	 *
@@ -394,7 +394,7 @@ class Mai_Analytics_Tracking {
 	/**
 	 * Sets user taxonomies.
 	 *
-	 * @since TBD
+	 * @since 0.1.0
 	 *
 	 * @param array $args
 	 *
@@ -421,7 +421,7 @@ class Mai_Analytics_Tracking {
 	 *
 	 * @version 1.3.0
 	 *
-	 * @since TBD
+	 * @since 0.1.0
 	 *
 	 * @link https://gist.github.com/JiveDig/5d1518f370b1605ae9c753f564b20b7f
 	 * @link https://gist.github.com/jawinn/1b44bf4e62e114dc341cd7d7cd8dce4c

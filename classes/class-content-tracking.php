@@ -29,7 +29,7 @@ class Mai_Analytics_Content_Tracking {
 	/**
 	 * Runs frontend hooks.
 	 *
-	 * @since TBD
+	 * @since 0.1.0
 	 *
 	 * @return void
 	 */
@@ -41,7 +41,7 @@ class Mai_Analytics_Content_Tracking {
 	/**
 	 * Maybe add attributes to Mai CCA.
 	 *
-	 * @since TBD
+	 * @since 0.1.0
 	 *
 	 * @param string $content The CCA content.
 	 * @param array  $args    The CCA args.
@@ -60,7 +60,7 @@ class Mai_Analytics_Content_Tracking {
 	/**
 	 * Maybe add attributes to Mai Ad.
 	 *
-	 * @since TBD
+	 * @since 0.1.0
 	 *
 	 * @param string $content The CCA content.
 	 * @param string $args    The CCA args.
@@ -84,7 +84,7 @@ class Mai_Analytics_Content_Tracking {
 	 * This would happen if a Mai Ad block was used inside of a Mai CCA,
 	 * the CCA would take precedence and the Ad links will have the content piece.
 	 *
-	 * @since TBD
+	 * @since 0.1.0
 	 *
 	 * @param string $content The content.
 	 * @param string $name    The name.
@@ -158,7 +158,7 @@ class Mai_Analytics_Content_Tracking {
 	/**
 	 * Checks if we should track.
 	 *
-	 * @since TBD
+	 * @since 0.1.0
 	 *
 	 * @return bool
 	 */

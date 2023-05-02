@@ -12,7 +12,7 @@ class Mai_Analytics_Settings {
 	/**
 	 * Construct the class.
 	 *
-	 * @since TBD
+	 * @since 0.1.0
 	 *
 	 * @return void
 	 */
@@ -25,7 +25,7 @@ class Mai_Analytics_Settings {
 	/**
 	 * Adds menu item for settings page.
 	 *
-	 * @since TBD
+	 * @since 0.1.0
 	 *
 	 * @return void
 	 */
@@ -43,7 +43,7 @@ class Mai_Analytics_Settings {
 	/**
 	 * Adds setting page content.
 	 *
-	 * @since TBD
+	 * @since 0.1.0
 	 *
 	 * @return void
 	 */
@@ -69,7 +69,7 @@ class Mai_Analytics_Settings {
 	 *
 	 * @link https://matomo.org/faq/how-to/faq_20278/
 	 *
-	 * @since TBD
+	 * @since 0.1.0
 	 *
 	 * @return void
 	 */
@@ -123,7 +123,7 @@ class Mai_Analytics_Settings {
 	/**
 	 * Initialize the settings.
 	 *
-	 * @since TBD
+	 * @since 0.1.0
 	 *
 	 * @return void
 	 */
@@ -211,7 +211,7 @@ class Mai_Analytics_Settings {
 	/**
 	 * Setting callback.
 	 *
-	 * @since TBD
+	 * @since 0.1.0
 	 *
 	 * @return void
 	 */
@@ -231,7 +231,7 @@ class Mai_Analytics_Settings {
 	/**
 	 * Setting callback.
 	 *
-	 * @since TBD
+	 * @since 0.1.0
 	 *
 	 * @return void
 	 */
@@ -251,7 +251,7 @@ class Mai_Analytics_Settings {
 	/**
 	 * Setting callback.
 	 *
-	 * @since TBD
+	 * @since 0.1.0
 	 *
 	 * @return void
 	 */
@@ -271,7 +271,7 @@ class Mai_Analytics_Settings {
 	/**
 	 * Setting callback.
 	 *
-	 * @since TBD
+	 * @since 0.1.0
 	 *
 	 * @return void
 	 */
@@ -290,7 +290,7 @@ class Mai_Analytics_Settings {
 	/**
 	 * Setting callback.
 	 *
-	 * @since TBD
+	 * @since 0.1.0
 	 *
 	 * @return void
 	 */
@@ -309,7 +309,7 @@ class Mai_Analytics_Settings {
 	/**
 	 * Setting callback.
 	 *
-	 * @since TBD
+	 * @since 0.1.0
 	 *
 	 * @return void
 	 */
