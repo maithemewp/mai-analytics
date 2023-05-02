@@ -306,7 +306,7 @@ function mai_analytics_get_dom_document( $html ) {
 	$dom->removeChild( $dom->doctype );
 
 	// Remove <html><body></body></html>.
-	// $dom->replaceChild( $dom->firstChild->firstChild->firstChild, $dom->firstChild ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase
+	$dom->replaceChild( $dom->firstChild->firstChild->firstChild, $dom->firstChild ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase
 
 	// Handle errors.
 	libxml_clear_errors();

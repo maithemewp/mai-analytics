@@ -103,7 +103,7 @@ class Mai_Analytics_Content_Tracking {
 		}
 
 		$dom      = mai_analytics_get_dom_document( $content );
-		$children = $dom->getElementsByTagName('body')->item(0)->childNodes;
+		$children = $dom->childNodes;
 
 		// Bail if no nodes.
 		if ( ! $children->length ) {
