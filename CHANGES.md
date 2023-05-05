@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.2.4 (5/5/23)
+* Fixed: Fix invalid markup in some scenarios.
+
 ## 0.2.3 (5/2/23)
 * Fixed: Additional `<html><body>` tags were added to Mai Custom Content Areas in some configurations.
 
