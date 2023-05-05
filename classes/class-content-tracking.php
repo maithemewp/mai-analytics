@@ -150,7 +150,7 @@ class Mai_Analytics_Content_Tracking {
 		}
 
 		// Save new content.
-		$content = $dom->saveHTML( $dom->documentElement );
+		$content = $dom->saveHTML();
 
 		return $content;
 	}
