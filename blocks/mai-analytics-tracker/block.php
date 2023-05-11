@@ -88,7 +88,8 @@ function mai_register_analytics_tracker_field_group() {
  *
  * @return void
  */
-add_action( 'admin_init', function() {
+add_action( 'admin_init', 'mai_analytics_register_block_script' );
+function mai_analytics_register_block_script() {
 	$file      = 'blocks/mai-analytics-tracker/block.js';
 	$file_path = MAI_ANALYTICS_PLUGIN_DIR . $file;
 	$file_url  = MAI_ANALYTICS_PLUGIN_URL . $file;
@@ -97,4 +98,4 @@ add_action( 'admin_init', function() {
 		$version = MAI_ANALYTICS_VERSION . '.' . date( 'njYHi', filemtime( $file_path ) );
 		wp_register_script( 'mai-analytics-block', $file_url, [], $version, true );
 	}
-});
+}
