@@ -112,16 +112,6 @@ final class Mai_Analytics_Plugin {
 			define( 'MAI_ANALYTICS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 		}
 
-		// Plugin Includes Path.
-		if ( ! defined( 'MAI_ANALYTICS_INCLUDES_DIR' ) ) {
-			define( 'MAI_ANALYTICS_INCLUDES_DIR', MAI_ANALYTICS_PLUGIN_DIR . 'includes/' );
-		}
-
-		// Plugin Classes Path.
-		if ( ! defined( 'MAI_ANALYTICS_CLASSES_DIR' ) ) {
-			define( 'MAI_ANALYTICS_CLASSES_DIR', MAI_ANALYTICS_PLUGIN_DIR . 'classes/' );
-		}
-
 		// Plugin Folder URL.
 		if ( ! defined( 'MAI_ANALYTICS_PLUGIN_URL' ) ) {
 			define( 'MAI_ANALYTICS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
@@ -151,9 +141,11 @@ final class Mai_Analytics_Plugin {
 		// Include vendor libraries.
 		require_once __DIR__ . '/vendor/autoload.php';
 		// Includes.
-		foreach ( glob( MAI_ANALYTICS_INCLUDES_DIR . '*.php' ) as $file ) { include $file; }
+		foreach ( glob( MAI_ANALYTICS_PLUGIN_DIR . 'includes/*.php' ) as $file ) { include $file; }
 		// Classes.
-		foreach ( glob( MAI_ANALYTICS_CLASSES_DIR . '*.php' ) as $file ) { include $file; }
+		foreach ( glob( MAI_ANALYTICS_PLUGIN_DIR . 'classes/*.php' ) as $file ) { include $file; }
+		// Blocks.
+		include MAI_ANALYTICS_PLUGIN_DIR . 'blocks/mai-analytics-tracker/block.php';
 	}
 
 	/**
@@ -164,9 +156,8 @@ final class Mai_Analytics_Plugin {
 	 * @return void
 	 */
 	public function hooks() {
-		add_action( 'plugins_loaded', [ $this, 'updater' ] );
+		add_action( 'plugins_loaded', [ $this, 'updater' ], 12 ); // After default of 10, so Mai Engine icons are available.
 		add_action( 'plugins_loaded', [ $this, 'classes' ], 8 ); // Before default of 10, so per-site code can run on plugins_loaded default.
-		// add_action( 'after_setup_theme', [ $this, 'classes' ], 99 );
 	}
 
 	/**

@@ -36,6 +36,7 @@ class Mai_Analytics_Content_Tracking {
 	function hooks() {
 		add_filter( 'maicca_content', [ $this, 'add_cca_attributes' ], 12, 2 );
 		add_filter( 'maiam_ad',       [ $this, 'add_ad_attributes' ], 12, 2 );
+		add_filter( 'render_block',   [ $this, 'render_block' ], 10, 2 );
 	}
 
 	/**
@@ -49,12 +50,17 @@ class Mai_Analytics_Content_Tracking {
 	 * @return string
 	 */
 	function add_cca_attributes( $content, $args ) {
+		// Bail if not tracking.
+		if ( ! $this->should_track() ) {
+			return $content;
+		}
+
 		// Bail if no name.
 		if ( ! isset( $args['id'] ) || empty( $args['id'] ) ) {
 			return $content;
 		}
 
-		return $this->add_attributes( $content, get_the_title( $args['id'] ) );
+		return mai_analytics_add_attributes( $content, get_the_title( $args['id'] ) );
 	}
 
 	/**
@@ -68,91 +74,58 @@ class Mai_Analytics_Content_Tracking {
 	 * @return string
 	 */
 	function add_ad_attributes( $content, $args ) {
-		// Bail if no name.
-		if ( ! isset( $args['name'] ) || empty( $args['name'] ) ) {
-			return $content;
-		}
-
-		return $this->add_attributes( $content, trim( $args['name'] ) );
-	}
-
-	/**
-	 * Adds element attributes.
-	 *
-	 * If you set the same attribute or the same class on multiple elements within one block,
-	 * the first element found will always win. Nested content blocks are currently not supported in Matomo.
-	 * This would happen if a Mai Ad block was used inside of a Mai CCA,
-	 * the CCA would take precedence and the Ad links will have the content piece.
-	 *
-	 * @since 0.1.0
-	 *
-	 * @param string $content The content.
-	 * @param string $name    The name.
-	 *
-	 * @return string
-	 */
-	function add_attributes( $content, $name ) {
 		// Bail if not tracking.
 		if ( ! $this->should_track() ) {
 			return $content;
 		}
 
+		// Bail if no name.
+		if ( ! isset( $args['name'] ) || empty( $args['name'] ) ) {
+			return $content;
+		}
+
+		return mai_analytics_add_attributes( $content, trim( $args['name'] ) );
+	}
+
+	/**
+	 * Maybe add attributes to blocks.
+	 *
+	 * @since TBD
+	 *
+	 * @param string $block_content The existing block content.
+	 * @param array  $block         The button block object.
+	 *
+	 * @return string
+	 */
+	function render_block( $block_content, $block ) {
+		// Bail if not tracking.
+		if ( ! $this->should_track() ) {
+			return $block_content;
+		}
+
 		// Bail if no content.
-		if ( ! $content ) {
-			return $content;
+		if ( ! $block_content ) {
+			return $block_content;
 		}
 
-		$dom      = mai_analytics_get_dom_document( $content );
-		$children = $dom->childNodes;
-
-		// Bail if no nodes.
-		if ( ! $children->length ) {
-			return $content;
+		// Bail if not the block(s) we want.
+		if ( 'acf/mai-post-preview' !== $block['blockName'] ) {
+			return $block_content;
 		}
 
-		if ( 1 === $children->length ) {
-			// Get first element and set main attributes.
-			$first = $children->item(0);
-			$first->setAttribute( 'data-track-content', '' );
-			$first->setAttribute( 'data-content-name', esc_attr( $name ) );
-		} else {
-			foreach ( $children as $node ) {
-				// Skip if not an element we can add attributes to.
-				if ( 'DOMElement' !== get_class( $node ) ) {
-					continue;
-				}
+		// Get url from attributes.
+		$url = isset( $block['attrs']['data']['url'] ) && ! empty( $block['attrs']['data']['url'] ) ? $block['attrs']['data']['url'] : '';
 
-				// Set main attributes to all top level child elements.
-				$node->setAttribute( 'data-track-content', '' );
-				$node->setAttribute( 'data-content-name', esc_attr( $name ) );
-			}
+		// Bail if no url.
+		if ( ! $url ) {
+			return $block_content;
 		}
 
-		// Query elements.
-		$xpath   = new DOMXPath( $dom );
-		$actions = $xpath->query( '//a | //button | //input[@type="submit"]' );
+		$url  = wp_parse_url( $url );
+		$url  = $url['host'] . $url['path'];
+		$name = 'Mai Post Preview | ' . $url;
 
-		if ( $actions->length ) {
-			foreach ( $actions as $node ) {
-				$piece = 'input' === $node->tagName ? $node->getAttribute( 'value' ) : $node->textContent;
-				$piece = trim( esc_attr( $piece ) );
-
-				if ( $piece ) {
-					$node->setAttribute( 'data-content-piece', $piece );
-				}
-
-				// Disabled, because target should happen automatically via href in Matomo.
-				// $target = 'a' === $node->tagName ? $node->getAttribute( 'href' ) : '';
-				// if ( $target ) {
-				// 	$node->setAttribute( 'data-content-target', $target );
-				// }
-			}
-		}
-
-		// Save new content.
-		$content = $dom->saveHTML();
-
-		return $content;
+		return mai_analytics_add_attributes( $block_content, $name );
 	}
 
 	/**
