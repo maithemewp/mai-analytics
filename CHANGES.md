@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.3.0 (5/11/23)
+* Added: Mai Analytics Tracker wrapper block.
+
 ## 0.2.4 (5/5/23)
 * Fixed: Fix invalid markup in some scenarios.
 

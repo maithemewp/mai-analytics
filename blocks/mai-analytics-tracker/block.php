@@ -42,7 +42,7 @@ function mai_do_analytics_tracker_block( $attributes, $content, $is_preview, $po
 	// $content  = $is_preview ? $inner : $content;
 	$name     = (string) get_field( 'name' );
 
-	echo mai_analytics_add_attributes( $content, $name );
+	echo mai_analytics_add_attributes( $content, $name, true );
 }
 
 add_action( 'acf/init', 'mai_register_analytics_tracker_field_group' );
@@ -89,13 +89,12 @@ function mai_register_analytics_tracker_field_group() {
  * @return void
  */
 add_action( 'admin_init', function() {
-	$version   = '1.0.0';
-	$file      = '/assets/js/mai-analytics-block.js';
+	$file      = 'blocks/mai-analytics-tracker/block.js';
 	$file_path = MAI_ANALYTICS_PLUGIN_DIR . $file;
 	$file_url  = MAI_ANALYTICS_PLUGIN_URL . $file;
 
 	if ( file_exists( $file_path ) ) {
-		$version .= '.' . date( 'njYHi', filemtime( $file_path ) );
+		$version = MAI_ANALYTICS_VERSION . '.' . date( 'njYHi', filemtime( $file_path ) );
 		wp_register_script( 'mai-analytics-block', $file_url, [], $version, true );
 	}
 });

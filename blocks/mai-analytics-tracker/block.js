@@ -34,6 +34,7 @@ function addMaiAnalyticsTrackerTransform( settings, name ) {
 		to: [
 			{
 				type: 'block',
+				name: 'Unwrap Mai Analytics Tracker block',
 				blocks: [ '*' ],
 				transform: ( attributes, innerBlocks ) => innerBlocks,
 			},

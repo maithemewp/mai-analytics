@@ -3,13 +3,6 @@
 // Exit if accessed directly.
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-add_action( 'genesis_before_loop', function() {
-	$image1 = wp_get_attachment_image( 3937, 'large' );
-	$image2 = wp_get_attachment_image( 3926, 'large' );
-
-	ray( $image1, $image2 );
-});
-
 /**
  * Adds element attributes.
  *
@@ -18,14 +11,15 @@ add_action( 'genesis_before_loop', function() {
  * This would happen if a Mai Ad block was used inside of a Mai CCA,
  * the CCA would take precedence and the Ad links will have the content piece.
  *
- * @since 0.1.0
+ * @since 0.3.0
  *
  * @param string $content The content.
  * @param string $name    The name.
+ * @param bool   $force   Whether to force override existing tracking attributes, if they already exist.
  *
  * @return string
  */
-function mai_analytics_add_attributes( $content, $name = '' ) {
+function mai_analytics_add_attributes( $content, $name, $force = false ) {
 	// Bail if no content.
 	if ( ! $content ) {
 		return $content;
@@ -42,8 +36,14 @@ function mai_analytics_add_attributes( $content, $name = '' ) {
 	if ( 1 === $children->length ) {
 		// Get first element and set main attributes.
 		$first = $children->item(0);
-		$first->setAttribute( 'data-track-content', '' );
-		$first->setAttribute( 'data-content-name', esc_attr( $name ) );
+
+		if ( $force || ! $first->hasAttribute( 'data-track-content' ) ) {
+			$first->setAttribute( 'data-track-content', '' );
+		}
+
+		if ( $force || ! $first->hasAttribute( 'data-content-name' ) ) {
+			$first->setAttribute( 'data-content-name', esc_attr( $name ) );
+		}
 	} else {
 		foreach ( $children as $node ) {
 			// Skip if not an element we can add attributes to.
@@ -52,8 +52,13 @@ function mai_analytics_add_attributes( $content, $name = '' ) {
 			}
 
 			// Set main attributes to all top level child elements.
-			$node->setAttribute( 'data-track-content', '' );
-			$node->setAttribute( 'data-content-name', esc_attr( $name ) );
+			if ( $force || ! $node->hasAttribute( 'data-track-content' ) ) {
+				$node->setAttribute( 'data-track-content', '' );
+			}
+
+			if ( $force || ! $node->hasAttribute( 'data-content-name' ) ) {
+				$node->setAttribute( 'data-content-name', esc_attr( $name ) );
+			}
 		}
 	}
 
@@ -67,7 +72,9 @@ function mai_analytics_add_attributes( $content, $name = '' ) {
 			$piece = trim( esc_attr( $piece ) );
 
 			if ( $piece ) {
-				$node->setAttribute( 'data-content-piece', $piece );
+				if ( ! $node->hasAttribute( 'data-content-piece' ) ) {
+					$node->setAttribute( 'data-content-piece', $piece );
+				}
 			}
 
 			// Disabled, because target should happen automatically via href in Matomo.

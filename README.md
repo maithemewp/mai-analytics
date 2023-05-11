@@ -2,6 +2,9 @@
 Track first-party analytics with Matomo.
 
 ## Getting Started
+Custom Content Areas in Mai Theme v2 are automatically tracked. If you want to track specific blocks on any post/page, you can use the Mai Analytics Tracker wrapper block to add a content name, and inner actionable elements (links, buttons, etc.) will be tracked as well.
+
+## Constants
 The following constants can be overridden in `wp-config.php`:
 
 ```
