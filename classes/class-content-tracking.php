@@ -122,7 +122,7 @@ class Mai_Analytics_Content_Tracking {
 		}
 
 		$url  = wp_parse_url( $url );
-		$url  = $url['host'] . $url['path'];
+		$url  = isset( $url['host'] ) ? $url['host'] : '' . $url['path'];
 		$name = 'Mai Post Preview | ' . $url;
 
 		return mai_analytics_add_attributes( $block_content, $name );
