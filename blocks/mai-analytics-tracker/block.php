@@ -30,7 +30,6 @@ function mai_register_analytics_tracker_block() {
  * @return void
  */
 function mai_do_analytics_tracker_block( $attributes, $content, $is_preview, $post_id, $wp_block, $context ) {
-
 	if ( $is_preview ) {
 		$template = [ [ 'core/paragraph', [], [] ] ];
 		$inner    = sprintf( '<InnerBlocks template="%s" />', esc_attr( wp_json_encode( $template ) ) );
@@ -39,10 +38,7 @@ function mai_do_analytics_tracker_block( $attributes, $content, $is_preview, $po
 		return;
 	}
 
-	// $content  = $is_preview ? $inner : $content;
-	$name     = (string) get_field( 'name' );
-
-	echo mai_analytics_add_attributes( $content, $name, true );
+	echo mai_analytics_add_attributes( $content, (string) get_field( 'name' ) );
 }
 
 add_action( 'acf/init', 'mai_register_analytics_tracker_field_group' );
