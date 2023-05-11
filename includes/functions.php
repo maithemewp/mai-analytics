@@ -19,7 +19,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
  *
  * @return string
  */
-function mai_analytics_add_attributes( $content, $name, $force = false ) {
+function mai_analytics_add_attributes( $content, $name ) {
 	// Bail if no content.
 	if ( ! $content ) {
 		return $content;
@@ -33,17 +33,25 @@ function mai_analytics_add_attributes( $content, $name, $force = false ) {
 		return $content;
 	}
 
+	// Remove trackers from children.
+	$xpath   = new DOMXPath( $dom );
+	$tracked = $xpath->query( '//*[@data-track-content] | //*[@data-tcontent-name]' );
+
+	if ( $tracked->length ) {
+		foreach ( $tracked as $node ) {
+			$node->removeAttribute( 'data-track-content' );
+			$node->removeAttribute( 'data-content-name' );
+			$node->normalize();
+		}
+	}
+
 	if ( 1 === $children->length ) {
 		// Get first element and set main attributes.
 		$first = $children->item(0);
 
-		if ( $force || ! $first->hasAttribute( 'data-track-content' ) ) {
-			$first->setAttribute( 'data-track-content', '' );
-		}
+		$first->setAttribute( 'data-track-content', '' );
+		$first->setAttribute( 'data-content-name', esc_attr( $name ) );
 
-		if ( $force || ! $first->hasAttribute( 'data-content-name' ) ) {
-			$first->setAttribute( 'data-content-name', esc_attr( $name ) );
-		}
 	} else {
 		foreach ( $children as $node ) {
 			// Skip if not an element we can add attributes to.
@@ -52,13 +60,8 @@ function mai_analytics_add_attributes( $content, $name, $force = false ) {
 			}
 
 			// Set main attributes to all top level child elements.
-			if ( $force || ! $node->hasAttribute( 'data-track-content' ) ) {
-				$node->setAttribute( 'data-track-content', '' );
-			}
-
-			if ( $force || ! $node->hasAttribute( 'data-content-name' ) ) {
-				$node->setAttribute( 'data-content-name', esc_attr( $name ) );
-			}
+			$node->setAttribute( 'data-track-content', '' );
+			$node->setAttribute( 'data-content-name', esc_attr( $name ) );
 		}
 	}
 
