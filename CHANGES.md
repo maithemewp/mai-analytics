@@ -2,6 +2,7 @@
 
 ## 0.3.0 (5/11/23)
 * Added: Mai Analytics Tracker wrapper block.
+* Changed: No longer tracks nested content names. The outer most container is used as the tracked content name. Content pieces and triggers remain the same.
 
 ## 0.2.4 (5/5/23)
 * Fixed: Fix invalid markup in some scenarios.
