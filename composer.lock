@@ -4,20 +4,20 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "a2b2f797c6389266735bbc5d12f7dd46",
+    "content-hash": "811f1f9a8ecdf89ea04b7697f211ed42",
     "packages": [
         {
             "name": "matomo/matomo-php-tracker",
-            "version": "3.1.3",
+            "version": "3.2.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/matomo-org/matomo-php-tracker.git",
-                "reference": "23cea261447c5114a31b5e363e96a1e22e665f9b"
+                "reference": "c9e7816d63ddf99bffb1414cfbe45f4c4edf1d4b"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/matomo-org/matomo-php-tracker/zipball/23cea261447c5114a31b5e363e96a1e22e665f9b",
-                "reference": "23cea261447c5114a31b5e363e96a1e22e665f9b",
+                "url": "https://api.github.com/repos/matomo-org/matomo-php-tracker/zipball/c9e7816d63ddf99bffb1414cfbe45f4c4edf1d4b",
+                "reference": "c9e7816d63ddf99bffb1414cfbe45f4c4edf1d4b",
                 "shasum": ""
             },
             "require": {
@@ -60,7 +60,7 @@
                 "issues": "https://github.com/matomo-org/matomo-php-tracker/issues",
                 "source": "https://github.com/matomo-org/matomo-php-tracker"
             },
-            "time": "2023-03-07T15:17:54+00:00"
+            "time": "2023-03-24T15:16:22+00:00"
         },
         {
             "name": "yahnis-elsts/plugin-update-checker",
