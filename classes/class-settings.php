@@ -188,6 +188,14 @@ class Mai_Analytics_Settings {
 			'mai-analytics-section', // page
 			'mai_analytics_settings' // section
 		);
+
+		add_settings_field(
+			'trending_days', // id
+			__( 'Trending Days', 'mai-analytics' ), // title
+			[ $this, 'trending_days_callback' ], // callback
+			'mai-analytics-section', // page
+			'mai_analytics_settings' // section
+		);
 	}
 
 	/**
@@ -280,7 +288,7 @@ class Mai_Analytics_Settings {
 		$value    = $constant ? absint( MAI_ANALYTICS_SITE_ID ) : $this->options['site_id'];
 
 		printf(
-			'<input class="regular-text" type="text" name="mai_analytics[site_id]" id="site_id" value="%s"%s>%s',
+			'<input class="regular-text" type="number" name="mai_analytics[site_id]" id="site_id" value="%s"%s>%s',
 			$value,
 			$constant ? ' disabled' : '',
 			$constant ? ' ' . $this->config_notice() : ''
@@ -319,6 +327,25 @@ class Mai_Analytics_Settings {
 
 		printf(
 			'<input class="regular-text" type="password" name="mai_analytics[token]" id="token" value="%s"%s>%s',
+			$value,
+			$constant ? ' disabled' : '',
+			$constant ? ' ' . $this->config_notice() : ''
+		);
+	}
+
+	/**
+	 * Setting callback.
+	 *
+	 * @since TBD
+	 *
+	 * @return void
+	 */
+	public function trending_days_callback() {
+		$constant = defined( 'MAI_ANALYTICS_TRENDING_DAYS' );
+		$value    = $constant ? absint( MAI_ANALYTICS_TRENDING_DAYS ) : $this->options['trending_days'];
+
+		printf(
+			'<input class="regular-text" type="number" name="mai_analytics[trending_days]" id="trending_days" value="%s"%s>%s',
 			$value,
 			$constant ? ' disabled' : '',
 			$constant ? ' ' . $this->config_notice() : ''

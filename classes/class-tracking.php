@@ -84,6 +84,30 @@ class Mai_Analytics_Tracking {
 			'dimensions' => $this->get_custom_dimensions(),
 		];
 
+		// If singular or a term archive (all we care about now).
+		if ( is_singular() || is_category() || is_tag() || is_tax() ) {
+			// Get page data and current timestamp.
+			$page     = mai_analytics_get_current_page();
+			$current  = current_datetime()->getTimestamp();
+
+			// Get last updated timestamp.
+			if ( is_singular() ) {
+				$updated = get_post_meta( $page['id'], 'mai_trending_updated', true );
+			} else {
+				$updated = get_term_meta( $page['id'], 'mai_trending_updated', true );
+			}
+
+			// If last updated timestampe is more than 30 minutes (converted to seconds) ago.
+			if ( ! $updated || $updated < ( $current - (30 * 60) ) ) {
+				$vars['ajaxUrl'] = admin_url( 'admin-ajax.php' );
+				$vars['nonce']   = wp_create_nonce( 'mai_analytics_trending_nonce' );
+				$vars['type']    = $page['type'];
+				$vars['id']      = $page['id'];
+				$vars['url']     = $page['url'];
+				$vars['current'] = $current;
+			}
+		}
+
 		$version   = MAI_ANALYTICS_VERSION;
 		$handle    = 'mai-analytics';
 		$file      = "assets/js/{$handle}.js"; // TODO: Add min suffix if not script debugging.
@@ -310,56 +334,8 @@ class Mai_Analytics_Tracking {
 	 * @return array
 	 */
 	function set_dimension_9() {
-		$type = '';
-
-		// Single post.
-		if ( is_singular() ) {
-			$object = get_post_type_object( get_post_type() );
-
-			if ( $object ) {
-				$type = $object->labels->singular_name; // Singular name.
-			}
-		}
-		// Post type archive.
-		elseif ( is_home() ) {
-			$object = get_post_type_object( 'post' );
-
-			if ( $object ) {
-				$type = $object->label; // Plural name.
-			}
-		}
-		// Custom post type archive.
-		elseif ( is_post_type_archive() ) {
-			$object = get_post_type_object( get_post_type() );
-
-			if ( $object ) {
-				$type = $object->label; // Plural name.
-			}
-		}
-		// Taxonomy archive.
-		elseif ( is_category() || is_tag() || is_tax() ) {
-			$object = get_queried_object();
-
-			if ( $object  ) {
-				$taxonomy = get_taxonomy( $object->taxonomy );
-
-				if ( $taxonomy ) {
-					$type = $taxonomy->labels->singular_name; // Singular name.
-				}
-			}
-		}
-		// Date archives.
-		elseif ( is_date() || is_year() || is_month() || is_day() || is_time() ) {
-			$type = 'Date';
-		}
-		// Author archives.
-		elseif ( is_author() ) {
-			$type = 'Author';
-		}
-		// Search results.
-		elseif ( is_search() ) {
-			$type = 'Search';
-		}
+		// Uses readable name as the type. 'Post' instead of 'post'.
+		$type = mai_analytics_get_current_page( 'name' );
 
 		if ( ! $type ) {
 			return;

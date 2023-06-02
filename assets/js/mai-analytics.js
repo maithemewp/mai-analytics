@@ -36,4 +36,37 @@
 		g.src   = u + 'matomo.js';
 		s.parentNode.insertBefore( g, s );
 	})();
-} )();
+
+	// If we have a page URL and ID.
+	if ( maiAnalyticsVars.ajaxUrl && maiAnalyticsVars.nonce && maiAnalyticsVars.type && maiAnalyticsVars.id && maiAnalyticsVars.url && maiAnalyticsVars.current ) {
+
+		// Send ajax request.
+		fetch( maiAnalyticsVars.ajaxUrl, {
+			method: "POST",
+			credentials: 'same-origin',
+			headers: {
+				'Content-Type': 'application/x-www-form-urlencoded',
+				'Cache-Control': 'no-cache',
+			},
+			body: new URLSearchParams(
+				{
+					action: 'mai_analytics_trending',
+					nonce: maiAnalyticsVars.nonce,
+					type: maiAnalyticsVars.type,
+					id: maiAnalyticsVars.id,
+					url: maiAnalyticsVars.url,
+					current: maiAnalyticsVars.current,
+				}
+			),
+		})
+		.then(function(response) {
+			return response.json();
+		})
+		.then(function(data) {
+		})
+		.catch(function(error) {
+			console.log( 'Mai Analytics' );
+			console.log( error );
+		});
+	}
+})();

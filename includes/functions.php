@@ -185,6 +185,7 @@ function mai_analytics_get_options() {
 		'site_id'       => 'MAI_ANALYTICS_SITE_ID',
 		'url'           => 'MAI_ANALYTICS_URL',
 		'token'         => 'MAI_ANALYTICS_TOKEN',
+		'trending_days' => 'MAI_ANALYTICS_TRENDING_DAYS',
 	];
 
 	// Override any existing constants.
@@ -221,6 +222,7 @@ function mai_analytics_get_options_defaults() {
 		'site_id'       => defined( 'MAI_ANALYTICS_SITE_ID' ) ? MAI_ANALYTICS_SITE_ID : 0,
 		'url'           => defined( 'MAI_ANALYTICS_URL' ) ? MAI_ANALYTICS_URL : '',
 		'token'         => defined( 'MAI_ANALYTICS_TOKEN' ) ? MAI_ANALYTICS_TOKEN : '',
+		'trending_days' => defined( 'MAI_ANALYTICS_TRENDING_DAYS' ) ? MAI_ANALYTICS_TRENDING_DAYS : 30,
 	];
 
 	return $cache;
@@ -244,6 +246,7 @@ function mai_analytics_sanitize_options( $options ) {
 	$options['site_id']       = absint( $options['site_id'] );
 	$options['url']           = trailingslashit( esc_url( $options['url'] ) );
 	$options['token']         = sanitize_key( $options['token'] );
+	$options['trending_days'] = absint( $options['trending_days'] );
 
 	return $options;
 }
