@@ -418,6 +418,91 @@ function mai_analytics_get_dom_document( $html ) {
 }
 
 /**
+ * Get current page data.
+ *
+ * @since TBD
+ *
+ * @param string $key
+ *
+ * @return array|string
+ */
+function mai_analytics_get_current_page( $key = '' ) {
+	static $data = null;
+
+	if ( ! is_null( $data ) ) {
+		return $key ? $data[ $key ] : $data;
+	}
+
+	$data = [
+		'type' => '',
+		'name' => '',
+		'id'   => '',
+		'url'  => '',
+	];
+
+	// Single post.
+	if ( is_singular() ) {
+		$object = get_post_type_object( get_post_type() );
+
+		if ( $object ) {
+			$data['type'] = 'post';
+			$data['name'] = $object->labels->singular_name; // Singular name.
+			$data['id']   = get_the_ID();
+			$data['url']  = get_permalink();
+		}
+	}
+	// Post type archive.
+	elseif ( is_home() ) {
+		$object = get_post_type_object( 'post' );
+
+		if ( $object ) {
+			$post_id      = absint( get_option( 'page_for_posts' ) );
+			$data['name'] = $object->label; // Plural name.
+			$data['id']   = $post_id;
+			$data['url']  = $post_id ? get_permalink( $post_id ) : get_home_url();
+		}
+	}
+	// Custom post type archive.
+	elseif ( is_post_type_archive() ) {
+		$object = get_post_type_object( get_post_type() );
+
+		if ( $object ) {
+			$data['name'] = $object->label; // Plural name.
+			$data['url']  = get_post_type_archive_link( $object->name );
+		}
+	}
+	// Taxonomy archive.
+	elseif ( is_category() || is_tag() || is_tax() ) {
+		$object = get_queried_object();
+
+		if ( $object  ) {
+			$taxonomy = get_taxonomy( $object->taxonomy );
+
+			if ( $taxonomy ) {
+				$data['type'] = 'term';
+				$data['name'] = $taxonomy->labels->singular_name; // Singular name.
+				$data['id']   = $object->term_id;
+				$data['url']  = get_term_link( $object );
+			}
+		}
+	}
+	// Date archives.
+	elseif ( is_date() || is_year() || is_month() || is_day() || is_time() ) {
+		$data['name'] = 'Date';
+	}
+	// Author archives.
+	elseif ( is_author() ) {
+		$data['name'] = 'Author';
+	}
+	// Search results.
+	elseif ( is_search() ) {
+		$data['name'] = 'Search';
+	}
+
+	return $key ? $data[ $key ] : $data;
+}
+
+/**
  * Gets membership plan IDs.
  * Cached incase we need to call this again later on same page load.
  *
