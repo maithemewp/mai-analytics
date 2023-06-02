@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.0 (TBD)
+* Added: Trending post views are saved to mai_trending post/term meta keys for use in custom queries or with Mai Post Grid (and soon to be Mai Term Grid) blocks.
+* Changed: Updated PHP tracker version, though mostly unused still.
+
 ## 0.3.0 (5/11/23)
 * Added: Mai Analytics Tracker wrapper block.
 * Changed: No longer tracks nested content names. The outer most container is used as the tracked content name. Content pieces and triggers remain the same.
