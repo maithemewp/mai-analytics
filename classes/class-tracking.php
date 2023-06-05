@@ -88,7 +88,7 @@ class Mai_Analytics_Tracking {
 		// If singular or a term archive (all we care about now).
 		if ( is_singular() || is_category() || is_tag() || is_tax() ) {
 			$trending_days = (int) mai_analytics_get_option( 'trending_days' );
-			$views_days  = (int) mai_analytics_get_option( 'views_days' );
+			$views_days    = (int) mai_analytics_get_option( 'views_days' );
 			$interval      = (int) mai_analytics_get_option( 'views_interval' );
 
 			// If we're fetching trending or popular counts.
@@ -105,7 +105,7 @@ class Mai_Analytics_Tracking {
 				}
 
 				// If last updated timestampe is more than N minutes (converted to seconds) ago.
-				if ( ! $updated || $updated < ( $current - ($interval * 60) ) ) {
+				if ( ! $updated || $updated < ( $current - ( $interval * 60 ) ) ) {
 					$vars['ajaxUrl'] = admin_url( 'admin-ajax.php' );
 					$vars['nonce']   = wp_create_nonce( 'mai_analytics_views_nonce' );
 					$vars['type']    = $page['type'];

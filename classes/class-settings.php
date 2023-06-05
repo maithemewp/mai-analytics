@@ -410,8 +410,8 @@ class Mai_Analytics_Settings {
 	 * @return void
 	 */
 	public function views_interval_callback() {
-		$constant = defined( 'MAI_ANALYTICS_TRENDING_INTERVAL' );
-		$value    = $constant ? absint( MAI_ANALYTICS_TRENDING_INTERVAL ) : $this->options['views_interval'];
+		$constant = defined( 'MAI_ANALYTICS_VIEWS_INTERVAL' );
+		$value    = $constant ? absint( MAI_ANALYTICS_VIEWS_INTERVAL ) : $this->options['views_interval'];
 
 		printf(
 			'<input class="small-text" type="number" name="mai_analytics[views_interval]" id="views_interval" value="%s"%s> %s',
