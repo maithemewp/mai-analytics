@@ -209,7 +209,7 @@ final class Mai_Analytics_Plugin {
 	function classes() {
 		$settings  = new Mai_Analytics_Settings;
 		$track     = new Mai_Analytics_Tracking;
-		$trending  = new Mai_Analytics_Trending;
+		$visits    = new Mai_Analytics_Views;
 		$content   = new Mai_Analytics_Content_Tracking;
 	}
 }

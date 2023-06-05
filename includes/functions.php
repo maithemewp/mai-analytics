@@ -179,13 +179,15 @@ function mai_analytics_get_options() {
 
 	// Setup keys and constants.
 	$constants = [
-		'enabled'       => 'MAI_ANALYTICS',
-		'enabled_admin' => 'MAI_ANALYTICS_ADMIN',
-		'debug'         => 'MAI_ANALYTICS_DEBUG',
-		'site_id'       => 'MAI_ANALYTICS_SITE_ID',
-		'url'           => 'MAI_ANALYTICS_URL',
-		'token'         => 'MAI_ANALYTICS_TOKEN',
-		'trending_days' => 'MAI_ANALYTICS_TRENDING_DAYS',
+		'enabled'           => 'MAI_ANALYTICS',
+		'enabled_admin'     => 'MAI_ANALYTICS_ADMIN',
+		'debug'             => 'MAI_ANALYTICS_DEBUG',
+		'site_id'           => 'MAI_ANALYTICS_SITE_ID',
+		'url'               => 'MAI_ANALYTICS_URL',
+		'token'             => 'MAI_ANALYTICS_TOKEN',
+		'trending_days'     => 'MAI_ANALYTICS_TRENDING_DAYS',
+		'views_days'      => 'MAI_ANALYTICS_VIEWS_DAYS',
+		'views_interval' => 'MAI_ANALYTICS_TRENDING_INTERVAL',
 	];
 
 	// Override any existing constants.
@@ -216,13 +218,15 @@ function mai_analytics_get_options_defaults() {
 	}
 
 	$cache = [
-		'enabled'       => defined( 'MAI_ANALYTICS' ) ? MAI_ANALYTICS : 0,
-		'enabled_admin' => defined( 'MAI_ANALYTICS_ADMIN' ) ? MAI_ANALYTICS_ADMIN : 0,
-		'debug'         => defined( 'MAI_ANALYTICS_DEBUG' ) ? MAI_ANALYTICS_DEBUG : 0,
-		'site_id'       => defined( 'MAI_ANALYTICS_SITE_ID' ) ? MAI_ANALYTICS_SITE_ID : 0,
-		'url'           => defined( 'MAI_ANALYTICS_URL' ) ? MAI_ANALYTICS_URL : '',
-		'token'         => defined( 'MAI_ANALYTICS_TOKEN' ) ? MAI_ANALYTICS_TOKEN : '',
-		'trending_days' => defined( 'MAI_ANALYTICS_TRENDING_DAYS' ) ? MAI_ANALYTICS_TRENDING_DAYS : 30,
+		'enabled'           => defined( 'MAI_ANALYTICS' ) ? MAI_ANALYTICS : 0,
+		'enabled_admin'     => defined( 'MAI_ANALYTICS_ADMIN' ) ? MAI_ANALYTICS_ADMIN : 0,
+		'debug'             => defined( 'MAI_ANALYTICS_DEBUG' ) ? MAI_ANALYTICS_DEBUG : 0,
+		'site_id'           => defined( 'MAI_ANALYTICS_SITE_ID' ) ? MAI_ANALYTICS_SITE_ID : 0,
+		'url'               => defined( 'MAI_ANALYTICS_URL' ) ? MAI_ANALYTICS_URL : '',
+		'token'             => defined( 'MAI_ANALYTICS_TOKEN' ) ? MAI_ANALYTICS_TOKEN : '',
+		'trending_days'     => defined( 'MAI_ANALYTICS_TRENDING_DAYS' ) ? MAI_ANALYTICS_TRENDING_DAYS : 30,
+		'views_days'      => defined( 'MAI_ANALYTICS_VIEWS_DAYS' ) ? MAI_ANALYTICS_VIEWS_DAYS : 365,
+		'views_interval' => defined( 'MAI_ANALYTICS_TRENDING_INTERVAL' ) ? MAI_ANALYTICS_TRENDING_INTERVAL : 60,
 	];
 
 	return $cache;

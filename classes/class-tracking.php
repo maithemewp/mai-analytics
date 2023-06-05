@@ -49,6 +49,7 @@ class Mai_Analytics_Tracking {
 	 */
 	function hooks() {
 		add_action( 'wp_enqueue_scripts', [ $this, 'enqueue' ] );
+		add_filter( 'script_loader_tag',  [ $this, 'add_async' ], 10, 3 );
 	}
 
 	/**
@@ -86,31 +87,39 @@ class Mai_Analytics_Tracking {
 
 		// If singular or a term archive (all we care about now).
 		if ( is_singular() || is_category() || is_tag() || is_tax() ) {
-			// Get page data and current timestamp.
-			$page     = mai_analytics_get_current_page();
-			$current  = current_datetime()->getTimestamp();
+			$trending_days = (int) mai_analytics_get_option( 'trending_days' );
+			$views_days  = (int) mai_analytics_get_option( 'views_days' );
+			$interval      = (int) mai_analytics_get_option( 'views_interval' );
 
-			// Get last updated timestamp.
-			if ( is_singular() ) {
-				$updated = get_post_meta( $page['id'], 'mai_trending_updated', true );
-			} else {
-				$updated = get_term_meta( $page['id'], 'mai_trending_updated', true );
-			}
+			// If we're fetching trending or popular counts.
+			if ( ( $trending_days || $views_days ) && $interval ) {
+				// Get page data and current timestamp.
+				$page     = mai_analytics_get_current_page();
+				$current  = current_datetime()->getTimestamp();
 
-			// If last updated timestampe is more than 30 minutes (converted to seconds) ago.
-			if ( ! $updated || $updated < ( $current - (30 * 60) ) ) {
-				$vars['ajaxUrl'] = admin_url( 'admin-ajax.php' );
-				$vars['nonce']   = wp_create_nonce( 'mai_analytics_trending_nonce' );
-				$vars['type']    = $page['type'];
-				$vars['id']      = $page['id'];
-				$vars['url']     = $page['url'];
-				$vars['current'] = $current;
+				// Get last updated timestamp.
+				if ( is_singular() ) {
+					$updated = get_post_meta( $page['id'], 'mai_views_updated', true );
+				} else {
+					$updated = get_term_meta( $page['id'], 'mai_views_updated', true );
+				}
+
+				// If last updated timestampe is more than N minutes (converted to seconds) ago.
+				if ( ! $updated || $updated < ( $current - ($interval * 60) ) ) {
+					$vars['ajaxUrl'] = admin_url( 'admin-ajax.php' );
+					$vars['nonce']   = wp_create_nonce( 'mai_analytics_views_nonce' );
+					$vars['type']    = $page['type'];
+					$vars['id']      = $page['id'];
+					$vars['url']     = $page['url'];
+					$vars['current'] = $current;
+				}
 			}
 		}
 
 		$version   = MAI_ANALYTICS_VERSION;
 		$handle    = 'mai-analytics';
-		$file      = "assets/js/{$handle}.js"; // TODO: Add min suffix if not script debugging.
+		$suffix    = defined( 'SCRIPT_DEBUG' ) && SCRIPT_DEBUG ? '' : '.min';
+		$file      = "assets/js/{$handle}{$suffix}.js"; // TODO: Add min suffix if not script debugging.
 		$file_path = MAI_ANALYTICS_PLUGIN_DIR . $file;
 		$file_url  = MAI_ANALYTICS_PLUGIN_URL . $file;
 
@@ -461,5 +470,36 @@ class Mai_Analytics_Tracking {
 
 		// Return the first term.
 		return $cache[ $taxonomy ][ $post_id ];
+	}
+
+	/**
+	 * Add async tag to our script.
+	 *
+	 * @since TBD
+	 *
+	 * @param string $tag    The `<script>` tag for the enqueued script.
+	 * @param string $handle The script's registered handle.
+	 * @param string $src    The script's source URL.
+	 *
+	 * @return void
+	 */
+	function add_async( $tag, $handle ) {
+		if ( 'mai-analytics' !== $handle ) {
+			return $tag;
+		}
+
+		if ( ! class_exists( 'WP_HTML_Tag_Processor' ) ) {
+			return $tag;
+		}
+
+		$tags = new WP_HTML_Tag_Processor( $tag );
+
+		while ( $tags->next_tag( 'script' ) ) {
+			$tags->set_attribute( 'async', '' );
+		}
+
+		$tag = $tags->get_updated_html();
+
+		return $tag;
 	}
 }

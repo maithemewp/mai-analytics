@@ -3,7 +3,7 @@
 // Exit if accessed directly.
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-class Mai_Analytics_Trending {
+class Mai_Analytics_Views {
 	/**
 	 * Construct the class.
 	 *
@@ -22,6 +22,7 @@ class Mai_Analytics_Trending {
 	 */
 	function hooks() {
 		add_filter( 'acf/load_field/key=mai_grid_block_query_by',                 [ $this, 'add_trending_choice' ] );
+		add_filter( 'acf/load_field/key=mai_grid_block_posts_orderby',            [ $this, 'add_views_choice' ] );
 		add_filter( 'acf/load_field/key=mai_grid_block_post_taxonomies',          [ $this, 'add_show_conditional_logic' ] );
 		add_filter( 'acf/load_field/key=mai_grid_block_post_taxonomies_relation', [ $this, 'add_show_conditional_logic' ] );
 		add_filter( 'acf/load_field/key=mai_grid_block_posts_orderby',            [ $this, 'add_hide_conditional_logic' ] );
@@ -31,8 +32,8 @@ class Mai_Analytics_Trending {
 		add_filter( 'mai_post_grid_query_args', [ $this, 'edit_query' ], 30, 2 );
 
 		// Update.
-		add_action( 'wp_ajax_mai_analytics_trending',        [ $this, 'update_trending' ] );
-		add_action( 'wp_ajax_nopriv_mai_analytics_trending', [ $this, 'update_trending' ] );
+		add_action( 'wp_ajax_mai_analytics_views',        [ $this, 'update_trending' ] );
+		add_action( 'wp_ajax_nopriv_mai_analytics_views', [ $this, 'update_trending' ] );
 	}
 
 
@@ -47,6 +48,21 @@ class Mai_Analytics_Trending {
 	 */
 	function add_trending_choice( $field ) {
 		$field['choices'][ 'trending' ] = __( 'Trending', 'mai-analytics' ) . ' (Mai Analytics)';
+
+		return $field;
+	}
+
+	/**
+	 * Adds Views as an "Order By" choice.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param array $field The existing field array.
+	 *
+	 * @return array
+	 */
+	function add_views_choice( $field ) {
+		$field['choices'] = array_merge( [ 'views' => __( 'Views', 'mai-analytics' ) . ' (Mai Analytics)' ], $field['choices'] );
 
 		return $field;
 	}
@@ -113,46 +129,71 @@ class Mai_Analytics_Trending {
 			$query_args['order']    = 'DESC';
 		}
 
+		if ( isset( $args['orderby'] ) && $args['orderby'] && 'views' === $args['orderby'] ) {
+			$query_args['meta_key'] = maitp_get_key();
+			$query_args['orderby']  = 'meta_value_num';
+		}
+
 		return $query_args;
 	}
 
 	/**
-	 * Update post/term trending view counts via ajax.
+	 * Update post/term trending and popular view counts via ajax.
 	 *
 	 * @since TBD
 	 *
 	 * @return void
 	 */
 	function update_trending() {
-		if ( false === check_ajax_referer( 'mai_analytics_trending_nonce', 'nonce' ) ) {
+		// Bail if failed nonce check.
+		if ( false === check_ajax_referer( 'mai_analytics_views_nonce', 'nonce' ) ) {
 			wp_send_json_error();
 			exit();
 		}
 
-		$site_id  = mai_analytics_get_option( 'site_id' );
-		$site_url = mai_analytics_get_option( 'url' );
-		$token    = mai_analytics_get_option( 'token' );
-		$days     = mai_analytics_get_option( 'trending_days' );
+		// Get options.
+		$site_id       = mai_analytics_get_option( 'site_id' );
+		$site_url      = mai_analytics_get_option( 'url' );
+		$token         = mai_analytics_get_option( 'token' );
+		$views_days    = mai_analytics_get_option( 'views_days' );
+		$trending_days = mai_analytics_get_option( 'trending_days' );
+		$interval      = mai_analytics_get_option( 'views_interval' );
 
-		if ( ! ( $site_id && $site_url && $token && $days ) ) {
+		// Bail if no API data.
+		if ( ! ( $site_id && $site_url && $token ) ) {
 			wp_send_json_error();
 			exit();
 		}
 
+		// Bail if nothing to fetch.
+		if ( ! ( ( $trending_days || $views_days ) && $interval ) ) {
+			wp_send_json_error();
+			exit();
+		}
+
+		// Get post data.
 		$type     = isset( $_POST['type'] ) ? sanitize_key( $_POST['type'] ) : '';
 		$id       = isset( $_POST['id'] ) ? absint( $_POST['id'] ) : '';
 		$url      = isset( $_POST['url'] ) ? esc_url( $_POST['url'] ) : '';
 		$current  = isset( $_POST['current'] ) ? absint( $_POST['current'] ) : '';
 
+		// Bail if we don't have the post data we need.
 		if ( ! ( $type && $id && $url && $current ) ) {
 			wp_send_json_error();
 			exit();
 		}
 
-		// Build the API URL.
-		$api_url = trailingslashit( $site_url ) . 'index.php';
-		$api_url = add_query_arg(
-			[
+		// Start API data.
+		$return   = [];
+		$api_url  = trailingslashit( $site_url ) . 'index.php';
+		$fetch    = [
+			'views'    => $views_days,
+			'trending' => $trending_days,
+		];
+
+		// Try each API hit.
+		foreach ( $fetch as $key => $days ) {
+			$api_args = [
 				'module'     => 'API',
 				'method'     => 'Actions.getPageUrl',
 				'idSite'     => $site_id,
@@ -162,50 +203,66 @@ class Mai_Analytics_Trending {
 				'date'       => 'last' . $days,
 				'format'     => 'json',
 				// 'columns'    => 'nb_visits', // Not working.
-			],
-			$api_url
-		);
+			];
 
-		// Send a GET request to the Matomo API.
-		$response = wp_remote_get( $api_url );
+			// Allow filtering of args.
+			$api_args = apply_filters( 'mai_analytics_views_api_args', $api_args, $key );
 
-		// Check for a successful request.
-		if ( is_wp_error( $response ) ) {
-			wp_send_json_error();
-			exit();
+			// Get API url.
+			$api_url = add_query_arg( $api_args, $api_url );
+
+			// Send a GET request to the Matomo API.
+			$response = wp_remote_get( $api_url );
+
+			// Check for a successful request.
+			if ( is_wp_error( $response ) ) {
+				wp_send_json_error();
+				exit();
+			}
+
+			// Bail if not a successful response.
+			if ( 200 !== wp_remote_retrieve_response_code( $response ) ) {
+				wp_send_json_error();
+				exit();
+			}
+
+			// Get the data.
+			$body   = wp_remote_retrieve_body( $response );
+			$data   = json_decode( $body, true );
+			$data   = reset( $data ); // Get first. It was returning an array of 1 result.
+			$visits = isset( $data['nb_visits'] ) ? absint( $data['nb_visits'] ) : null;
+
+			// Bail if visits are not returned.
+			if ( is_null( $visits ) ) {
+				wp_send_json_error();
+				exit();
+			}
+
+			// Update meta. `mai_trending` or `mai_views`.
+			switch ( $type ) {
+				case 'post':
+					update_post_meta( $id, "mai_{$key}", $visits );
+				break;
+				case 'term':
+					update_term_meta( $id, "mai_{$key}", $visits );
+				break;
+			}
+
+			$return[ $key ] = $visits;
 		}
 
-		// Bail if not a successful response.
-		if ( 200 !== wp_remote_retrieve_response_code( $response ) ) {
-			wp_send_json_error();
-			exit();
-		}
-
-		// Get the data.
-		$body   = wp_remote_retrieve_body( $response );
-		$data   = json_decode( $body, true );
-		$data   = reset( $data ); // Get first. It was returning an array of 1 result.
-		$visits = isset( $data['nb_visits'] ) ? absint( $data['nb_visits'] ) : null;
-
-		// Bail if visits are not returned.
-		if ( is_null( $visits ) ) {
-			wp_send_json_error();
-			exit();
-		}
-
-		// Update meta.
+		// Update updated time.
 		switch ( $type ) {
 			case 'post':
-				update_post_meta( $id, 'mai_trending', $visits );
-				update_post_meta( $id, 'mai_trending_updated', $current );
+				update_post_meta( $id, 'mai_views_updated', $current );
 			break;
 			case 'term':
-				update_term_meta( $id, 'mai_trending', $visits );
-				update_term_meta( $id, 'mai_trending_updated', $current );
+				update_term_meta( $id, 'mai_views_updated', $current );
 			break;
 		}
 
-		wp_send_json_success( [ 'views' => $visits ] );
+		// Send it home.
+		wp_send_json_success( $return );
 		exit();
 	}
 }

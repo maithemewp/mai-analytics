@@ -4,7 +4,7 @@
  *
  * @since 0.1.0
  */
-( function() {
+(function() {
 	var _paq = window._paq = window._paq || [];
 
 	// Sets user ID as user email.
@@ -39,7 +39,6 @@
 
 	// If we have a page URL and ID.
 	if ( maiAnalyticsVars.ajaxUrl && maiAnalyticsVars.nonce && maiAnalyticsVars.type && maiAnalyticsVars.id && maiAnalyticsVars.url && maiAnalyticsVars.current ) {
-
 		// Send ajax request.
 		fetch( maiAnalyticsVars.ajaxUrl, {
 			method: "POST",
@@ -50,7 +49,7 @@
 			},
 			body: new URLSearchParams(
 				{
-					action: 'mai_analytics_trending',
+					action: 'mai_analytics_views',
 					nonce: maiAnalyticsVars.nonce,
 					type: maiAnalyticsVars.type,
 					id: maiAnalyticsVars.id,
@@ -59,14 +58,18 @@
 				}
 			),
 		})
-		.then(function(response) {
+		.then(function( response ) {
+			if ( ! response.ok ) {
+				throw new Error( response.statusText );
+			}
+
 			return response.json();
 		})
-		.then(function(data) {
+		.then(function( data ) {
 		})
-		.catch(function(error) {
+		.catch(function( error ) {
 			console.log( 'Mai Analytics' );
-			console.log( error );
+			console.log( error.name, error.message );
 		});
 	}
 })();

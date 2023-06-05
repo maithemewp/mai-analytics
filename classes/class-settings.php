@@ -52,7 +52,7 @@ class Mai_Analytics_Settings {
 
 		echo '<div class="wrap">';
 			printf( '<h2>%s</h2>', __( 'Mai Analytics', 'mai-analytics' ) );
-			printf( '<p>%s</p>', __( 'Connect your WordPress website to Matomo Analytics.', 'mai-analytics' ) );
+			printf( '<p class="description">%s</p>', __( 'Connect your WordPress website to Matomo Analytics.', 'mai-analytics' ) );
 
 			$this->check_connection();
 
@@ -190,9 +190,26 @@ class Mai_Analytics_Settings {
 		);
 
 		add_settings_field(
+			'views_days', // id
+			__( 'Total Views Days', 'mai-analytics' ), // title
+			[ $this, 'views_days_callback' ], // callback
+			'mai-analytics-section', // page
+			'mai_analytics_settings' // section
+		);
+
+		add_settings_field(
 			'trending_days', // id
 			__( 'Trending Days', 'mai-analytics' ), // title
 			[ $this, 'trending_days_callback' ], // callback
+			'mai-analytics-section', // page
+			'mai_analytics_settings' // section
+		);
+
+
+		add_settings_field(
+			'views_interval', // id
+			__( 'Trending/Popular Interval', 'mai-analytics' ), // title
+			[ $this, 'views_interval_callback' ], // callback
 			'mai-analytics-section', // page
 			'mai_analytics_settings' // section
 		);
@@ -340,15 +357,73 @@ class Mai_Analytics_Settings {
 	 *
 	 * @return void
 	 */
+	public function views_days_callback() {
+		$constant = defined( 'MAI_ANALYTICS_VIEWS_DAYS' );
+		$value    = $constant ? absint( MAI_ANALYTICS_VIEWS_DAYS ) : $this->options['views_days'];
+
+		printf(
+			'<input class="small-text" type="number" name="mai_analytics[views_days]" id="views_days" value="%s"%s> %s',
+			$value,
+			$constant ? ' disabled' : '',
+			__( 'days', 'mai-analytics' ),
+			$constant ? ' ' . $this->config_notice() : ''
+		);
+
+		printf( '<p class="description">%s %s %s</p>',
+			__( 'Retrieve total post views going back this many days.', 'mai-analytics' ),
+			__( 'Use 0 to disable fetching total views.', 'mai-analytics' ),
+			__( 'Values are stored in the <code>mai_views</code> meta key.', 'mai-analytics' )
+		);
+	}
+
+	/**
+	 * Setting callback.
+	 *
+	 * @since TBD
+	 *
+	 * @return void
+	 */
 	public function trending_days_callback() {
 		$constant = defined( 'MAI_ANALYTICS_TRENDING_DAYS' );
 		$value    = $constant ? absint( MAI_ANALYTICS_TRENDING_DAYS ) : $this->options['trending_days'];
 
 		printf(
-			'<input class="regular-text" type="number" name="mai_analytics[trending_days]" id="trending_days" value="%s"%s>%s',
+			'<input class="small-text" type="number" name="mai_analytics[trending_days]" id="trending_days" value="%s"%s> %s%s',
 			$value,
 			$constant ? ' disabled' : '',
+			__( 'days', 'mai-analytics' ),
 			$constant ? ' ' . $this->config_notice() : ''
+		);
+
+		printf( '<p class="description">%s %s %s</p>',
+			__( 'Retrieve trending post views going back this many days.', 'mai-analytics' ),
+			__( 'Use 0 to disable fetching trending post views.', 'mai-analytics' ),
+			__( 'Values are stored in the <code>mai_trending</code> meta key.', 'mai-analytics' )
+		);
+	}
+
+	/**
+	 * Setting callback.
+	 *
+	 * @since TBD
+	 *
+	 * @return void
+	 */
+	public function views_interval_callback() {
+		$constant = defined( 'MAI_ANALYTICS_TRENDING_INTERVAL' );
+		$value    = $constant ? absint( MAI_ANALYTICS_TRENDING_INTERVAL ) : $this->options['views_interval'];
+
+		printf(
+			'<input class="small-text" type="number" name="mai_analytics[views_interval]" id="views_interval" value="%s"%s> %s',
+			$value,
+			$constant ? ' disabled' : '',
+			__( 'minutes', 'mai-analytics' ),
+			$constant ? ' ' . $this->config_notice() : ''
+		);
+
+		printf( '<p class="description">%s %s</p>',
+			__( 'Wait this long between fetching the view counts for a given post.', 'mai-analytics' ),
+			__( 'Views are only fetched when a post is visited on the front end of the site.', 'mai-analytics' )
 		);
 	}
 
