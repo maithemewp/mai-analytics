@@ -130,7 +130,7 @@ class Mai_Analytics_Views {
 		}
 
 		if ( isset( $args['orderby'] ) && $args['orderby'] && 'views' === $args['orderby'] ) {
-			$query_args['meta_key'] = maitp_get_key();
+			$query_args['meta_key'] = 'mai_views';
 			$query_args['orderby']  = 'meta_value_num';
 		}
 
