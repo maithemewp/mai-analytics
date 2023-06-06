@@ -32,8 +32,15 @@ class Mai_Analytics_Views {
 		add_filter( 'acf/load_field/key=mai_grid_block_posts_orderby',            [ $this, 'add_hide_conditional_logic' ] );
 		add_filter( 'acf/load_field/key=mai_grid_block_posts_order',              [ $this, 'add_hide_conditional_logic' ] );
 
+		// Mai Tax Grid filters.
+		add_filter( 'acf/load_field/key=mai_grid_block_tax_query_by',             [ $this, 'add_trending_choice' ] );
+		add_filter( 'acf/load_field/key=mai_grid_block_tax_orderby',              [ $this, 'add_views_choice' ] );
+		add_filter( 'acf/load_field/key=mai_grid_block_tax_orderby',              [ $this, 'add_hide_conditional_logic' ] );
+		add_filter( 'acf/load_field/key=mai_grid_block_tax_order',                [ $this, 'add_hide_conditional_logic' ] );
+
 		// Mai Trending Post is priorty 20. This takes over for any legacy sites still running that plugin.
 		add_filter( 'mai_post_grid_query_args', [ $this, 'edit_query' ], 30, 2 );
+		add_filter( 'mai_term_grid_query_args', [ $this, 'edit_query' ], 30, 2 );
 
 		// Update.
 		add_action( 'wp_ajax_mai_analytics_views',        [ $this, 'update_trending' ] );
@@ -98,7 +105,7 @@ class Mai_Analytics_Views {
 		foreach ( $field['conditional_logic'] as $index => $values ) {
 			$condition = $values;
 
-			if ( isset( $condition['field'] ) && 'mai_grid_block_query_by' == $condition['field'] ) {
+			if ( isset( $condition['field'] ) && 'mai_grid_block_query_by' === $condition['field'] ) {
 				$condition['value']    = 'trending';
 				$condition['operator'] = '==';
 			}
@@ -112,7 +119,7 @@ class Mai_Analytics_Views {
 	}
 
 	/**
-	 * Adds conditional logic to hide if query by is trending.
+	 * Adds conditional logic to hide if query by is trending in Mai Post Grid.
 	 *
 	 * @since 0.4.0
 	 *
@@ -121,8 +128,10 @@ class Mai_Analytics_Views {
 	 * @return array
 	 */
 	function add_hide_conditional_logic( $field ) {
+		$key = false !== strpos( $field['key'], '_tax_' ) ? 'mai_grid_block_tax_query_by' : 'mai_grid_block_query_by';
+
 		$field['conditional_logic'][] = [
-			'field'    => 'mai_grid_block_query_by',
+			'field'    => $key,
 			'operator' => '!=',
 			'value'    => 'trending',
 		];
