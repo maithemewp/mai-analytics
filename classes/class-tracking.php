@@ -475,7 +475,7 @@ class Mai_Analytics_Tracking {
 	/**
 	 * Add async tag to our script.
 	 *
-	 * @since TBD
+	 * @since 0.4.0
 	 *
 	 * @param string $tag    The `<script>` tag for the enqueued script.
 	 * @param string $handle The script's registered handle.

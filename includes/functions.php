@@ -339,7 +339,7 @@ function mai_analytics_get_processed_content( $content ) {
 /**
  * Gets views for display.
  *
- * @since TBD
+ * @since 0.4.0
  *
  * @param array $atts    The shortcode atts.
  * @param int   $post_id The post ID to get views from.
@@ -416,7 +416,7 @@ function mai_analytics_get_views( $atts = [], $post_id = '' ) {
 /**
  * Retrieve view count for a post.
  *
- * @since TBD
+ * @since 0.4.0
  *
  * @param int|string $post_id The post ID.
  * @param string     $type    Empty for all views, 'trending' to show trending count.
@@ -437,7 +437,7 @@ function mai_analytics_get_view_count( $post_id = '', $type = '' ) {
 /**
  * Gets a shortened number value for number.
  *
- * @since TBD
+ * @since 0.4.0
  *
  * @param int $number The number.
  *
@@ -557,7 +557,7 @@ function mai_analytics_get_dom_document( $html ) {
 /**
  * Get current page data.
  *
- * @since TBD
+ * @since 0.4.0
  *
  * @param string $key
  *

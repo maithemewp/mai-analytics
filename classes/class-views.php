@@ -16,7 +16,7 @@ class Mai_Analytics_Views {
 	/**
 	 * Runs hooks.
 	 *
-	 * @since TBD
+	 * @since 0.4.0
 	 *
 	 * @return void
 	 */
@@ -55,7 +55,7 @@ class Mai_Analytics_Views {
 	/**
 	 * Adds Trending as an "Get Entries By" choice.
 	 *
-	 * @since TBD
+	 * @since 0.4.0
 	 *
 	 * @param array $field The existing field array.
 	 *
@@ -86,7 +86,7 @@ class Mai_Analytics_Views {
 	 * Adds conditional logic to show if query by is trending.
 	 * This duplicates existing conditions and changes query_by from 'tax_meta' to 'trending'.
 	 *
-	 * @since TBD
+	 * @since 0.4.0
 	 *
 	 * @param array $field The existing field array.
 	 *
@@ -114,7 +114,7 @@ class Mai_Analytics_Views {
 	/**
 	 * Adds conditional logic to hide if query by is trending.
 	 *
-	 * @since TBD
+	 * @since 0.4.0
 	 *
 	 * @param array $field The existing field array.
 	 *
@@ -133,7 +133,7 @@ class Mai_Analytics_Views {
 	/**
 	 * Modify Mai Post Grid query args.
 	 *
-	 * @since TBD
+	 * @since 0.4.0
 	 *
 	 * @return array
 	 */
@@ -155,7 +155,7 @@ class Mai_Analytics_Views {
 	/**
 	 * Update post/term trending and popular view counts via ajax.
 	 *
-	 * @since TBD
+	 * @since 0.4.0
 	 *
 	 * @return void
 	 */

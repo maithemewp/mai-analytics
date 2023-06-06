@@ -353,7 +353,7 @@ class Mai_Analytics_Settings {
 	/**
 	 * Setting callback.
 	 *
-	 * @since TBD
+	 * @since 0.4.0
 	 *
 	 * @return void
 	 */
@@ -379,7 +379,7 @@ class Mai_Analytics_Settings {
 	/**
 	 * Setting callback.
 	 *
-	 * @since TBD
+	 * @since 0.4.0
 	 *
 	 * @return void
 	 */
@@ -405,7 +405,7 @@ class Mai_Analytics_Settings {
 	/**
 	 * Setting callback.
 	 *
-	 * @since TBD
+	 * @since 0.4.0
 	 *
 	 * @return void
 	 */

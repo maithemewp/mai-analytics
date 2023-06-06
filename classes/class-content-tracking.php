@@ -90,7 +90,7 @@ class Mai_Analytics_Content_Tracking {
 	/**
 	 * Maybe add attributes to blocks.
 	 *
-	 * @since TBD
+	 * @since 0.4.0
 	 *
 	 * @param string $block_content The existing block content.
 	 * @param array  $block         The button block object.
