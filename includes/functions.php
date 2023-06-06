@@ -341,15 +341,19 @@ function mai_analytics_get_processed_content( $content ) {
  *
  * @since 0.4.0
  *
- * @param array $atts    The shortcode atts.
- * @param int   $post_id The post ID to get views from.
+ * @param array $atts The shortcode atts.
+ * @param int   $id   The post or term ID to get views from.
  *
  * @return string
  */
-function mai_analytics_get_views( $atts = [], $post_id = '' ) {
+function mai_analytics_get_views( $atts = [] ) {
+	global $mai_term;
+
 	// Atts.
 	$atts = shortcode_atts(
 		[
+			'object'             => ! is_null( $mai_term ) ? 'term' : 'post',  // Either 'post'/'' or 'term'.
+			'id'                 => '',      // The post/term ID.
 			'type'               => '',      // Empty for all, and 'trending' to view trending views.
 			'min'                => 20,      // Minimum number of views before displaying.
 			'format'             => 'short', // Use short format (2k+) or show full number (2,143). Currently accepts 'short', '', or a falsey value.
@@ -368,6 +372,8 @@ function mai_analytics_get_views( $atts = [], $post_id = '' ) {
 
 	// Sanitize.
 	$atts = [
+		'object'             => sanitize_key( $atts['object'] ),
+		'id'                 => absint( $atts['id'] ),
 		'type'               => sanitize_key( $atts['type'] ),
 		'min'                => absint( $atts['min'] ),
 		'format'             => esc_html( $atts['format'] ),
@@ -382,7 +388,7 @@ function mai_analytics_get_views( $atts = [], $post_id = '' ) {
 	];
 
 	// Get views.
-	$views = mai_analytics_get_view_count( $post_id, $atts['type'] );
+	$views = mai_analytics_get_view_count( $atts );
 
 	// Bail if no views or not over the minimum.
 	if ( ! $views || $views < $atts['min'] ) {
@@ -405,7 +411,7 @@ function mai_analytics_get_views( $atts = [], $post_id = '' ) {
 	) : '';
 
 	// Build markup.
-	$html = sprintf( '<span class="entry-views"%s>%s<span class="view-count">%s</span></span>', $style, $icon, $views );
+	$html = sprintf( '<span class="mai-views"%s>%s<span class="mai-views__count">%s</span></span>', $style, $icon, $views );
 
 	// Allow filtering of markup.
 	$views = apply_filters( 'mai_analytics_entry_views', $html );
@@ -418,20 +424,33 @@ function mai_analytics_get_views( $atts = [], $post_id = '' ) {
  *
  * @since 0.4.0
  *
- * @param int|string $post_id The post ID.
- * @param string     $type    Empty for all views, 'trending' to show trending count.
+ * @param array $args The view args.
  *
  * @return int $views Post View.
  */
-function mai_analytics_get_view_count( $post_id = '', $type = '' ) {
-	$post_id = $post_id ?: get_the_ID();
-	$key     = 'trending' === sanitize_key( $type ) ? 'mai_trending' : 'mai_views';
+function mai_analytics_get_view_count( $args ) {
+	global $mai_term;
 
-	if ( ! $post_id ) {
+	$args = wp_parse_args( $args,
+		[
+			'object' => ! is_null( $mai_term ) ? 'term' : 'post',
+			'id'     => '',
+			'type'   => '',
+		]
+	);
+
+	$args['object'] = sanitize_key( $args['object'] );
+	$args['type']   = sanitize_key( $args['type'] );
+	$args['id']     = ! $args['id'] && 'term' === $args['object'] && ! is_null( $mai_term ) ? $mai_term->term_id : get_the_ID();
+
+	if ( ! $args['id'] ) {
 		return 0;
 	}
 
-	return absint( get_post_meta( $post_id, $key, true ) );
+	$key   = 'trending' === $args['type'] ? 'mai_trending' : 'mai_views';
+	$count = 'term' === $args['object'] ? get_term_meta( $args['id'], $key, true ) : get_post_meta( $args['id'], $key, true );
+
+	return absint( $count );
 }
 
 /**

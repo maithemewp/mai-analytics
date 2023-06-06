@@ -24,7 +24,7 @@ class Mai_Analytics_Views {
 		// Shortcode.
 		add_shortcode( 'mai_views', [ $this, 'add_shortcode' ] );
 
-		// Block filters.
+		// Mai Post Grid filters.
 		add_filter( 'acf/load_field/key=mai_grid_block_query_by',                 [ $this, 'add_trending_choice' ] );
 		add_filter( 'acf/load_field/key=mai_grid_block_posts_orderby',            [ $this, 'add_views_choice' ] );
 		add_filter( 'acf/load_field/key=mai_grid_block_post_taxonomies',          [ $this, 'add_show_conditional_logic' ] );
