@@ -335,6 +335,132 @@ function mai_analytics_get_processed_content( $content ) {
 	return $content;
 }
 
+
+/**
+ * Gets views for display.
+ *
+ * @since TBD
+ *
+ * @param array $atts    The shortcode atts.
+ * @param int   $post_id The post ID to get views from.
+ *
+ * @return string
+ */
+function mai_analytics_get_views( $atts = [], $post_id = '' ) {
+	// Atts.
+	$atts = shortcode_atts(
+		[
+			'type'          => '',      // Empty for all, and 'trending' to view trending views.
+			'min'           => 20,      // Minimum number of views before displaying.
+			'format'        => 'short', // Use short format (2k+) or show full number (2,143). Currently accepts 'short', '', or a falsey value.
+			'icon'          => 'heart',
+			'style'         => 'solid',
+			'display'       => 'inline',
+			'size'          => '0.85em',
+			'margin_top'    => '0',
+			'margin_right'  => '0.25em',
+			'margin_bottom' => '0',
+			'margin_left'   => '0',
+		],
+		$atts,
+		'mai_views'
+	);
+
+	// Sanitize.
+	$atts = [
+		'type'          => sanitize_key( $atts['type'] ),
+		'min'           => absint( $atts['min'] ),
+		'format'        => esc_html( $atts['format'] ),
+		'icon'          => sanitize_key( $atts['icon'] ),
+		'style'         => sanitize_key( $atts['style'] ),
+		'size'          => esc_html( $atts['size'] ),
+		'margin_top'    => esc_attr( $atts['margin_top'] ),
+		'margin_right'  => esc_attr( $atts['margin_right'] ),
+		'margin_bottom' => esc_attr( $atts['margin_bottom'] ),
+		'margin_left'   => esc_attr( $atts['margin_left'] ),
+	];
+
+	// Get views.
+	$views = mai_analytics_get_view_count( $post_id, $atts['type'] );
+
+	// Bail if no views or not over the minimum.
+	if ( ! $views || $views < $atts['min'] ) {
+		return;
+	}
+
+	// Get markup/values.
+	$views = 'short' === $atts['format'] ? mai_analytics_get_short_number( $views ) : number_format_i18n( $views );
+	$icon  = $atts['icon'] && function_exists( 'mai_get_icon' ) ? mai_get_icon(
+		[
+			'icon'          => $atts['icon'],
+			'style'         => $atts['style'],
+			'size'          => $atts['size'],
+			'margin_top'    => $atts['margin_top'],
+			'margin_right'  => $atts['margin_right'],
+			'margin_bottom' => $atts['margin_bottom'],
+			'margin_left'   => $atts['margin_left'],
+		]
+	) : '';
+
+	// Build markup.
+	$html = sprintf( '<span class="entry-views" style="display:inline-flex;align-items:center;">%s<span class="view-count">%s</span></span>', $icon, $views );
+
+	// Allow filtering of markup.
+	$views = apply_filters( 'mai_analytics_entry_views', $html );
+
+	return $views;
+}
+
+/**
+ * Retrieve view count for a post.
+ *
+ * @since TBD
+ *
+ * @param int|string $post_id The post ID.
+ * @param string     $type    Empty for all views, 'trending' to show trending count.
+ *
+ * @return int $views Post View.
+ */
+function mai_analytics_get_view_count( $post_id = '', $type = '' ) {
+	$post_id = $post_id ?: get_the_ID();
+	$key     = 'trending' === sanitize_key( $type ) ? 'mai_trending' : 'mai_views';
+
+	if ( ! $post_id ) {
+		return 0;
+	}
+
+	return absint( get_post_meta( $post_id, $key, true ) );
+}
+
+/**
+ * Gets a shortened number value for number.
+ *
+ * @since TBD
+ *
+ * @param int $number The number.
+ *
+ * @return string
+ */
+function mai_analytics_get_short_number( int $number ) {
+	if ( $number < 1000 ) {
+		return sprintf( '%d', $number );
+	}
+
+	if ( $number < 1000000 ) {
+		return sprintf( '%d%s', floor( $number / 1000 ), 'K+' );
+	}
+
+	if ( $number >= 1000000 && $number < 1000000000 ) {
+		return sprintf( '%d%s', floor( $number / 1000000 ), 'M+' );
+	}
+
+	if ( $number >= 1000000000 && $number < 1000000000000 ) {
+		return sprintf( '%d%s', floor( $number / 1000000000 ), 'B+' );
+	}
+
+	return sprintf( '%d%s', floor( $number / 1000000000000 ), 'T+' );
+};
+
 /**
  * Push a debug message to Spatie Ray and the Console.
  *

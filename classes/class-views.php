@@ -21,6 +21,10 @@ class Mai_Analytics_Views {
 	 * @return void
 	 */
 	function hooks() {
+		// Shortcode.
+		add_shortcode( 'mai_views', [ $this, 'add_shortcode' ] );
+
+		// Block filters.
 		add_filter( 'acf/load_field/key=mai_grid_block_query_by',                 [ $this, 'add_trending_choice' ] );
 		add_filter( 'acf/load_field/key=mai_grid_block_posts_orderby',            [ $this, 'add_views_choice' ] );
 		add_filter( 'acf/load_field/key=mai_grid_block_post_taxonomies',          [ $this, 'add_show_conditional_logic' ] );
@@ -36,6 +40,17 @@ class Mai_Analytics_Views {
 		add_action( 'wp_ajax_nopriv_mai_analytics_views', [ $this, 'update_trending' ] );
 	}
 
+	/**
+	 * Adds shortcode to display views.
+	 * Bail if shouldn't run. This makes sure views do not display if Jetpack/Stats are not running.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @return string
+	 */
+	function add_shortcode( $atts ) {
+		return mai_analytics_get_views( $atts );
+	}
 
 	/**
 	 * Adds Trending as an "Get Entries By" choice.
