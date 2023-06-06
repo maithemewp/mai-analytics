@@ -2,6 +2,7 @@
 
 ## 0.4.0 (TBD)
 * Added: Trending post views are saved to mai_trending post/term meta keys for use in custom queries or with Mai Post Grid (and soon to be Mai Term Grid) blocks.
+* Added: New `[mai_views]` shortcode to display view counts, with an optional icon.
 * Changed: Updated PHP tracker version, though mostly unused still.
 
 ## 0.3.0 (5/11/23)

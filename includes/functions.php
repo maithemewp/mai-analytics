@@ -350,17 +350,17 @@ function mai_analytics_get_views( $atts = [], $post_id = '' ) {
 	// Atts.
 	$atts = shortcode_atts(
 		[
-			'type'          => '',      // Empty for all, and 'trending' to view trending views.
-			'min'           => 20,      // Minimum number of views before displaying.
-			'format'        => 'short', // Use short format (2k+) or show full number (2,143). Currently accepts 'short', '', or a falsey value.
-			'icon'          => 'heart',
-			'style'         => 'solid',
-			'display'       => 'inline',
-			'size'          => '0.85em',
-			'margin_top'    => '0',
-			'margin_right'  => '0.25em',
-			'margin_bottom' => '0',
-			'margin_left'   => '0',
+			'type'               => '',      // Empty for all, and 'trending' to view trending views.
+			'min'                => 20,      // Minimum number of views before displaying.
+			'format'             => 'short', // Use short format (2k+) or show full number (2,143). Currently accepts 'short', '', or a falsey value.
+			'style'              => 'display:inline-flex;align-items:center;',
+			'icon'               => 'heart',
+			'icon_style'         => 'solid',
+			'icon_size'          => '0.85em',
+			'icon_margin_top'    => '0',
+			'icon_margin_right'  => '0.25em',
+			'icon_margin_bottom' => '0',
+			'icon_margin_left'   => '0',
 		],
 		$atts,
 		'mai_views'
@@ -368,16 +368,17 @@ function mai_analytics_get_views( $atts = [], $post_id = '' ) {
 
 	// Sanitize.
 	$atts = [
-		'type'          => sanitize_key( $atts['type'] ),
-		'min'           => absint( $atts['min'] ),
-		'format'        => esc_html( $atts['format'] ),
-		'icon'          => sanitize_key( $atts['icon'] ),
-		'style'         => sanitize_key( $atts['style'] ),
-		'size'          => esc_html( $atts['size'] ),
-		'margin_top'    => esc_attr( $atts['margin_top'] ),
-		'margin_right'  => esc_attr( $atts['margin_right'] ),
-		'margin_bottom' => esc_attr( $atts['margin_bottom'] ),
-		'margin_left'   => esc_attr( $atts['margin_left'] ),
+		'type'               => sanitize_key( $atts['type'] ),
+		'min'                => absint( $atts['min'] ),
+		'format'             => esc_html( $atts['format'] ),
+		'style'              => esc_attr( $atts['style'] ),
+		'icon'               => sanitize_key( $atts['icon'] ),
+		'icon_style'         => sanitize_key( $atts['icon_style'] ),
+		'icon_size'          => esc_attr( $atts['icon_size'] ),
+		'icon_margin_top'    => esc_attr( $atts['icon_margin_top'] ),
+		'icon_margin_right'  => esc_attr( $atts['icon_margin_right'] ),
+		'icon_margin_bottom' => esc_attr( $atts['icon_margin_bottom'] ),
+		'icon_margin_left'   => esc_attr( $atts['icon_margin_left'] ),
 	];
 
 	// Get views.
@@ -390,20 +391,21 @@ function mai_analytics_get_views( $atts = [], $post_id = '' ) {
 
 	// Get markup/values.
 	$views = 'short' === $atts['format'] ? mai_analytics_get_short_number( $views ) : number_format_i18n( $views );
+	$style = $atts['style'] ? sprintf( ' style="%s"', $atts['style'] ) : '';
 	$icon  = $atts['icon'] && function_exists( 'mai_get_icon' ) ? mai_get_icon(
 		[
 			'icon'          => $atts['icon'],
-			'style'         => $atts['style'],
-			'size'          => $atts['size'],
-			'margin_top'    => $atts['margin_top'],
-			'margin_right'  => $atts['margin_right'],
-			'margin_bottom' => $atts['margin_bottom'],
-			'margin_left'   => $atts['margin_left'],
+			'style'         => $atts['icon_style'],
+			'size'          => $atts['icon_size'],
+			'margin_top'    => $atts['icon_margin_top'],
+			'margin_right'  => $atts['icon_margin_right'],
+			'margin_bottom' => $atts['icon_margin_bottom'],
+			'margin_left'   => $atts['icon_margin_left'],
 		]
 	) : '';
 
 	// Build markup.
-	$html = sprintf( '<span class="entry-views" style="display:inline-flex;align-items:center;">%s<span class="view-count">%s</span></span>', $icon, $views );
+	$html = sprintf( '<span class="entry-views"%s>%s<span class="view-count">%s</span></span>', $style, $icon, $views );
 
 	// Allow filtering of markup.
 	$views = apply_filters( 'mai_analytics_entry_views', $html );

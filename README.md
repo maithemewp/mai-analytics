@@ -37,25 +37,36 @@ MAI_ANALYTICS_DEBUG
 ```
 `bool`: Whether Mai Analytics should log via the console and Spatie Ray, if available.
 
-## Functions
-Use `mai_analytics_tracker()` to return the Matomo instance for custom tracking.
+## Shortcode
 
 ```
-/**
- * Adds custom tracking.
- *
- * @uses https://developer.matomo.org/api-reference/PHP-Matomo-Tracker
- *
- * @return void
- */
-add_action( 'wp_head', function() {
-	$analytics = function_exists( 'mai_analytics_tracker' ) ? mai_analytics_tracker() : false;
+[mai_views]
+```
 
-	// Bail if the Matomo instance is not available or not authenticated.
-	if ( ! $analytics ) {
-		return;
-	}
+By default it will show all views within the given time in the settings. You can show trending views via the `type` attribute.
 
-	// Do your custom tracking with the stored instance.
-});
+```
+[mai_views type="trending"]
+```
+
+If using with Mai Theme v2 it will default to a heart icon, but you can use any icon available in Mai Icons via the `icon`, `style`, etc. attributes.
+
+```
+[mai_views icon="star" icon_margin_right="6px"]
+```
+
+All attributes and their defaults:
+
+```
+'type'               => '',      // Empty for all, and 'trending' to view trending views.
+'min'                => 20,      // Minimum number of views before displaying.
+'format'             => 'short', // Use short format (2k+) or show full number (2,143). Currently accepts 'short', '', or a falsey value.
+'style'              => 'display:inline-flex;align-items:center;', // Inline styles for the wrapper element.
+'icon'               => 'heart',
+'icon_style'         => 'solid',
+'icon_size'          => '0.85em',
+'icon_margin_top'    => '0',
+'icon_margin_right'  => '0.25em',
+'icon_margin_bottom' => '0',
+'icon_margin_left'   => '0',
 ```
