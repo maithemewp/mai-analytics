@@ -58,7 +58,7 @@ If using with Mai Theme v2 it will default to a heart icon, but you can use any 
 All attributes and their defaults:
 
 ```
-'type'               => '',      // Empty for all, and 'trending' to view trending views.
+'views'              => '',      // Empty for all, and 'trending' to view trending views.
 'min'                => 20,      // Minimum number of views before displaying.
 'format'             => 'short', // Use short format (2k+) or show full number (2,143). Currently accepts 'short', '', or a falsey value.
 'style'              => 'display:inline-flex;align-items:center;', // Inline styles for the wrapper element.

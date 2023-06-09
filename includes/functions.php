@@ -354,7 +354,7 @@ function mai_analytics_get_views( $atts = [] ) {
 		[
 			'object'             => ! is_null( $mai_term ) ? 'term' : 'post',  // Either 'post'/'' or 'term'.
 			'id'                 => '',      // The post/term ID.
-			'type'               => '',      // Empty for all, and 'trending' to view trending views.
+			'views'               => '',      // Empty for all, and 'trending' to view trending views.
 			'min'                => 20,      // Minimum number of views before displaying.
 			'format'             => 'short', // Use short format (2k+) or show full number (2,143). Currently accepts 'short', '', or a falsey value.
 			'style'              => 'display:inline-flex;align-items:center;',
@@ -374,7 +374,7 @@ function mai_analytics_get_views( $atts = [] ) {
 	$atts = [
 		'object'             => sanitize_key( $atts['object'] ),
 		'id'                 => absint( $atts['id'] ),
-		'type'               => sanitize_key( $atts['type'] ),
+		'views'               => sanitize_key( $atts['views'] ),
 		'min'                => absint( $atts['min'] ),
 		'format'             => esc_html( $atts['format'] ),
 		'style'              => esc_attr( $atts['style'] ),
@@ -435,19 +435,19 @@ function mai_analytics_get_view_count( $args ) {
 		[
 			'object' => ! is_null( $mai_term ) ? 'term' : 'post',
 			'id'     => '',
-			'type'   => '',
+			'views'   => '',
 		]
 	);
 
 	$args['object'] = sanitize_key( $args['object'] );
-	$args['type']   = sanitize_key( $args['type'] );
+	$args['views']   = sanitize_key( $args['views'] );
 	$args['id']     = ! $args['id'] && 'term' === $args['object'] && ! is_null( $mai_term ) ? $mai_term->term_id : get_the_ID();
 
 	if ( ! $args['id'] ) {
 		return 0;
 	}
 
-	$key   = 'trending' === $args['type'] ? 'mai_trending' : 'mai_views';
+	$key   = 'trending' === $args['views'] ? 'mai_trending' : 'mai_views';
 	$count = 'term' === $args['object'] ? get_term_meta( $args['id'], $key, true ) : get_post_meta( $args['id'], $key, true );
 
 	return absint( $count );
