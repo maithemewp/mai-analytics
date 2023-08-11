@@ -119,7 +119,7 @@ class Mai_Analytics_Tracking {
 		$version   = MAI_ANALYTICS_VERSION;
 		$handle    = 'mai-analytics';
 		$suffix    = defined( 'SCRIPT_DEBUG' ) && SCRIPT_DEBUG ? '' : '.min';
-		$file      = "assets/js/{$handle}{$suffix}.js"; // TODO: Add min suffix if not script debugging.
+		$file      = "assets/js/{$handle}{$suffix}.js";
 		$file_path = MAI_ANALYTICS_PLUGIN_DIR . $file;
 		$file_url  = MAI_ANALYTICS_PLUGIN_URL . $file;
 
@@ -300,7 +300,31 @@ class Mai_Analytics_Tracking {
 	 */
 	function set_dimension_8() {
 		$range   = false;
-		$content = get_post_field( 'post_content', get_the_ID() );
+		$content = '';
+
+		if ( is_singular() ) {
+			$content .= get_post_field( 'post_content', get_the_ID() );
+		}
+		// Get ads from Mai Archive Pages.
+		elseif ( function_exists( 'maiap_get_archive_page' ) ) {
+			$pages = [
+				maiap_get_archive_page( true ),
+				maiap_get_archive_page( false ),
+			];
+
+			$pages = array_filter( $pages );
+
+			if ( $pages ) {
+				foreach ( $pages as $page ) {
+					$content .= $page->post_content;
+				}
+			}
+		}
+
+		if ( ! $content ) {
+			return;
+		}
+
 		$content = mai_analytics_get_processed_content( $content );
 		$count   = str_word_count( strip_tags( $content ) );
 		$ranges  = [
