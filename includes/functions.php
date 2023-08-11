@@ -39,6 +39,11 @@ function mai_analytics_add_attributes( $content, $name ) {
 
 	if ( $tracked->length ) {
 		foreach ( $tracked as $node ) {
+			// Skip if not an element we can add attributes to.
+			if ( 'DOMElement' !== get_class( $node ) ) {
+				continue;
+			}
+
 			$node->removeAttribute( 'data-track-content' );
 			$node->removeAttribute( 'data-content-name' );
 			$node->normalize();
@@ -49,8 +54,11 @@ function mai_analytics_add_attributes( $content, $name ) {
 		// Get first element and set main attributes.
 		$first = $children->item(0);
 
-		$first->setAttribute( 'data-track-content', '' );
-		$first->setAttribute( 'data-content-name', esc_attr( $name ) );
+		// Make sure it's an element we can add attributes to.
+		if ( 'DOMElement' === get_class( $first ) ) {
+			$first->setAttribute( 'data-track-content', '' );
+			$first->setAttribute( 'data-content-name', esc_attr( $name ) );
+		}
 
 	} else {
 		foreach ( $children as $node ) {
