@@ -46,11 +46,6 @@ class Mai_Analytics_Event_Tracking {
 			return;
 		}
 
-		$tracker = mai_analytics_tracker();
-
-		if ( ! $tracker ) {
-			return;
-		}
 	}
 
 	/**
@@ -64,12 +59,6 @@ class Mai_Analytics_Event_Tracking {
 	 */
 	function payment_complete( $order_id ) {
 		if ( ! mai_analytics_should_track() ) {
-			return;
-		}
-
-		$tracker = mai_analytics_tracker();
-
-		if ( ! $tracker ) {
 			return;
 		}
 

@@ -49,7 +49,6 @@ class Mai_Analytics_Tracking {
 	 */
 	function hooks() {
 		add_action( 'wp_enqueue_scripts', [ $this, 'enqueue' ] );
-		add_filter( 'script_loader_tag',  [ $this, 'add_async' ], 10, 3 );
 	}
 
 	/**
@@ -66,13 +65,6 @@ class Mai_Analytics_Tracking {
 			return;
 		}
 
-		$tracker = mai_analytics_tracker();
-
-		// Bail if no tracker.
-		if ( ! $tracker ) {
-			return;
-		}
-
 		// Set user.
 		$this->user = wp_get_current_user(); // Returns 0 if not logged in.
 
@@ -80,7 +72,6 @@ class Mai_Analytics_Tracking {
 		$vars = [
 			'siteId'     => mai_analytics_get_option( 'site_id' ),
 			'trackerUrl' => mai_analytics_get_option( 'url' ),
-			'token'      => mai_analytics_get_option( 'token' ),
 			'userId'     => $this->user ? $this->user->user_email : '',
 			'dimensions' => $this->get_custom_dimensions(),
 		];
@@ -126,13 +117,16 @@ class Mai_Analytics_Tracking {
 		if ( file_exists( $file_path ) ) {
 			$version .= '.' . date( 'njYHi', filemtime( $file_path ) );
 
-			wp_enqueue_script( $handle, $file_url, [], $version, true );
+			wp_enqueue_script( $handle, $file_url, [], $version, [ 'strategy' => 'async', 'in_footer' => true ] );
 			wp_localize_script( $handle, 'maiAnalyticsVars', $vars );
 		}
 	}
 
 	/**
 	 * Gets custom dimensions.
+	 *
+	 * A lot of this is shared with Mai Publisher.
+	 * Any changes here should be referenced there.
 	 *
 	 * @since 0.1.0
 	 *
@@ -494,36 +488,5 @@ class Mai_Analytics_Tracking {
 
 		// Return the first term.
 		return $cache[ $taxonomy ][ $post_id ];
-	}
-
-	/**
-	 * Add async tag to our script.
-	 *
-	 * @since 0.4.0
-	 *
-	 * @param string $tag    The `<script>` tag for the enqueued script.
-	 * @param string $handle The script's registered handle.
-	 * @param string $src    The script's source URL.
-	 *
-	 * @return void
-	 */
-	function add_async( $tag, $handle ) {
-		if ( 'mai-analytics' !== $handle ) {
-			return $tag;
-		}
-
-		if ( ! class_exists( 'WP_HTML_Tag_Processor' ) ) {
-			return $tag;
-		}
-
-		$tags = new WP_HTML_Tag_Processor( $tag );
-
-		while ( $tags->next_tag( 'script' ) ) {
-			$tags->set_attribute( 'async', '' );
-		}
-
-		$tag = $tags->get_updated_html();
-
-		return $tag;
 	}
 }
