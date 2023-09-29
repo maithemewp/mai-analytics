@@ -222,7 +222,7 @@ class Mai_Analytics_Views {
 				'method'     => 'Actions.getPageUrl',
 				'idSite'     => $site_id,
 				'token_auth' => $token,
-				'pageUrl'    => urlencode( $url ),
+				'pageUrl'    => $url,
 				'period'     => 'range',
 				'date'       => 'last' . $days,
 				'format'     => 'json',
