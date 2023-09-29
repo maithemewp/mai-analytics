@@ -44,8 +44,8 @@ function mai_analytics_add_attributes( $content, $name ) {
 				continue;
 			}
 
-			$node->removeAttribute( 'data-track-content' );
 			$node->removeAttribute( 'data-content-name' );
+			$node->removeAttribute( 'data-track-content' );
 			$node->normalize();
 		}
 	}
@@ -56,8 +56,8 @@ function mai_analytics_add_attributes( $content, $name ) {
 
 		// Make sure it's an element we can add attributes to.
 		if ( 'DOMElement' === get_class( $first ) ) {
-			$first->setAttribute( 'data-track-content', '' );
 			$first->setAttribute( 'data-content-name', esc_attr( $name ) );
+			$first->setAttribute( 'data-track-content', '' );
 		}
 
 	} else {
@@ -68,8 +68,8 @@ function mai_analytics_add_attributes( $content, $name ) {
 			}
 
 			// Set main attributes to all top level child elements.
-			$node->setAttribute( 'data-track-content', '' );
 			$node->setAttribute( 'data-content-name', esc_attr( $name ) );
+			$node->setAttribute( 'data-track-content', '' );
 		}
 	}
 
@@ -100,57 +100,6 @@ function mai_analytics_add_attributes( $content, $name ) {
 	$content = $dom->saveHTML();
 
 	return $content;
-}
-
-/**
- * Function to return the static instance for the tracker.
- * This apparently does not authenticate the tracker,
- * and still returns the object.
- *
- * @since 0.1.0
- *
- * @return object|MatomoTracker
- */
-function mai_analytics_tracker() {
-	static $cache = null;
-
-	if ( ! is_null( $cache ) ) {
-		return $cache;
-	}
-
-	// Bail if not using Matomo Analytics.
-	if ( ! mai_analytics_get_option( 'enabled' ) ) {
-		$cache = false;
-		return $cache;
-	}
-
-	// Bail if Matamo PHP library is not available.
-	if ( ! class_exists( 'MatomoTracker' ) ) {
-		$cache = false;
-		return $cache;
-	}
-
-	// Set vars.
-	$site_id = mai_analytics_get_option( 'site_id' );
-	$url     = mai_analytics_get_option( 'url' );
-	$token   = mai_analytics_get_option( 'token' );
-
-	// Bail if we don't have the data we need.
-	if ( ! ( $site_id && $url && $token ) ) {
-		$cache = false;
-		return $cache;
-	}
-
-	// Instantiate the Matomo object.
-	$tracker = new MatomoTracker( $site_id, $url );
-
-	// Set authentication token.
-	$tracker->setTokenAuth( $token );
-
-	// Set cache.
-	$cache = $tracker;
-
-	return $cache;
 }
 
 /**
@@ -283,6 +232,21 @@ function mai_analytics_should_track() {
 
 	$cache = false;
 
+	// Bail if not using Matomo Analytics.
+	if ( ! mai_analytics_get_option( 'enabled' ) ) {
+		return $cache;
+	}
+
+	// Set vars.
+	$site_id = mai_analytics_get_option( 'site_id' );
+	$url     = mai_analytics_get_option( 'url' );
+	$token   = mai_analytics_get_option( 'token' );
+
+	// Bail if we don't have the data we need.
+	if ( ! ( $site_id && $url && $token ) ) {
+		return $cache;
+	}
+
 	// Bail if we are in an ajax call.
 	if ( wp_doing_ajax() ) {
 		return $cache;
@@ -342,7 +306,6 @@ function mai_analytics_get_processed_content( $content ) {
 
 	return $content;
 }
-
 
 /**
  * Gets views for display.
