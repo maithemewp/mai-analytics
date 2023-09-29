@@ -7,13 +7,11 @@ namespace Composer\Autoload;
 class ComposerStaticInit300e4e250d9eeac43d7bac96dfe77492
 {
     public static $files = array (
-        '5ff2501974ebd86c0be698ddfca6451e' => __DIR__ . '/..' . '/yahnis-elsts/plugin-update-checker/load-v5p0.php',
+        'efd9d646f43178e7ba3f07758c02ce1d' => __DIR__ . '/..' . '/yahnis-elsts/plugin-update-checker/load-v5p2.php',
     );
 
     public static $classMap = array (
         'Composer\\InstalledVersions' => __DIR__ . '/..' . '/composer/InstalledVersions.php',
-        'MatomoTracker' => __DIR__ . '/..' . '/matomo/matomo-php-tracker/MatomoTracker.php',
-        'PiwikTracker' => __DIR__ . '/..' . '/matomo/matomo-php-tracker/PiwikTracker.php',
     );
 
     public static function getInitializer(ClassLoader $loader)
