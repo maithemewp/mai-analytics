@@ -1,9 +1,10 @@
 # Changelog
 
-## 0.4.0 (TBD)
-* Added: Trending post views are saved to mai_trending post/term meta keys for use in custom queries or with Mai Post Grid (and soon to be Mai Term Grid) blocks.
-* Added: New `[mai_views]` shortcode to display view counts, with an optional icon.
-* Changed: Updated PHP tracker version, though mostly unused still.
+## 0.4.0 (9/29/23)
+* Added: Trending post views are saved to mai_trending post/term meta keys for use in custom queries or with Mai Post Grid and Mai Term Grid blocks.
+* Added: New `[mai_views]` shortcode to display view counts on posts and terms, with an optional icon.
+* Added: Content Length support for Mai Archive Pages.
+* Changed: Removed PHP tracker.
 
 ## 0.3.0 (5/11/23)
 * Added: Mai Analytics Tracker wrapper block.

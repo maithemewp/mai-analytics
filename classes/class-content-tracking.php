@@ -34,7 +34,7 @@ class Mai_Analytics_Content_Tracking {
 	/**
 	 * Add attributes to menu.
 	 *
-	 * @since TBD
+	 * @since 0.4.0
 	 *
 	 * @param string   $nav_menu The HTML content for the navigation menu.
 	 * @param stdClass $args     An object containing wp_nav_menu() arguments.
@@ -111,7 +111,7 @@ class Mai_Analytics_Content_Tracking {
 	/**
 	 * Add attributes to Navigation menu block.
 	 *
-	 * @since TBD
+	 * @since 0.4.0
 	 *
 	 * @param string $block_content The existing block content.
 	 * @param array  $block         The button block object.
@@ -196,7 +196,7 @@ class Mai_Analytics_Content_Tracking {
 	/**
 	 * Get incremented menu slug.
 	 *
-	 * @since TBD
+	 * @since 0.4.0
 	 *
 	 * @param string $slug The menu slug.
 	 *
@@ -212,7 +212,7 @@ class Mai_Analytics_Content_Tracking {
 	/**
 	 * Get current page menus to increment.
 	 *
-	 * @since TBD
+	 * @since 0.4.0
 	 *
 	 * @param string $slug The menu slug.
 	 *
