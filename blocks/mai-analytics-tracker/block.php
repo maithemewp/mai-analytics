@@ -79,12 +79,14 @@ function mai_register_analytics_tracker_field_group() {
 	);
 }
 
+add_action( 'admin_init', 'mai_analytics_register_block_script' );
 /**
  * Enqueue JS.
  *
+ * @since 0.3.0
+ *
  * @return void
  */
-add_action( 'admin_init', 'mai_analytics_register_block_script' );
 function mai_analytics_register_block_script() {
 	$file      = 'blocks/mai-analytics-tracker/block.js';
 	$file_path = MAI_ANALYTICS_PLUGIN_DIR . $file;
