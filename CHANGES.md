@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.4.2 (9/29/23)
+* Fixed: Remove unnecessary `urlencode()` from API call.
+
 ## 0.4.1 (9/29/23)
 * Changed: No longer tracking logged in users that are Contributors or above.
 
