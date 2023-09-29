@@ -218,6 +218,8 @@ class Mai_Analytics_Settings {
 	/**
 	 * Sanitized saved values.
 	 *
+	 * @since 0.1.0
+	 *
 	 * @param array $input
 	 *
 	 * @return array
@@ -228,6 +230,8 @@ class Mai_Analytics_Settings {
 
 	/**
 	 * Displays HTML before settings.
+	 *
+	 * @since 0.1.0
 	 *
 	 * @return string
 	 */

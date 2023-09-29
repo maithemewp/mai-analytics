@@ -5,16 +5,6 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 
 /**
  * The content tracking class.
- * This requires Matomo tracking code on the site:
- *
- * @link https://developer.matomo.org/guides/tracking-javascript-guide
- *
- * 1. Matomo with your admin or Super User account.
- * 2. Click on the "administration" (cog icon) in the top right menu.
- * 3. Click on "Tracking Code" in the left menu (under the "Measurables" or "Websites" menu).
- * 4. Click on "JavaScript Tracking" section.
- * 5. Select the website you want to track.
- * 6. Copy and paste the JavaScript tracking code into your pages, just after the opening <body> tag (or within the <head> section).
  */
 class Mai_Analytics_Content_Tracking {
 	/**
@@ -34,9 +24,40 @@ class Mai_Analytics_Content_Tracking {
 	 * @return void
 	 */
 	function hooks() {
+		add_filter( 'wp_nav_menu',    [ $this, 'add_menu_attributes' ], 10, 2 );
 		add_filter( 'maicca_content', [ $this, 'add_cca_attributes' ], 12, 2 );
 		add_filter( 'maiam_ad',       [ $this, 'add_ad_attributes' ], 12, 2 );
-		add_filter( 'render_block',   [ $this, 'render_block' ], 10, 2 );
+		add_filter( 'render_block',   [ $this, 'render_navigation_block' ], 10, 2 );
+		add_filter( 'render_block',   [ $this, 'render_post_preview_block' ], 10, 2 );
+	}
+
+	/**
+	 * Add attributes to menu.
+	 *
+	 * @since TBD
+	 *
+	 * @param string   $nav_menu The HTML content for the navigation menu.
+	 * @param stdClass $args     An object containing wp_nav_menu() arguments.
+	 *
+	 * @return string
+	 */
+	function add_menu_attributes( $nav_menu, $args ) {
+		// Bail if not tracking.
+		if ( ! $this->should_track() ) {
+			return $nav_menu;
+		}
+
+		if ( ! class_exists( 'WP_HTML_Tag_Processor' ) ) {
+			return $nav_menu;
+		}
+
+		$slug = $args->menu instanceof WP_Term ? $args->menu->slug : $args->menu;
+
+		if ( ! $slug ) {
+			return $nav_menu;
+		}
+
+		return mai_analytics_add_attributes( $nav_menu, 'mai-menu-' . $this->get_menu_slug( $slug ) );
 	}
 
 	/**
@@ -88,7 +109,50 @@ class Mai_Analytics_Content_Tracking {
 	}
 
 	/**
-	 * Maybe add attributes to blocks.
+	 * Add attributes to Navigation menu block.
+	 *
+	 * @since TBD
+	 *
+	 * @param string $block_content The existing block content.
+	 * @param array  $block         The button block object.
+	 *
+	 * @return string
+	 */
+	function render_navigation_block( $block_content, $block ) {
+		// Bail if not tracking.
+		if ( ! $this->should_track() ) {
+			return $block_content;
+		}
+
+		// Bail if no content.
+		if ( ! $block_content ) {
+			return $block_content;
+		}
+
+		// Bail if not the block(s) we want.
+		if ( 'core/navigation' !== $block['blockName'] ) {
+			return $block_content;
+		}
+
+		// Bail if no ref.
+		if (  ! isset( $block['attrs']['ref'] ) || ! $block['attrs']['ref'] ) {
+			return $block_content;
+		}
+
+		// Get nav menu slug.
+		$menu = get_post( $block['attrs']['ref'] );
+		$slug = $menu && $menu instanceof WP_Post ? $menu->post_name : '';
+
+		// Bail if no slug.
+		if ( ! $slug ) {
+			return $block_content;
+		}
+
+		return mai_analytics_add_attributes( $block_content, 'mai-menu-' . $this->get_menu_slug( $slug ) );
+	}
+
+	/**
+	 * Maybe add attributes to Mai Post Preview block.
 	 *
 	 * @since 0.4.0
 	 *
@@ -97,7 +161,7 @@ class Mai_Analytics_Content_Tracking {
 	 *
 	 * @return string
 	 */
-	function render_block( $block_content, $block ) {
+	function render_post_preview_block( $block_content, $block ) {
 		// Bail if not tracking.
 		if ( ! $this->should_track() ) {
 			return $block_content;
@@ -121,11 +185,51 @@ class Mai_Analytics_Content_Tracking {
 			return $block_content;
 		}
 
+		// Get name from url.
 		$url  = wp_parse_url( $url );
 		$url  = isset( $url['host'] ) ? $url['host'] : '' . $url['path'];
 		$name = 'Mai Post Preview | ' . $url;
 
 		return mai_analytics_add_attributes( $block_content, $name );
+	}
+
+	/**
+	 * Get incremented menu slug.
+	 *
+	 * @since TBD
+	 *
+	 * @param string $slug The menu slug.
+	 *
+	 * @return string
+	 */
+	function get_menu_slug( $slug ) {
+		$slugs = $this->get_menus( $slug );
+		$slug  = $slugs[ $slug ] > 2 ? $slug . '-' . $slugs[ $slug ] - 1 : $slug;
+
+		return $slug;
+	}
+
+	/**
+	 * Get current page menus to increment.
+	 *
+	 * @since TBD
+	 *
+	 * @param string $slug The menu slug.
+	 *
+	 * @return array
+	 */
+	function get_menus( $slug = '' ) {
+		static $menus = [];
+
+		if ( $slug ) {
+			if ( isset( $menus[ $slug ] ) ) {
+				$menus[ $slug ]++;
+			} else {
+				$menus[ $slug ] = 1;
+			}
+		}
+
+		return $menus;
 	}
 
 	/**
@@ -136,6 +240,6 @@ class Mai_Analytics_Content_Tracking {
 	 * @return bool
 	 */
 	function should_track() {
-		return ! is_admin() && mai_analytics_should_track() && mai_analytics_tracker();
+		return ! is_admin() && mai_analytics_should_track();
 	}
 }
