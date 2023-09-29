@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.4.1 (9/29/23)
+* Changed: No longer tracking logged in users that are Contributors or above.
+
 ## 0.4.0 (9/29/23)
 * Added: Trending post views are saved to mai_trending post/term meta keys for use in custom queries or with Mai Post Grid and Mai Term Grid blocks.
 * Added: New `[mai_views]` shortcode to display view counts on posts and terms, with an optional icon.

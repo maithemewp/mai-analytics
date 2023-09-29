@@ -247,6 +247,11 @@ function mai_analytics_should_track() {
 		return $cache;
 	}
 
+	// Bail if contributor or above.
+	if ( current_user_can( 'edit_posts' ) ) {
+		return $cache;
+	}
+
 	// Bail if we are in an ajax call.
 	if ( wp_doing_ajax() ) {
 		return $cache;
@@ -313,7 +318,6 @@ function mai_analytics_get_processed_content( $content ) {
  * @since 0.4.0
  *
  * @param array $atts The shortcode atts.
- * @param int   $id   The post or term ID to get views from.
  *
  * @return string
  */
@@ -323,9 +327,9 @@ function mai_analytics_get_views( $atts = [] ) {
 	// Atts.
 	$atts = shortcode_atts(
 		[
-			'object'             => ! is_null( $mai_term ) ? 'term' : 'post',  // Either 'post'/'' or 'term'.
+			'object'             => ! is_null( $mai_term ) ? 'term' : 'post',  // Either 'post' or 'term'.
 			'id'                 => '',      // The post/term ID.
-			'views'               => '',      // Empty for all, and 'trending' to view trending views.
+			'views'              => '',      // Empty for all, and 'trending' to view trending views.
 			'min'                => 20,      // Minimum number of views before displaying.
 			'format'             => 'short', // Use short format (2k+) or show full number (2,143). Currently accepts 'short', '', or a falsey value.
 			'style'              => 'display:inline-flex;align-items:center;',
@@ -345,7 +349,7 @@ function mai_analytics_get_views( $atts = [] ) {
 	$atts = [
 		'object'             => sanitize_key( $atts['object'] ),
 		'id'                 => absint( $atts['id'] ),
-		'views'               => sanitize_key( $atts['views'] ),
+		'views'              => sanitize_key( $atts['views'] ),
 		'min'                => absint( $atts['min'] ),
 		'format'             => esc_html( $atts['format'] ),
 		'style'              => esc_attr( $atts['style'] ),
@@ -399,19 +403,19 @@ function mai_analytics_get_views( $atts = [] ) {
  *
  * @return int $views Post View.
  */
-function mai_analytics_get_view_count( $args ) {
+function mai_analytics_get_view_count( $args = [] ) {
 	global $mai_term;
 
 	$args = wp_parse_args( $args,
 		[
 			'object' => ! is_null( $mai_term ) ? 'term' : 'post',
 			'id'     => '',
-			'views'   => '',
+			'views'  => '',
 		]
 	);
 
 	$args['object'] = sanitize_key( $args['object'] );
-	$args['views']   = sanitize_key( $args['views'] );
+	$args['views']  = sanitize_key( $args['views'] );
 	$args['id']     = ! $args['id'] && 'term' === $args['object'] && ! is_null( $mai_term ) ? $mai_term->term_id : get_the_ID();
 
 	if ( ! $args['id'] ) {
