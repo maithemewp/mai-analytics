@@ -37,8 +37,14 @@
 		s.parentNode.insertBefore( g, s );
 	})();
 
-	// If we have a page URL and ID.
-	if ( maiAnalyticsVars.ajaxUrl && maiAnalyticsVars.nonce && maiAnalyticsVars.type && maiAnalyticsVars.id && maiAnalyticsVars.url && maiAnalyticsVars.current ) {
+	// If we have the data we need, update the views.
+	if ( maiAnalyticsVars.ajaxUrl
+		&& maiAnalyticsVars.nonce
+		&& maiAnalyticsVars.type
+		&& maiAnalyticsVars.id
+		&& maiAnalyticsVars.url
+		&& maiAnalyticsVars.current ) {
+
 		// Send ajax request.
 		fetch( maiAnalyticsVars.ajaxUrl, {
 			method: "POST",
