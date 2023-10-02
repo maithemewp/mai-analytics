@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.4.4 (10/02/23)
+* Changed: Only check connection on settings page if tracking is enabled.
+
 ## 0.4.3 (10/02/23)
 * Changed: Version number is now displayed next to plugin name on the settings page.
 * Changed: Now displays error code when checking Matomo connection on the settings page.
