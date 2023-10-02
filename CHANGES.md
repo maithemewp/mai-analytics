@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.3 (10/02/23)
+* Changed: Version number is now displayed next to plugin name on the settings page.
+* Changed: Now displays error code when checking Matomo connection on the settings page.
+
 ## 0.4.2 (9/29/23)
 * Fixed: Remove unnecessary `urlencode()` from API call.
 
