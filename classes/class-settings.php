@@ -78,51 +78,84 @@ class Mai_Analytics_Settings {
 			return;
 		}
 
-		$connections = [
-			'Matomo Version' => $this->options['url'] . sprintf( 'index.php?module=API&method=API.getMatomoVersion&format=json&token_auth=%s', $this->options['token'] ),
-			'Matomo Tracker' => $this->options['url'] . 'matomo.php',
-		];
+		$notices = [];
 
-		foreach ( $connections as $label => $url ) {
-			$notice   = '';
-			$error    = false;
-			$response = wp_remote_get( $url );
+		if ( $this->options['enabled'] ) {
 
-			if ( is_wp_error( $response ) ) {
-				$error  = true;
-				$notice = $response->get_error_message();
-			} else {
-				$body   = wp_remote_retrieve_body( $response );
-				$decode = json_decode( $body );
+			$connections = [
+				'Matomo Version' => $this->options['url'] . sprintf( 'index.php?module=API&method=API.getMatomoVersion&format=json&token_auth=%s', $this->options['token'] ),
+				'Matomo Tracker' => $this->options['url'] . 'matomo.php',
+			];
 
-				if ( json_last_error() === JSON_ERROR_NONE ) {
-					$body = $decode;
+			foreach ( $connections as $label => $url ) {
+				$response = wp_remote_get( $url );
+
+				if ( is_wp_error( $response ) ) {
+					$type    = 'error';
+					$message = $response->get_error_message();
+				} else {
+					$body   = wp_remote_retrieve_body( $response );
+					$decode = json_decode( $body );
+
+					if ( json_last_error() === JSON_ERROR_NONE ) {
+						$body = $decode;
+					}
+
+					// Get response code.
+					$code = wp_remote_retrieve_response_code( $response );
+
+					if ( 200 !== $code ) {
+						$type    = 'error';
+						$message =  $code . ' ' . wp_remote_retrieve_response_message( $response );
+					} elseif ( is_string( $body ) ) {
+						$type    = 'success';
+						$message = __( 'Connected', 'mai-analytics' );
+					} elseif ( is_object( $body ) && isset( $body->value ) ) {
+						$type    = 'success';
+						$message = $body->value;
+					} elseif ( is_object( $body ) && isset( $body->result ) && isset( $body->message ) ) {
+						$type    = 'error' === $body->result ? 'error' : 'success';
+						$message = $body->message;
+					}
+
+					$notices[] = [
+						'type'    => $type,
+						'label'   => $label,
+						'message' => $message,
+					];
 				}
 
-				// Get response code.
-				$code = wp_remote_retrieve_response_code( $response );
-
-				if ( 200 !== $code ) {
-					$error  = true;
-					$notice =  $code . ' ' . wp_remote_retrieve_response_message( $response );
-				} elseif ( is_string( $body ) ) {
-					$notice = __( 'Connected', 'mai-analytics' );
-				} elseif ( is_object( $body ) && isset( $body->value ) ) {
-					$notice = $body->value;
-				} elseif ( is_object( $body ) && isset( $body->result ) && isset( $body->message ) ) {
-					$error  = 'error' === $body->result;
-					$notice = $body->message;
+				// Stop checking if we have an error.
+				if ( 'error' === $type ) {
+					break;
 				}
 			}
+		} else {
+			$notices[] = [
+				'type'    => 'warning',
+				'label'   => 'Matomo',
+				'message' => __( 'Tracking is disabled.', 'mai-analytics' ),
+			];
+		}
 
-			if ( $notice ) {
-				$color = $error ? 'red' : 'green';
-				printf( '<div style="color:%s;">%s: %s</div>', $color, $label, wp_kses_post( $notice ) );
-			}
-
-			if ( $error ) {
+		// Display notices.
+		foreach ( $notices as $notice ) {
+			// WP default colors.
+			switch ( $notice['type'] ) {
+				case 'success':
+					$color = '#00a32a';
 				break;
+				case 'warning':
+					$color = '#dba617';
+				break;
+				case 'error':
+					$color = '#d63638';
+				break;
+				default:
+					$color = 'blue'; // This should never happen.
 			}
+
+			printf( '<div style="color:%s;">%s: %s</div>', $color, $notice['label'], wp_kses_post( $notice['message'] ) );
 		}
 	}
 
