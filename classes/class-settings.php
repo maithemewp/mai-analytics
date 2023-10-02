@@ -52,9 +52,8 @@ class Mai_Analytics_Settings {
 
 		echo '<div class="wrap">';
 			printf( '<h2>%s (%s)</h2>', __( 'Mai Analytics', 'mai-analytics' ), MAI_ANALYTICS_VERSION );
-			printf( '<p class="description">%s</p>', __( 'Connect your WordPress website to Matomo Analytics.', 'mai-analytics' ) );
-
-			$this->check_connection();
+			$this->connection_info();
+			printf( '<br><p class="description">%s</p>', __( 'Connect your WordPress website to Matomo Analytics.', 'mai-analytics' ) );
 
 			echo '<form method="post" action="options.php">';
 				settings_fields( 'mai_analytics_group' );
@@ -73,7 +72,7 @@ class Mai_Analytics_Settings {
 	 *
 	 * @return void
 	 */
-	public function check_connection() {
+	public function connection_info() {
 		if ( ! ( $this->options['url'] && $this->options['token'] ) ) {
 			return;
 		}
