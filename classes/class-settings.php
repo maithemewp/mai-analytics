@@ -102,14 +102,10 @@ class Mai_Analytics_Settings {
 				// Get response code.
 				$code = wp_remote_retrieve_response_code( $response );
 
-				// If unsuccessful, show response message and skip.
 				if ( 200 !== $code ) {
-					// Get error message and skip.
-					echo $code . ' ' . wp_remote_retrieve_response_message( $response );
-					continue;
-				}
-
-				if ( is_string( $body ) ) {
+					$error  = true;
+					$notice =  $code . ' ' . wp_remote_retrieve_response_message( $response );
+				} elseif ( is_string( $body ) ) {
 					$notice = __( 'Connected', 'mai-analytics' );
 				} elseif ( is_object( $body ) && isset( $body->value ) ) {
 					$notice = $body->value;
