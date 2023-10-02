@@ -51,7 +51,7 @@ class Mai_Analytics_Settings {
 		$this->options = mai_analytics_get_options();
 
 		echo '<div class="wrap">';
-			printf( '<h2>%s</h2>', __( 'Mai Analytics', 'mai-analytics' ) );
+			printf( '<h2>%s (%s)</h2>', __( 'Mai Analytics', 'mai-analytics' ), MAI_ANALYTICS_VERSION );
 			printf( '<p class="description">%s</p>', __( 'Connect your WordPress website to Matomo Analytics.', 'mai-analytics' ) );
 
 			$this->check_connection();
@@ -97,6 +97,16 @@ class Mai_Analytics_Settings {
 
 				if ( json_last_error() === JSON_ERROR_NONE ) {
 					$body = $decode;
+				}
+
+				// Get response code.
+				$code = wp_remote_retrieve_response_code( $response );
+
+				// If unsuccessful, show response message and skip.
+				if ( 200 !== $code ) {
+					// Get error message and skip.
+					echo $code . ' ' . wp_remote_retrieve_response_message( $response );
+					continue;
 				}
 
 				if ( is_string( $body ) ) {
