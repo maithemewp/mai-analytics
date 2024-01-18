@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.5 (1/18/24)
+* Fixed: Sanitize name field.
+* Fixed: Remove unecessary encoding in DOMDocument.
+
 ## 0.4.4 (10/02/23)
 * Changed: Only check connection on settings page if tracking is enabled.
 
