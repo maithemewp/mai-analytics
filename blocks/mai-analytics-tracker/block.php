@@ -38,7 +38,7 @@ function mai_do_analytics_tracker_block( $attributes, $content, $is_preview, $po
 		return;
 	}
 
-	echo mai_analytics_add_attributes( $content, (string) get_field( 'name' ) );
+	echo mai_analytics_add_attributes( $content, sanitize_text_field( (string) get_field( 'name' ) ) );
 }
 
 add_action( 'acf/init', 'mai_register_analytics_tracker_field_group' );
@@ -81,7 +81,7 @@ function mai_register_analytics_tracker_field_group() {
 
 add_action( 'admin_init', 'mai_analytics_register_block_script' );
 /**
- * Enqueue JS.
+ * Enqueue JS for block transforms.
  *
  * @since 0.3.0
  *
