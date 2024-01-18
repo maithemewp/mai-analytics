@@ -156,7 +156,7 @@ final class Mai_Analytics_Plugin {
 	 * @return void
 	 */
 	public function hooks() {
-		add_action( 'plugins_loaded', [ $this, 'updater' ], 12 ); // After default of 10, so Mai Engine icons are available.
+		add_action( 'plugins_loaded', [ $this, 'updater' ] );
 		add_action( 'plugins_loaded', [ $this, 'classes' ], 8 ); // Before default of 10, so per-site code can run on plugins_loaded default.
 	}
 
