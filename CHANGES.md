@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.4.6 (1/19/24)
+* Fixed: Encoded special characters were displaying on the front end in some configurations.
+
 ## 0.4.5 (1/18/24)
 * Fixed: Sanitize name field.
 * Fixed: Remove unecessary encoding in DOMDocument.
