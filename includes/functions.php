@@ -97,7 +97,7 @@ function mai_analytics_add_attributes( $content, $name ) {
 	}
 
 	// Save new content.
-	$content = $dom->saveHTML();
+	$content = mai_analytics_get_dom_html( $dom );
 
 	return $content;
 }
@@ -521,6 +521,9 @@ function mai_analytics_get_dom_document( $html ) {
 	// Modify state.
 	$libxml_previous_state = libxml_use_internal_errors( true );
 
+	// Encode.
+	$html = mb_encode_numericentity( $html, [0x80, 0x10FFFF, 0, ~0], 'UTF-8' );
+
 	// Load the content in the document HTML.
 	$dom->loadHTML( "<div>$html</div>" );
 
@@ -543,6 +546,24 @@ function mai_analytics_get_dom_document( $html ) {
 	libxml_use_internal_errors( $libxml_previous_state );
 
 	return $dom;
+}
+
+/**
+ * Saves HTML from DOMDocument and decode entities.
+ *
+ * @access private
+ *
+ * @since TBD
+ *
+ * @param DOMDocument $dom
+ *
+ * @return string
+ */
+function mai_analytics_get_dom_html( $dom ) {
+	$html = $dom->saveHTML();
+	$html = mb_convert_encoding( $html, 'UTF-8', 'HTML-ENTITIES' );
+
+	return $html;
 }
 
 /**
