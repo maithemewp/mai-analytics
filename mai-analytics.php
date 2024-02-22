@@ -4,7 +4,7 @@
  * Plugin Name:     Mai Analytics
  * Plugin URI:      https://bizbudding.com/
  * Description:     Track first-party analytics with Matomo.
- * Version:         0.4.6
+ * Version:         0.4.7
  *
  * Author:          BizBudding
  * Author URI:      https://bizbudding.com
@@ -104,7 +104,7 @@ final class Mai_Analytics_Plugin {
 	private function setup_constants() {
 		// Plugin version.
 		if ( ! defined( 'MAI_ANALYTICS_VERSION' ) ) {
-			define( 'MAI_ANALYTICS_VERSION', '0.4.6' );
+			define( 'MAI_ANALYTICS_VERSION', '0.4.7' );
 		}
 
 		// Plugin Folder Path.

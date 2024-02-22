@@ -204,7 +204,7 @@ class Mai_Analytics_Content_Tracking {
 	 */
 	function get_menu_slug( $slug ) {
 		$slugs = $this->get_menus( $slug );
-		$slug  = $slugs[ $slug ] > 2 ? $slug . '-' . $slugs[ $slug ] - 1 : $slug;
+		$slug  = $slugs[ $slug ] > 2 ? $slug . '-' . ( $slugs[ $slug ] - 1 ) : $slug;
 
 		return $slug;
 	}
