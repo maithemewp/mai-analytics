@@ -1,0 +1,183 @@
+<?php
+
+namespace Mai\Analytics;
+
+class Sync {
+
+	/**
+	 * Checks the transient lock and schedules a sync on shutdown if expired.
+	 *
+	 * @return void
+	 */
+	public static function maybe_schedule_sync(): void {
+		if ( get_transient( 'mai_analytics_sync_lock' ) ) {
+			return;
+		}
+
+		$interval = Settings::get( 'sync_interval' );
+		set_transient( 'mai_analytics_sync_lock', 1, $interval * MINUTE_IN_SECONDS );
+
+		register_shutdown_function( [ self::class, 'sync' ] );
+	}
+
+	/**
+	 * Aggregates buffer table views into meta, recalculates trending, and prunes old rows.
+	 *
+	 * @return void
+	 */
+	public static function sync(): void {
+		// Prevent concurrent syncs from double-counting.
+		if ( get_transient( 'mai_analytics_syncing' ) ) {
+			return;
+		}
+
+		set_transient( 'mai_analytics_syncing', 1, MINUTE_IN_SECONDS );
+
+		// Finish the HTTP response before doing work (PHP-FPM only).
+		if ( function_exists( 'fastcgi_finish_request' ) ) {
+			fastcgi_finish_request();
+		}
+
+		global $wpdb;
+
+		$table          = Database::get_table_name();
+		$last_sync      = get_option( 'mai_analytics_synced', 0 );
+		$last_sync_date = $last_sync ? gmdate( 'Y-m-d H:i:s', $last_sync ) : '1970-01-01 00:00:00';
+		$trending_hours = Settings::get( 'trending_window' );
+		$retention_days = Settings::get( 'retention' );
+
+		// Ensure retention covers the trending window.
+		$min_retention_days = ceil( $trending_hours / 24 );
+
+		if ( $retention_days < $min_retention_days ) {
+			$retention_days = $min_retention_days;
+		}
+
+		// 1. Increment lifetime views for new views since last sync.
+		$new_views = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT object_id, object_type, object_key, COUNT(*) as cnt
+				 FROM $table
+				 WHERE viewed_at > %s
+				 GROUP BY object_id, object_type, object_key",
+				$last_sync_date
+			)
+		);
+
+		if ( $new_views ) {
+			$pt_views = get_option( 'mai_analytics_post_type_views', [] );
+
+			foreach ( $new_views as $row ) {
+				if ( 'post_type' === $row->object_type ) {
+					$pt_views[ $row->object_key ] = ( $pt_views[ $row->object_key ] ?? 0 ) + (int) $row->cnt;
+				} else {
+					self::update_meta( (int) $row->object_id, $row->object_type, 'mai_analytics_views', 'increment', (int) $row->cnt );
+				}
+			}
+
+			update_option( 'mai_analytics_post_type_views', $pt_views, false );
+		}
+
+		// 2. Recalculate trending: only query the trending window.
+		$trending = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT object_id, object_type, object_key, COUNT(*) as trending_count
+				 FROM $table
+				 WHERE viewed_at > DATE_SUB(UTC_TIMESTAMP(), INTERVAL %d HOUR)
+				 GROUP BY object_id, object_type, object_key",
+				$trending_hours
+			)
+		);
+
+		$has_trending  = [];
+		$pt_trending   = [];
+
+		if ( $trending ) {
+			foreach ( $trending as $row ) {
+				if ( 'post_type' === $row->object_type ) {
+					$pt_trending[ $row->object_key ] = (int) $row->trending_count;
+					$has_trending[ 'post_type:' . $row->object_key ] = true;
+				} else {
+					$has_trending[ $row->object_type . ':' . $row->object_id ] = true;
+					self::update_meta( (int) $row->object_id, $row->object_type, 'mai_analytics_trending', 'replace', (int) $row->trending_count );
+				}
+			}
+		}
+
+		// Zero out post_type trending for archives that fell out of the window.
+		$existing_pt_trending = get_option( 'mai_analytics_post_type_trending', [] );
+
+		foreach ( $existing_pt_trending as $key => $count ) {
+			if ( ! isset( $pt_trending[ $key ] ) ) {
+				$pt_trending[ $key ] = 0;
+			}
+		}
+
+		update_option( 'mai_analytics_post_type_trending', $pt_trending, false );
+
+		// Zero out trending for non-archive objects that fell out of the trending window.
+		$all_in_buffer = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT DISTINCT object_id, object_type
+				 FROM $table
+				 WHERE object_type != 'post_type'
+				 AND viewed_at <= DATE_SUB(UTC_TIMESTAMP(), INTERVAL %d HOUR)
+				 AND viewed_at > DATE_SUB(UTC_TIMESTAMP(), INTERVAL %d DAY)",
+				$trending_hours,
+				$retention_days
+			)
+		);
+
+		if ( $all_in_buffer ) {
+			foreach ( $all_in_buffer as $row ) {
+				if ( ! isset( $has_trending[ $row->object_type . ':' . $row->object_id ] ) ) {
+					self::update_meta( (int) $row->object_id, $row->object_type, 'mai_analytics_trending', 'replace', 0 );
+				}
+			}
+		}
+
+		// 3. Prune old rows beyond retention.
+		$wpdb->query(
+			$wpdb->prepare(
+				"DELETE FROM $table WHERE viewed_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL %d DAY)",
+				$retention_days
+			)
+		);
+
+		// 4. Record sync time and release lock.
+		update_option( 'mai_analytics_synced', time(), false );
+		delete_transient( 'mai_analytics_syncing' );
+	}
+
+	/**
+	 * Updates a meta value for a post, term, or user.
+	 *
+	 * @param int    $object_id   The post, term, or user ID.
+	 * @param string $object_type The object type: 'post', 'term', or 'user'.
+	 * @param string $key         The meta key to update.
+	 * @param string $mode        The update mode: 'increment' or 'replace'.
+	 * @param int    $value       The value to increment by or replace with.
+	 *
+	 * @return void
+	 */
+	private static function update_meta( int $object_id, string $object_type, string $key, string $mode, int $value ): void {
+		$functions = [
+			'post' => [ 'get' => 'get_post_meta', 'update' => 'update_post_meta' ],
+			'term' => [ 'get' => 'get_term_meta', 'update' => 'update_term_meta' ],
+			'user' => [ 'get' => 'get_user_meta', 'update' => 'update_user_meta' ],
+		];
+
+		if ( ! isset( $functions[ $object_type ] ) ) {
+			return;
+		}
+
+		$func = $functions[ $object_type ];
+
+		if ( 'increment' === $mode ) {
+			$current = (int) call_user_func( $func['get'], $object_id, $key, true );
+			$value   = $current + $value;
+		}
+
+		call_user_func( $func['update'], $object_id, $key, $value );
+	}
+}
