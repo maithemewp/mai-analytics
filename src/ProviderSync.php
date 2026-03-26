@@ -137,7 +137,7 @@ class ProviderSync {
 		$trend_start = gmdate( 'Y-m-d', strtotime( "-{$trending_days} days" ) );
 
 		// Fetch all-time web views from provider.
-		$web_views_all = $provider->get_views( $paths, '2020-10-14', $today );
+		$web_views_all = $provider->get_views( $paths, apply_filters( 'mai_analytics_alltime_start', '2020-10-14' ), $today );
 
 		// Fetch trending-window web views from provider.
 		$web_views_trending = $provider->get_views( $paths, $trend_start, $today );
@@ -385,7 +385,7 @@ class ProviderSync {
 				$paths = array_keys( $path_map );
 
 				// Fetch all-time web views.
-				$web_views_all = $provider->get_views( $paths, '2020-10-14', $today );
+				$web_views_all = $provider->get_views( $paths, apply_filters( 'mai_analytics_alltime_start', '2020-10-14' ), $today );
 
 				// Fetch trending-window web views.
 				$web_views_trending = $provider->get_views( $paths, $trend_start, $today );
