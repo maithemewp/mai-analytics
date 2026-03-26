@@ -5,12 +5,10 @@ namespace Mai\Analytics;
 class AdminSettings {
 
 	/**
-	 * Registers the settings page menu and WP Settings API.
+	 * Registers the WP Settings API, admin notices, and plugin action links.
 	 */
 	public function __construct() {
-		add_action( 'admin_menu', [ $this, 'register_menu' ], 13 );
 		add_action( 'admin_init', [ $this, 'register_settings' ] );
-		add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_assets' ] );
 		add_action( 'admin_notices', [ $this, 'maybe_show_provider_notice' ] );
 		add_filter( 'plugin_action_links_' . MAI_ANALYTICS_BASENAME . '/mai-analytics.php', [ $this, 'add_action_links' ] );
 	}
@@ -25,7 +23,7 @@ class AdminSettings {
 	public function add_action_links( array $links ): array {
 		$settings_link = sprintf(
 			'<a href="%s">%s</a>',
-			admin_url( 'admin.php?page=mai-analytics-settings' ),
+			admin_url( 'admin.php?page=mai-analytics&tab=settings' ),
 			__( 'Settings', 'mai-analytics' )
 		);
 
@@ -35,7 +33,7 @@ class AdminSettings {
 	}
 
 	/**
-	 * Shows an admin notice if the selected provider is unavailable.
+	 * Shows an admin notice if the selected provider is unavailable or has errors.
 	 *
 	 * @return void
 	 */
@@ -87,27 +85,8 @@ class AdminSettings {
 			'<div class="notice notice-warning"><p><strong>%s</strong> %s <a href="%s">%s</a></p></div>',
 			esc_html__( 'Mai Analytics:', 'mai-analytics' ),
 			$message,
-			esc_url( admin_url( 'admin.php?page=mai-analytics-settings' ) ),
+			esc_url( admin_url( 'admin.php?page=mai-analytics&tab=settings' ) ),
 			esc_html__( 'Check settings', 'mai-analytics' )
-		);
-	}
-
-	/**
-	 * Registers the settings submenu page.
-	 *
-	 * @return void
-	 */
-	public function register_menu(): void {
-		// Hidden submenu page — navigated to via tabs on the dashboard page.
-		$parent = class_exists( 'Mai_Engine' ) ? 'mai-theme' : 'options-general.php';
-
-		add_submenu_page(
-			$parent,
-			__( 'Mai Analytics', 'mai-analytics' ),
-			'', // Hidden from menu — accessed via tab.
-			'manage_options',
-			'mai-analytics-settings',
-			[ $this, 'render_page' ]
 		);
 	}
 
@@ -145,7 +124,7 @@ class AdminSettings {
 			[ 'class' => 'mai-analytics-provider-status' ]
 		);
 
-		// Matomo-specific settings fields (same section, toggled via CSS).
+		// Matomo-specific settings fields (toggled via CSS).
 		add_settings_field(
 			'matomo_url',
 			__( 'Matomo URL', 'mai-analytics' ),
@@ -172,45 +151,19 @@ class AdminSettings {
 			'mai_analytics_data_source',
 			[ 'key' => 'matomo_token', 'type' => 'password', 'description' => __( 'Matomo API authentication token.', 'mai-analytics' ), 'class' => 'mai-analytics-provider-matomo' ]
 		);
-	}
 
-	/**
-	 * Enqueues settings page assets.
-	 *
-	 * @param string $hook The current admin page hook suffix.
-	 *
-	 * @return void
-	 */
-	public function enqueue_assets( string $hook ): void {
-		if ( ! str_contains( $hook, 'mai-analytics-settings' ) ) {
-			return;
-		}
+		// Redirect back to our tab after settings save.
+		add_filter( 'wp_redirect', function( string $location ): string {
+			if ( str_contains( $location, 'page=mai-analytics-settings' ) ) {
+				return admin_url( 'admin.php?page=mai-analytics&tab=settings&settings-updated=true' );
+			}
 
-		// CSS-only visibility for provider sections using :has().
-		wp_add_inline_style( 'wp-admin', '
-			/* Hide provider-specific rows by default */
-			.mai-analytics-provider-status,
-			.mai-analytics-provider-matomo { display: none; }
+			if ( str_contains( $location, 'settings-updated=true' ) && str_contains( $location, 'options.php' ) ) {
+				return admin_url( 'admin.php?page=mai-analytics&tab=settings&settings-updated=true' );
+			}
 
-			/* Show status row for whichever provider is selected */
-			:has(#mai-analytics-data-source option[value="site_kit"]:checked) .mai-analytics-provider-site_kit,
-			:has(#mai-analytics-data-source option[value="matomo"]:checked) .mai-analytics-provider-matomo,
-			:has(#mai-analytics-data-source option[value="matomo"]:checked) .mai-analytics-provider-status,
-			:has(#mai-analytics-data-source option[value="site_kit"]:checked) .mai-analytics-provider-status { display: table-row; }
-		' );
-
-		wp_enqueue_script(
-			'mai-analytics-admin-settings',
-			MAI_ANALYTICS_PLUGIN_URL . 'assets/js/admin-settings.js',
-			[],
-			MAI_ANALYTICS_VERSION,
-			true
-		);
-
-		wp_localize_script( 'mai-analytics-admin-settings', 'maiAnalyticsSettings', [
-			'restBase' => esc_url_raw( rest_url( 'mai-analytics/v1/admin/' ) ),
-			'nonce'    => wp_create_nonce( 'wp_rest' ),
-		] );
+			return $location;
+		} );
 	}
 
 	/**
@@ -223,7 +176,6 @@ class AdminSettings {
 	public function sanitize( array $input ): array {
 		$valid_sources = [ 'self_hosted' ];
 
-		// Add available provider slugs.
 		$providers = apply_filters( 'mai_analytics_providers', [] );
 
 		foreach ( $providers as $provider ) {
@@ -241,75 +193,6 @@ class AdminSettings {
 		$sanitized['matomo_token']   = sanitize_text_field( $input['matomo_token'] ?? '' );
 
 		return $sanitized;
-	}
-
-	/**
-	 * Renders the settings page.
-	 *
-	 * @return void
-	 */
-	public function render_page(): void {
-		?>
-		<div class="wrap">
-			<h1><?php esc_html_e( 'Mai Analytics', 'mai-analytics' ); ?></h1>
-
-			<nav class="nav-tab-wrapper" style="margin-bottom:20px;">
-				<a href="<?php echo esc_url( admin_url( 'admin.php?page=mai-analytics' ) ); ?>" class="nav-tab"><?php esc_html_e( 'Dashboard', 'mai-analytics' ); ?></a>
-				<a href="<?php echo esc_url( admin_url( 'admin.php?page=mai-analytics-settings' ) ); ?>" class="nav-tab nav-tab-active"><?php esc_html_e( 'Settings', 'mai-analytics' ); ?></a>
-			</nav>
-
-			<form method="post" action="options.php">
-				<?php
-				settings_fields( 'mai_analytics_settings' );
-				do_settings_sections( 'mai-analytics-settings' );
-				submit_button();
-				?>
-			</form>
-
-			<?php if ( 'self_hosted' !== Settings::get( 'data_source' ) ) : ?>
-			<?php $last_sync = get_option( 'mai_analytics_provider_last_sync', 0 ); ?>
-			<hr>
-			<h2><?php esc_html_e( 'Sync Tools', 'mai-analytics' ); ?></h2>
-			<?php if ( $last_sync ) : ?>
-				<p class="description" style="margin-bottom:16px;">
-					<?php
-					printf(
-						/* translators: %s: formatted date/time */
-						esc_html__( 'Last synced: %s', 'mai-analytics' ),
-						esc_html( wp_date( 'M j, Y g:i a', $last_sync ) )
-					);
-					?>
-				</p>
-			<?php endif; ?>
-			<table class="form-table" role="presentation">
-				<tr>
-					<th scope="row"><?php esc_html_e( 'Sync Now', 'mai-analytics' ); ?></th>
-					<td>
-						<button type="button" class="button" id="mai-analytics-sync-now">
-							<?php esc_html_e( 'Sync Now', 'mai-analytics' ); ?>
-						</button>
-						<p class="mai-analytics-btn-status" style="display:none; margin:8px 0 0; font-weight:600;"></p>
-						<p class="description">
-							<?php esc_html_e( 'Process any pages that have received traffic since the last sync. This normally runs automatically every 15 minutes.', 'mai-analytics' ); ?>
-						</p>
-					</td>
-				</tr>
-				<tr>
-					<th scope="row"><?php esc_html_e( 'Warm All Stats', 'mai-analytics' ); ?></th>
-					<td>
-						<button type="button" class="button" id="mai-analytics-warm">
-							<?php esc_html_e( 'Warm Stats', 'mai-analytics' ); ?>
-						</button>
-						<p class="mai-analytics-btn-status" style="display:none; margin:8px 0 0; font-weight:600;"></p>
-						<p class="description">
-							<?php esc_html_e( 'Fetch stats from the provider for all posts, terms, and authors — not just ones with recent traffic. Use this after switching providers, or to populate stats for pages that haven\'t been visited yet. This may take a while on large sites.', 'mai-analytics' ); ?>
-						</p>
-					</td>
-				</tr>
-			</table>
-			<?php endif; ?>
-		</div>
-		<?php
 	}
 
 	/**
@@ -340,7 +223,7 @@ class AdminSettings {
 	}
 
 	/**
-	 * Renders the provider status card.
+	 * Renders the provider status indicator.
 	 *
 	 * @return void
 	 */
@@ -359,7 +242,6 @@ class AdminSettings {
 			printf( '<span style="color:#d63638;">&#10007; %s</span>', esc_html( $reason ?: __( 'Not configured', 'mai-analytics' ) ) );
 		}
 
-		// Show last sync error if one exists.
 		$last_error = method_exists( $provider, 'get_last_error' ) ? $provider::get_last_error() : '';
 
 		if ( $last_error ) {
