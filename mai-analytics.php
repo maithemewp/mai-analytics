@@ -4,7 +4,7 @@
  * Plugin Name:     Mai Analytics
  * Plugin URI:      https://bizbudding.com/
  * Description:     View tracking for posts, terms, and authors. Supports self-hosted tracking, Google Analytics (via Site Kit), and Matomo.
- * Version:         1.0.0
+ * Version:         1.1.0
  *
  * Author:          BizBudding
  * Author URI:      https://bizbudding.com
@@ -17,7 +17,7 @@ use Mai\Analytics\Database;
 use Mai\Analytics\Plugin;
 
 // Constants.
-define( 'MAI_ANALYTICS_VERSION', '1.0.0' );
+define( 'MAI_ANALYTICS_VERSION', '1.1.0' );
 define( 'MAI_ANALYTICS_DB_VERSION', '1.1.0' );
 define( 'MAI_ANALYTICS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'MAI_ANALYTICS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
