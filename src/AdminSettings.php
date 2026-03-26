@@ -32,16 +32,27 @@ class AdminSettings {
 			return;
 		}
 
-		$label = $provider ? $provider->get_label() : $data_source;
+		$label  = $provider ? $provider->get_label() : $data_source;
+		$reason = ( $provider && method_exists( $provider, 'get_unavailable_reason' ) )
+			? $provider->get_unavailable_reason()
+			: '';
+
+		$message = sprintf(
+			/* translators: %s: provider name */
+			esc_html__( 'The selected analytics provider (%s) is not available.', 'mai-analytics' ),
+			esc_html( $label )
+		);
+
+		if ( $reason ) {
+			$message .= ' ' . esc_html( $reason );
+		}
+
+		$message .= ' ' . esc_html__( 'View syncing is paused — existing stats are preserved.', 'mai-analytics' );
 
 		printf(
 			'<div class="notice notice-warning"><p><strong>%s</strong> %s <a href="%s">%s</a></p></div>',
 			esc_html__( 'Mai Analytics:', 'mai-analytics' ),
-			sprintf(
-				/* translators: %s: provider name */
-				esc_html__( 'The selected analytics provider (%s) is not available. View syncing is paused — existing stats are preserved.', 'mai-analytics' ),
-				esc_html( $label )
-			),
+			$message,
 			esc_url( admin_url( 'admin.php?page=mai-analytics-settings' ) ),
 			esc_html__( 'Check settings', 'mai-analytics' )
 		);

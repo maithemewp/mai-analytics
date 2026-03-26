@@ -47,6 +47,28 @@ class SiteKit implements WebViewProvider {
 	}
 
 	/**
+	 * Gets a human-readable reason why the provider is not available.
+	 *
+	 * @return string The reason, or empty string if available.
+	 */
+	public function get_unavailable_reason(): string {
+		if ( ! defined( 'GOOGLESITEKIT_VERSION' ) ) {
+			return __( 'Google Site Kit plugin is not installed or activated.', 'mai-analytics' );
+		}
+
+		if ( version_compare( GOOGLESITEKIT_VERSION, self::MIN_SITE_KIT_VERSION, '<' ) ) {
+			return sprintf(
+				/* translators: 1: current version, 2: required version */
+				__( 'Site Kit version %1$s is too old. Version %2$s or later is required.', 'mai-analytics' ),
+				GOOGLESITEKIT_VERSION,
+				self::MIN_SITE_KIT_VERSION
+			);
+		}
+
+		return __( 'Google Analytics 4 is not connected in Site Kit.', 'mai-analytics' );
+	}
+
+	/**
 	 * Checks whether Site Kit is installed, active, and has a fully configured GA4 property.
 	 *
 	 * Verifies that the GOOGLESITEKIT_VERSION constant is defined and that the
@@ -55,8 +77,18 @@ class SiteKit implements WebViewProvider {
 	 *
 	 * @return bool True if Site Kit is available and GA4 is fully configured.
 	 */
+	/**
+	 * Minimum Site Kit version required for the GA4 report REST API.
+	 */
+	private const MIN_SITE_KIT_VERSION = '1.96.0';
+
 	public function is_available(): bool {
 		if ( ! defined( 'GOOGLESITEKIT_VERSION' ) ) {
+			return false;
+		}
+
+		// Ensure Site Kit is recent enough to have the GA4 report endpoint we rely on.
+		if ( version_compare( GOOGLESITEKIT_VERSION, self::MIN_SITE_KIT_VERSION, '<' ) ) {
 			return false;
 		}
 
