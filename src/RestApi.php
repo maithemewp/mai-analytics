@@ -123,6 +123,9 @@ class RestApi {
 	/**
 	 * Records a view for a post, term, or user.
 	 *
+	 * In external provider mode, web views are deduplicated in the buffer (one row per
+	 * unique object per sync cycle). App views always insert every row for counting.
+	 *
 	 * @param WP_REST_Request $request The incoming REST request.
 	 *
 	 * @return WP_REST_Response The response indicating success or failure.
@@ -147,10 +150,22 @@ class RestApi {
 			return new WP_REST_Response( [ 'success' => false ], 404 );
 		}
 
-		$source = $request->get_param( 'source' ) ?: 'web';
-		Database::insert_view( $id, $type, $source );
+		$source      = $request->get_param( 'source' ) ?: 'web';
+		$data_source = Settings::get( 'data_source' );
 
-		// Maybe trigger sync on shutdown.
+		// External provider mode + web visit: dedup check before INSERT.
+		if ( 'self_hosted' !== $data_source && 'web' === $source ) {
+			$last_sync = (int) get_option( 'mai_analytics_provider_last_sync', 0 );
+
+			if ( ! Database::is_queued( $id, $type, $last_sync ) ) {
+				Database::insert_view( $id, $type, $source );
+			}
+
+			return new WP_REST_Response( [ 'success' => true ] );
+		}
+
+		// Self-hosted (any source) OR external + app → buffer INSERT (every view counted).
+		Database::insert_view( $id, $type, $source );
 		Sync::maybe_schedule_sync();
 
 		return new WP_REST_Response( [ 'success' => true ] );
@@ -189,6 +204,8 @@ class RestApi {
 	/**
 	 * Records a view for a post type archive.
 	 *
+	 * In external provider mode, web views are deduplicated in the buffer.
+	 *
 	 * @param WP_REST_Request $request The incoming REST request.
 	 *
 	 * @return WP_REST_Response The response indicating success or failure.
@@ -210,9 +227,22 @@ class RestApi {
 			return new WP_REST_Response( [ 'success' => false ], 404 );
 		}
 
-		$source = $request->get_param( 'source' ) ?: 'web';
-		Database::insert_view( 0, 'post_type', $source, $post_type );
+		$source      = $request->get_param( 'source' ) ?: 'web';
+		$data_source = Settings::get( 'data_source' );
 
+		// External provider mode + web visit: dedup check before INSERT.
+		if ( 'self_hosted' !== $data_source && 'web' === $source ) {
+			$last_sync = (int) get_option( 'mai_analytics_provider_last_sync', 0 );
+
+			if ( ! Database::is_queued( 0, 'post_type', $last_sync ) ) {
+				Database::insert_view( 0, 'post_type', $source, $post_type );
+			}
+
+			return new WP_REST_Response( [ 'success' => true ] );
+		}
+
+		// Self-hosted (any source) OR external + app → buffer INSERT.
+		Database::insert_view( 0, 'post_type', $source, $post_type );
 		Sync::maybe_schedule_sync();
 
 		return new WP_REST_Response( [ 'success' => true ] );

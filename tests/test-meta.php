@@ -29,4 +29,32 @@ class Test_Meta extends WP_UnitTestCase {
 		$this->assertArrayHasKey( 'mai_analytics_views', $registered );
 		$this->assertArrayHasKey( 'mai_analytics_trending', $registered );
 	}
+
+	public function test_views_web_meta_registered(): void {
+		$post_meta = get_registered_meta_keys( 'post' );
+		$term_meta = get_registered_meta_keys( 'term' );
+		$user_meta = get_registered_meta_keys( 'user' );
+
+		$this->assertArrayHasKey( 'mai_analytics_views_web', $post_meta );
+		$this->assertArrayHasKey( 'mai_analytics_views_web', $term_meta );
+		$this->assertArrayHasKey( 'mai_analytics_views_web', $user_meta );
+
+		// Verify type and REST visibility.
+		$this->assertEquals( 'integer', $post_meta['mai_analytics_views_web']['type'] );
+		$this->assertTrue( $post_meta['mai_analytics_views_web']['show_in_rest'] );
+	}
+
+	public function test_views_app_meta_registered(): void {
+		$post_meta = get_registered_meta_keys( 'post' );
+		$term_meta = get_registered_meta_keys( 'term' );
+		$user_meta = get_registered_meta_keys( 'user' );
+
+		$this->assertArrayHasKey( 'mai_analytics_views_app', $post_meta );
+		$this->assertArrayHasKey( 'mai_analytics_views_app', $term_meta );
+		$this->assertArrayHasKey( 'mai_analytics_views_app', $user_meta );
+
+		// Verify type and REST visibility.
+		$this->assertEquals( 'integer', $post_meta['mai_analytics_views_app']['type'] );
+		$this->assertTrue( $post_meta['mai_analytics_views_app']['show_in_rest'] );
+	}
 }

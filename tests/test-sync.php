@@ -108,4 +108,85 @@ class Test_Sync extends WP_UnitTestCase {
 		// Views should NOT be synced because the lock was held.
 		$this->assertEquals( 0, (int) get_post_meta( $post_id, 'mai_analytics_views', true ) );
 	}
+
+	public function test_sync_splits_views_by_source(): void {
+		$post_id = self::factory()->post->create();
+
+		// Insert web and app views.
+		Database::insert_view( $post_id, 'post', 'web' );
+		Database::insert_view( $post_id, 'post', 'web' );
+		Database::insert_view( $post_id, 'post', 'web' );
+		Database::insert_view( $post_id, 'post', 'app' );
+		Database::insert_view( $post_id, 'post', 'app' );
+
+		Sync::sync();
+
+		$web   = (int) get_post_meta( $post_id, 'mai_analytics_views_web', true );
+		$app   = (int) get_post_meta( $post_id, 'mai_analytics_views_app', true );
+		$total = (int) get_post_meta( $post_id, 'mai_analytics_views', true );
+
+		$this->assertEquals( 3, $web );
+		$this->assertEquals( 2, $app );
+		$this->assertEquals( 5, $total );
+	}
+
+	public function test_sync_computes_total_from_web_and_app(): void {
+		$post_id = self::factory()->post->create();
+
+		// Pre-set some existing meta from a previous sync.
+		update_post_meta( $post_id, 'mai_analytics_views_web', 10 );
+		update_post_meta( $post_id, 'mai_analytics_views_app', 5 );
+		update_post_meta( $post_id, 'mai_analytics_views', 15 );
+
+		// Insert new views of each source.
+		Database::insert_view( $post_id, 'post', 'web' );
+		Database::insert_view( $post_id, 'post', 'app' );
+		Database::insert_view( $post_id, 'post', 'app' );
+
+		Sync::sync();
+
+		$web   = (int) get_post_meta( $post_id, 'mai_analytics_views_web', true );
+		$app   = (int) get_post_meta( $post_id, 'mai_analytics_views_app', true );
+		$total = (int) get_post_meta( $post_id, 'mai_analytics_views', true );
+
+		// Web: 10 + 1 = 11, App: 5 + 2 = 7, Total: 11 + 7 = 18.
+		$this->assertEquals( 11, $web );
+		$this->assertEquals( 7, $app );
+		$this->assertEquals( $web + $app, $total );
+	}
+
+	public function test_trending_uses_days_not_hours(): void {
+		global $wpdb;
+		$table   = Database::get_table_name();
+		$post_id = self::factory()->post->create();
+
+		// Insert a view 2 days ago (within the default 7-day window).
+		$wpdb->insert( $table, [
+			'object_id'   => $post_id,
+			'object_type' => 'post',
+			'object_key'  => '',
+			'viewed_at'   => gmdate( 'Y-m-d H:i:s', strtotime( '-2 days' ) ),
+			'source'      => 'web',
+		] );
+
+		// Insert a view 10 days ago (outside the default 7-day window).
+		$wpdb->insert( $table, [
+			'object_id'   => $post_id,
+			'object_type' => 'post',
+			'object_key'  => '',
+			'viewed_at'   => gmdate( 'Y-m-d H:i:s', strtotime( '-10 days' ) ),
+			'source'      => 'web',
+		] );
+
+		// Insert a recent view to also test the current window.
+		Database::insert_view( $post_id, 'post', 'web' );
+
+		Sync::sync();
+
+		$trending = (int) get_post_meta( $post_id, 'mai_analytics_trending', true );
+
+		// Only the 2-day-old and the current view should count (2 within the 7-day window).
+		// The 10-day-old view is outside the window.
+		$this->assertEquals( 2, $trending );
+	}
 }

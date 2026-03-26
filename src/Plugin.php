@@ -16,15 +16,36 @@ class Plugin {
 
 		new Meta();
 		new RestApi();
+		new AdminRestApi();
 		new Tracker();
 		new Cron();
 		new MaiGrid();
 
+		if ( is_admin() ) {
+			new Admin();
+			new AdminSettings();
+		}
+
+		self::register_providers();
 		self::setup_updater();
 
 		if ( defined( 'WP_CLI' ) && WP_CLI ) {
 			new CLI();
 		}
+	}
+
+	/**
+	 * Registers built-in analytics providers.
+	 *
+	 * @return void
+	 */
+	private static function register_providers(): void {
+		add_filter( 'mai_analytics_providers', function( array $providers ): array {
+			$providers[] = new Providers\SiteKit();
+			$providers[] = new Providers\Matomo();
+
+			return $providers;
+		} );
 	}
 
 	/**

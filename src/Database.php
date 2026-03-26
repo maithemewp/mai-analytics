@@ -84,4 +84,68 @@ class Database {
 			[ '%d', '%s', '%s', '%s', '%s' ]
 		);
 	}
+
+	/**
+	 * Checks if an object is already in the buffer since the last provider sync.
+	 *
+	 * Uses the existing (object_id, object_type, viewed_at) index for fast lookups.
+	 * Sites with persistent object cache get a cache-first check for even faster dedup.
+	 *
+	 * @param int    $object_id   The object ID.
+	 * @param string $object_type The object type.
+	 * @param int    $last_sync   Unix timestamp of the last provider sync.
+	 *
+	 * @return bool True if the object already has a buffer row since last sync.
+	 */
+	public static function is_queued( int $object_id, string $object_type, int $last_sync ): bool {
+		$cache_key = "mai_analytics_queued_{$object_type}_{$object_id}";
+
+		if ( wp_using_ext_object_cache() && wp_cache_get( $cache_key, 'mai-analytics' ) ) {
+			return true;
+		}
+
+		global $wpdb;
+
+		$table     = self::get_table_name();
+		$since     = $last_sync ? gmdate( 'Y-m-d H:i:s', $last_sync ) : '1970-01-01 00:00:00';
+		$exists    = (bool) $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT 1 FROM $table WHERE object_id = %d AND object_type = %s AND viewed_at > %s LIMIT 1",
+				$object_id,
+				$object_type,
+				$since
+			)
+		);
+
+		if ( $exists && wp_using_ext_object_cache() ) {
+			wp_cache_set( $cache_key, 1, 'mai-analytics', 15 * MINUTE_IN_SECONDS );
+		}
+
+		return $exists;
+	}
+
+	/**
+	 * Gets distinct objects from the buffer since a given timestamp.
+	 *
+	 * Used by ProviderSync to determine which objects need provider data fetched.
+	 *
+	 * @param string $since MySQL datetime string. Objects with buffer rows after this time are returned.
+	 *
+	 * @return array Array of objects: [ ['object_id' => int, 'object_type' => string, 'object_key' => string], ... ]
+	 */
+	public static function get_distinct_objects_since( string $since ): array {
+		global $wpdb;
+
+		$table = self::get_table_name();
+
+		return $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT DISTINCT object_id, object_type, object_key
+				 FROM $table
+				 WHERE viewed_at > %s
+				 ORDER BY object_id ASC",
+				$since
+			)
+		);
+	}
 }

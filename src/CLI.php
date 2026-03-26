@@ -10,13 +10,15 @@ class CLI {
 	 * Registers all WP-CLI subcommands for Mai Analytics.
 	 */
 	public function __construct() {
-		WP_CLI::add_command( 'mai-analytics migrate', [ $this, 'migrate' ] );
-		WP_CLI::add_command( 'mai-analytics sync',    [ $this, 'sync' ] );
-		WP_CLI::add_command( 'mai-analytics stats',   [ $this, 'stats' ] );
-		WP_CLI::add_command( 'mai-analytics prune',   [ $this, 'prune' ] );
-		WP_CLI::add_command( 'mai-analytics seed',        [ $this, 'seed' ] );
-		WP_CLI::add_command( 'mai-analytics reset',       [ $this, 'reset' ] );
-		WP_CLI::add_command( 'mai-analytics update-bots', [ $this, 'update_bots' ] );
+		WP_CLI::add_command( 'mai-analytics migrate',       [ $this, 'migrate' ] );
+		WP_CLI::add_command( 'mai-analytics sync',          [ $this, 'sync' ] );
+		WP_CLI::add_command( 'mai-analytics stats',         [ $this, 'stats' ] );
+		WP_CLI::add_command( 'mai-analytics prune',         [ $this, 'prune' ] );
+		WP_CLI::add_command( 'mai-analytics seed',          [ $this, 'seed' ] );
+		WP_CLI::add_command( 'mai-analytics reset',         [ $this, 'reset' ] );
+		WP_CLI::add_command( 'mai-analytics update-bots',   [ $this, 'update_bots' ] );
+		WP_CLI::add_command( 'mai-analytics provider-sync', [ $this, 'provider_sync' ] );
+		WP_CLI::add_command( 'mai-analytics warm',          [ $this, 'warm' ] );
 	}
 
 	/**
@@ -228,10 +230,19 @@ class CLI {
 
 		$last_sync = get_option( 'mai_analytics_synced', 0 );
 
+		$data_source = Settings::get( 'data_source' );
+
+		WP_CLI::log( sprintf( 'Data source:              %s', $data_source ) );
 		WP_CLI::log( sprintf( 'Tracked objects in buffer: %s', number_format( $object_count ) ) );
 		WP_CLI::log( sprintf( 'Buffer table rows:        %s', number_format( $buffer_count ) ) );
 		WP_CLI::log( sprintf( 'Total lifetime views:     %s', number_format( $total_views ) ) );
 		WP_CLI::log( sprintf( 'Last sync:                %s', $last_sync ? wp_date( 'Y-m-d H:i:s', $last_sync ) : 'never' ) );
+
+		if ( 'self_hosted' !== $data_source ) {
+			$provider_sync = get_option( 'mai_analytics_provider_last_sync', 0 );
+
+			WP_CLI::log( sprintf( 'Last provider sync:       %s', $provider_sync ? wp_date( 'Y-m-d H:i:s', $provider_sync ) : 'never' ) );
+		}
 	}
 
 	/**
@@ -435,21 +446,135 @@ class CLI {
 		$wpdb->query( "TRUNCATE TABLE $table" );
 		WP_CLI::log( 'Buffer table truncated.' );
 
-		$post_deleted = (int) $wpdb->query( "DELETE FROM $wpdb->postmeta WHERE meta_key IN ('mai_analytics_views', 'mai_analytics_trending')" );
+		$meta_keys    = "'mai_analytics_views','mai_analytics_views_web','mai_analytics_views_app','mai_analytics_trending'";
+		$post_deleted = (int) $wpdb->query( "DELETE FROM $wpdb->postmeta WHERE meta_key IN ({$meta_keys})" );
 		WP_CLI::log( sprintf( 'Deleted %s post meta rows.', number_format( $post_deleted ) ) );
 
-		$term_deleted = (int) $wpdb->query( "DELETE FROM $wpdb->termmeta WHERE meta_key IN ('mai_analytics_views', 'mai_analytics_trending')" );
+		$term_deleted = (int) $wpdb->query( "DELETE FROM $wpdb->termmeta WHERE meta_key IN ({$meta_keys})" );
 		WP_CLI::log( sprintf( 'Deleted %s term meta rows.', number_format( $term_deleted ) ) );
 
-		$user_deleted = (int) $wpdb->query( "DELETE FROM $wpdb->usermeta WHERE meta_key IN ('mai_analytics_views', 'mai_analytics_trending')" );
+		$user_deleted = (int) $wpdb->query( "DELETE FROM $wpdb->usermeta WHERE meta_key IN ({$meta_keys})" );
 		WP_CLI::log( sprintf( 'Deleted %s user meta rows.', number_format( $user_deleted ) ) );
 
 		delete_option( 'mai_analytics_synced' );
+		delete_option( 'mai_analytics_provider_last_sync' );
+		delete_option( 'mai_analytics_post_type_views_web' );
+		delete_option( 'mai_analytics_post_type_views_app' );
 		delete_transient( 'mai_analytics_sync_lock' );
 		delete_transient( 'mai_analytics_syncing' );
+		delete_transient( 'mai_analytics_provider_syncing' );
 		WP_CLI::log( 'Options and transients cleared.' );
 
 		WP_CLI::success( 'All Mai Analytics data has been reset.' );
+	}
+
+	/**
+	 * Process the current provider sync queue immediately.
+	 *
+	 * ## OPTIONS
+	 *
+	 * [--verbose]
+	 * : Show detailed output.
+	 *
+	 * ## EXAMPLES
+	 *
+	 *     wp mai-analytics provider-sync
+	 *
+	 * @param array $args       Positional arguments (unused).
+	 * @param array $assoc_args Associative arguments: --verbose.
+	 *
+	 * @return void
+	 */
+	public function provider_sync( array $args, array $assoc_args ): void {
+		if ( 'self_hosted' === Settings::get( 'data_source' ) ) {
+			WP_CLI::error( 'Provider sync is only available when an external data source is configured.' );
+		}
+
+		WP_CLI::log( 'Running provider sync...' );
+
+		ProviderSync::sync();
+
+		$last_sync = get_option( 'mai_analytics_provider_last_sync', 0 );
+
+		WP_CLI::success( sprintf(
+			'Provider sync complete. Last sync: %s',
+			$last_sync ? wp_date( 'Y-m-d H:i:s', $last_sync ) : 'never'
+		) );
+	}
+
+	/**
+	 * Warm stats by bulk-fetching from the active provider for all or specific objects.
+	 *
+	 * ## OPTIONS
+	 *
+	 * [--type=<type>]
+	 * : Object type to warm: post, term, user, or archive.
+	 *
+	 * [--ids=<ids>]
+	 * : Comma-separated IDs (only with --type).
+	 *
+	 * [--post_type=<post_type>]
+	 * : Limit to a specific post type (only with --type=post).
+	 *
+	 * [--taxonomy=<taxonomy>]
+	 * : Limit to a specific taxonomy (only with --type=term).
+	 *
+	 * [--verbose]
+	 * : Show detailed per-batch output.
+	 *
+	 * ## EXAMPLES
+	 *
+	 *     wp mai-analytics warm
+	 *     wp mai-analytics warm --type=post --ids=1,2,3
+	 *     wp mai-analytics warm --type=term --taxonomy=category --verbose
+	 *
+	 * @param array $args       Positional arguments (unused).
+	 * @param array $assoc_args Associative arguments.
+	 *
+	 * @return void
+	 */
+	public function warm( array $args, array $assoc_args ): void {
+		if ( 'self_hosted' === Settings::get( 'data_source' ) ) {
+			WP_CLI::error( 'Warm is only available when an external data source is configured.' );
+		}
+
+		$verbose       = \WP_CLI\Utils\get_flag_value( $assoc_args, 'verbose', false );
+		$total_updated = 0;
+		$warm_args     = [];
+
+		if ( isset( $assoc_args['type'] ) ) {
+			$warm_args['type'] = $assoc_args['type'];
+		}
+
+		if ( isset( $assoc_args['ids'] ) ) {
+			$warm_args['ids'] = array_map( 'absint', explode( ',', $assoc_args['ids'] ) );
+		}
+
+		if ( isset( $assoc_args['post_type'] ) ) {
+			$warm_args['post_type'] = $assoc_args['post_type'];
+		}
+
+		if ( isset( $assoc_args['taxonomy'] ) ) {
+			$warm_args['taxonomy'] = $assoc_args['taxonomy'];
+		}
+
+		WP_CLI::log( 'Warming stats from provider...' );
+
+		foreach ( ProviderSync::warm( $warm_args ) as $progress ) {
+			$total_updated += $progress['updated'] ?? 0;
+
+			if ( $verbose ) {
+				WP_CLI::log( sprintf(
+					'  Batch %d/%d: updated %d %s objects',
+					$progress['batch'],
+					$progress['total'],
+					$progress['updated'],
+					$progress['type']
+				) );
+			}
+		}
+
+		WP_CLI::success( sprintf( 'Warm complete. Updated %d objects.', $total_updated ) );
 	}
 
 	/**
