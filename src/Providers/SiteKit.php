@@ -143,29 +143,24 @@ class SiteKit implements WebViewProvider {
 		$request = new WP_REST_Request( 'GET', '/google-site-kit/v1/modules/analytics-4/data/report' );
 
 		$request->set_query_params( [
-			'metrics'         => [
+			'metrics'          => [
 				[ 'name' => 'screenPageViews' ],
 			],
-			'dimensions'      => [
+			'dimensions'       => [
 				[ 'name' => 'pagePath' ],
 			],
-			'startDate'       => $start_date,
-			'endDate'         => $end_date,
+			'startDate'        => $start_date,
+			'endDate'          => $end_date,
 			'dimensionFilters' => [
-				'filter' => [
-					'fieldName'    => 'pagePath',
-					'inListFilter' => [
-						'values' => $paths,
-					],
-				],
+				'pagePath' => array_values( $paths ),
 			],
-			'orderby'         => [
+			'orderby'          => [
 				[
 					'metric' => [ 'metricName' => 'screenPageViews' ],
 					'desc'   => true,
 				],
 			],
-			'limit'           => count( $paths ),
+			'limit'            => count( $paths ),
 		] );
 
 		$response = rest_do_request( $request );
