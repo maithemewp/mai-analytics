@@ -142,15 +142,13 @@ class SiteKit implements WebViewProvider {
 		// Build the internal REST request.
 		$request = new WP_REST_Request( 'GET', '/google-site-kit/v1/modules/analytics-4/data/report' );
 
-		$request->set_query_params( [
+		$params = [
 			'metrics'          => [
 				[ 'name' => 'screenPageViews' ],
 			],
 			'dimensions'       => [
 				[ 'name' => 'pagePath' ],
 			],
-			'startDate'        => $start_date,
-			'endDate'          => $end_date,
 			'dimensionFilters' => [
 				'pagePath' => array_values( $paths ),
 			],
@@ -161,7 +159,15 @@ class SiteKit implements WebViewProvider {
 				],
 			],
 			'limit'            => count( $paths ),
-		] );
+		];
+
+		// Only include date range if provided. Omitting returns all available data.
+		if ( $start_date && $end_date ) {
+			$params['startDate'] = $start_date;
+			$params['endDate']   = $end_date;
+		}
+
+		$request->set_query_params( $params );
 
 		$response = rest_do_request( $request );
 
