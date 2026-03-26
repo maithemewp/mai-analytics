@@ -12,6 +12,26 @@ class AdminSettings {
 		add_action( 'admin_init', [ $this, 'register_settings' ] );
 		add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_assets' ] );
 		add_action( 'admin_notices', [ $this, 'maybe_show_provider_notice' ] );
+		add_filter( 'plugin_action_links_' . MAI_ANALYTICS_BASENAME . '/mai-analytics.php', [ $this, 'add_action_links' ] );
+	}
+
+	/**
+	 * Adds a Settings link to the plugin action links on the Plugins page.
+	 *
+	 * @param array $links Existing plugin action links.
+	 *
+	 * @return array Modified links with Settings prepended.
+	 */
+	public function add_action_links( array $links ): array {
+		$settings_link = sprintf(
+			'<a href="%s">%s</a>',
+			admin_url( 'admin.php?page=mai-analytics-settings' ),
+			__( 'Settings', 'mai-analytics' )
+		);
+
+		array_unshift( $links, $settings_link );
+
+		return $links;
 	}
 
 	/**
@@ -28,26 +48,40 @@ class AdminSettings {
 
 		$provider = ProviderSync::get_provider();
 
-		if ( $provider && $provider->is_available() ) {
+		// Show notice if provider is unavailable OR if there's a recent sync error.
+		$last_error = ( $provider && method_exists( $provider, 'get_last_error' ) ) ? $provider::get_last_error() : '';
+
+		if ( $provider && $provider->is_available() && ! $last_error ) {
 			return;
 		}
 
-		$label  = $provider ? $provider->get_label() : $data_source;
-		$reason = ( $provider && method_exists( $provider, 'get_unavailable_reason' ) )
-			? $provider->get_unavailable_reason()
-			: '';
+		$label = $provider ? $provider->get_label() : $data_source;
 
-		$message = sprintf(
-			/* translators: %s: provider name */
-			esc_html__( 'The selected analytics provider (%s) is not available.', 'mai-analytics' ),
-			esc_html( $label )
-		);
+		if ( $provider && $provider->is_available() && $last_error ) {
+			// Provider is available but had a sync error.
+			$message = sprintf(
+				/* translators: %s: provider name */
+				esc_html__( '%s sync error:', 'mai-analytics' ),
+				esc_html( $label )
+			) . ' ' . esc_html( $last_error );
+		} else {
+			// Provider is unavailable.
+			$reason = ( $provider && method_exists( $provider, 'get_unavailable_reason' ) )
+				? $provider->get_unavailable_reason()
+				: '';
 
-		if ( $reason ) {
-			$message .= ' ' . esc_html( $reason );
+			$message = sprintf(
+				/* translators: %s: provider name */
+				esc_html__( 'The selected analytics provider (%s) is not available.', 'mai-analytics' ),
+				esc_html( $label )
+			);
+
+			if ( $reason ) {
+				$message .= ' ' . esc_html( $reason );
+			}
+
+			$message .= ' ' . esc_html__( 'View syncing is paused — existing stats are preserved.', 'mai-analytics' );
 		}
-
-		$message .= ' ' . esc_html__( 'View syncing is paused — existing stats are preserved.', 'mai-analytics' );
 
 		printf(
 			'<div class="notice notice-warning"><p><strong>%s</strong> %s <a href="%s">%s</a></p></div>',
@@ -64,24 +98,17 @@ class AdminSettings {
 	 * @return void
 	 */
 	public function register_menu(): void {
-		if ( class_exists( 'Mai_Engine' ) ) {
-			add_submenu_page(
-				'mai-theme',
-				__( 'Analytics Settings', 'mai-analytics' ),
-				__( 'Analytics Settings', 'mai-analytics' ),
-				'manage_options',
-				'mai-analytics-settings',
-				[ $this, 'render_page' ]
-			);
-		} else {
-			add_options_page(
-				__( 'Analytics Settings', 'mai-analytics' ),
-				__( 'Analytics Settings', 'mai-analytics' ),
-				'manage_options',
-				'mai-analytics-settings',
-				[ $this, 'render_page' ]
-			);
-		}
+		// Hidden submenu page — navigated to via tabs on the dashboard page.
+		$parent = class_exists( 'Mai_Engine' ) ? 'mai-theme' : 'options-general.php';
+
+		add_submenu_page(
+			$parent,
+			__( 'Mai Analytics', 'mai-analytics' ),
+			'', // Hidden from menu — accessed via tab.
+			'manage_options',
+			'mai-analytics-settings',
+			[ $this, 'render_page' ]
+		);
 	}
 
 	/**
@@ -96,7 +123,7 @@ class AdminSettings {
 
 		add_settings_section(
 			'mai_analytics_data_source',
-			__( 'Data Source', 'mai-analytics' ),
+			'',
 			'__return_null',
 			'mai-analytics-settings'
 		);
@@ -114,24 +141,18 @@ class AdminSettings {
 			__( 'Provider Status', 'mai-analytics' ),
 			[ $this, 'render_provider_status' ],
 			'mai-analytics-settings',
-			'mai_analytics_data_source'
+			'mai_analytics_data_source',
+			[ 'class' => 'mai-analytics-provider-status' ]
 		);
 
-		// Matomo-specific settings section.
-		add_settings_section(
-			'mai_analytics_matomo',
-			__( 'Matomo Settings', 'mai-analytics' ),
-			'__return_null',
-			'mai-analytics-settings'
-		);
-
+		// Matomo-specific settings fields (same section, toggled via CSS).
 		add_settings_field(
 			'matomo_url',
 			__( 'Matomo URL', 'mai-analytics' ),
 			[ $this, 'render_text_field' ],
 			'mai-analytics-settings',
-			'mai_analytics_matomo',
-			[ 'key' => 'matomo_url', 'type' => 'url', 'description' => __( 'The URL of your Matomo instance.', 'mai-analytics' ) ]
+			'mai_analytics_data_source',
+			[ 'key' => 'matomo_url', 'type' => 'url', 'description' => __( 'The URL of your Matomo instance.', 'mai-analytics' ), 'class' => 'mai-analytics-provider-matomo' ]
 		);
 
 		add_settings_field(
@@ -139,8 +160,8 @@ class AdminSettings {
 			__( 'Site ID', 'mai-analytics' ),
 			[ $this, 'render_text_field' ],
 			'mai-analytics-settings',
-			'mai_analytics_matomo',
-			[ 'key' => 'matomo_site_id', 'type' => 'number', 'description' => __( 'Matomo site/app ID.', 'mai-analytics' ) ]
+			'mai_analytics_data_source',
+			[ 'key' => 'matomo_site_id', 'type' => 'number', 'description' => __( 'Matomo site/app ID.', 'mai-analytics' ), 'class' => 'mai-analytics-provider-matomo' ]
 		);
 
 		add_settings_field(
@@ -148,8 +169,8 @@ class AdminSettings {
 			__( 'Auth Token', 'mai-analytics' ),
 			[ $this, 'render_text_field' ],
 			'mai-analytics-settings',
-			'mai_analytics_matomo',
-			[ 'key' => 'matomo_token', 'type' => 'password', 'description' => __( 'Matomo API authentication token.', 'mai-analytics' ) ]
+			'mai_analytics_data_source',
+			[ 'key' => 'matomo_token', 'type' => 'password', 'description' => __( 'Matomo API authentication token.', 'mai-analytics' ), 'class' => 'mai-analytics-provider-matomo' ]
 		);
 	}
 
@@ -164,6 +185,19 @@ class AdminSettings {
 		if ( ! str_contains( $hook, 'mai-analytics-settings' ) ) {
 			return;
 		}
+
+		// CSS-only visibility for provider sections using :has().
+		wp_add_inline_style( 'wp-admin', '
+			/* Hide provider-specific rows by default */
+			.mai-analytics-provider-status,
+			.mai-analytics-provider-matomo { display: none; }
+
+			/* Show status row for whichever provider is selected */
+			:has(#mai-analytics-data-source option[value="site_kit"]:checked) .mai-analytics-provider-site_kit,
+			:has(#mai-analytics-data-source option[value="matomo"]:checked) .mai-analytics-provider-matomo,
+			:has(#mai-analytics-data-source option[value="matomo"]:checked) .mai-analytics-provider-status,
+			:has(#mai-analytics-data-source option[value="site_kit"]:checked) .mai-analytics-provider-status { display: table-row; }
+		' );
 
 		wp_enqueue_script(
 			'mai-analytics-admin-settings',
@@ -217,7 +251,12 @@ class AdminSettings {
 	public function render_page(): void {
 		?>
 		<div class="wrap">
-			<h1><?php esc_html_e( 'Mai Analytics Settings', 'mai-analytics' ); ?></h1>
+			<h1><?php esc_html_e( 'Mai Analytics', 'mai-analytics' ); ?></h1>
+
+			<nav class="nav-tab-wrapper" style="margin-bottom:20px;">
+				<a href="<?php echo esc_url( admin_url( 'admin.php?page=mai-analytics' ) ); ?>" class="nav-tab"><?php esc_html_e( 'Dashboard', 'mai-analytics' ); ?></a>
+				<a href="<?php echo esc_url( admin_url( 'admin.php?page=mai-analytics-settings' ) ); ?>" class="nav-tab nav-tab-active"><?php esc_html_e( 'Settings', 'mai-analytics' ); ?></a>
+			</nav>
 
 			<form method="post" action="options.php">
 				<?php
@@ -228,28 +267,46 @@ class AdminSettings {
 			</form>
 
 			<?php if ( 'self_hosted' !== Settings::get( 'data_source' ) ) : ?>
+			<?php $last_sync = get_option( 'mai_analytics_provider_last_sync', 0 ); ?>
 			<hr>
 			<h2><?php esc_html_e( 'Sync Tools', 'mai-analytics' ); ?></h2>
-			<p>
-				<button type="button" class="button" id="mai-analytics-sync-now">
-					<?php esc_html_e( 'Sync Now', 'mai-analytics' ); ?>
-				</button>
-				<button type="button" class="button" id="mai-analytics-warm">
-					<?php esc_html_e( 'Warm Stats', 'mai-analytics' ); ?>
-				</button>
-				<span id="mai-analytics-sync-status"></span>
-			</p>
-			<?php
-				$last_sync = get_option( 'mai_analytics_provider_last_sync', 0 );
-
-				if ( $last_sync ) {
+			<?php if ( $last_sync ) : ?>
+				<p class="description" style="margin-bottom:16px;">
+					<?php
 					printf(
-						'<p class="description">%s %s</p>',
-						esc_html__( 'Last synced:', 'mai-analytics' ),
+						/* translators: %s: formatted date/time */
+						esc_html__( 'Last synced: %s', 'mai-analytics' ),
 						esc_html( wp_date( 'M j, Y g:i a', $last_sync ) )
 					);
-				}
-			?>
+					?>
+				</p>
+			<?php endif; ?>
+			<table class="form-table" role="presentation">
+				<tr>
+					<th scope="row"><?php esc_html_e( 'Sync Now', 'mai-analytics' ); ?></th>
+					<td>
+						<button type="button" class="button" id="mai-analytics-sync-now">
+							<?php esc_html_e( 'Sync Now', 'mai-analytics' ); ?>
+						</button>
+						<p class="mai-analytics-btn-status" style="display:none; margin:8px 0 0; font-weight:600;"></p>
+						<p class="description">
+							<?php esc_html_e( 'Process any pages that have received traffic since the last sync. This normally runs automatically every 15 minutes.', 'mai-analytics' ); ?>
+						</p>
+					</td>
+				</tr>
+				<tr>
+					<th scope="row"><?php esc_html_e( 'Warm All Stats', 'mai-analytics' ); ?></th>
+					<td>
+						<button type="button" class="button" id="mai-analytics-warm">
+							<?php esc_html_e( 'Warm Stats', 'mai-analytics' ); ?>
+						</button>
+						<p class="mai-analytics-btn-status" style="display:none; margin:8px 0 0; font-weight:600;"></p>
+						<p class="description">
+							<?php esc_html_e( 'Fetch stats from the provider for all posts, terms, and authors — not just ones with recent traffic. Use this after switching providers, or to populate stats for pages that haven\'t been visited yet. This may take a while on large sites.', 'mai-analytics' ); ?>
+						</p>
+					</td>
+				</tr>
+			</table>
 			<?php endif; ?>
 		</div>
 		<?php
@@ -288,24 +345,30 @@ class AdminSettings {
 	 * @return void
 	 */
 	public function render_provider_status(): void {
-		$providers = apply_filters( 'mai_analytics_providers', [] );
+		$provider = ProviderSync::get_provider();
 
-		if ( ! $providers ) {
-			echo '<p class="description">' . esc_html__( 'No analytics providers detected.', 'mai-analytics' ) . '</p>';
+		if ( ! $provider ) {
+			echo '<p class="description">' . esc_html__( 'Select a provider to see its status.', 'mai-analytics' ) . '</p>';
 			return;
 		}
 
-		echo '<ul>';
-
-		foreach ( $providers as $provider ) {
-			$status = $provider->is_available()
-				? '<span style="color:green;">' . esc_html__( 'Connected', 'mai-analytics' ) . '</span>'
-				: '<span style="color:#999;">' . esc_html__( 'Not configured', 'mai-analytics' ) . '</span>';
-
-			printf( '<li><strong>%s</strong>: %s</li>', esc_html( $provider->get_label() ), $status );
+		if ( $provider->is_available() ) {
+			printf( '<span style="color:green;">&#10003; %s</span>', esc_html__( 'Connected', 'mai-analytics' ) );
+		} else {
+			$reason = method_exists( $provider, 'get_unavailable_reason' ) ? $provider->get_unavailable_reason() : '';
+			printf( '<span style="color:#d63638;">&#10007; %s</span>', esc_html( $reason ?: __( 'Not configured', 'mai-analytics' ) ) );
 		}
 
-		echo '</ul>';
+		// Show last sync error if one exists.
+		$last_error = method_exists( $provider, 'get_last_error' ) ? $provider::get_last_error() : '';
+
+		if ( $last_error ) {
+			printf(
+				'<p style="color:#d63638; margin-top:8px;"><strong>%s</strong> %s</p>',
+				esc_html__( 'Last error:', 'mai-analytics' ),
+				esc_html( $last_error )
+			);
+		}
 	}
 
 	/**

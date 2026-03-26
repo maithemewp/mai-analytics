@@ -90,10 +90,14 @@ class Admin {
 		?>
 		<?php $is_external = 'self_hosted' !== Settings::get( 'data_source' ); ?>
 		<div class="wrap mai-analytics-wrap">
-			<h1>
-				<?php esc_html_e( 'Mai Analytics', 'mai-analytics' ); ?>
-				<a href="<?php echo esc_url( admin_url( 'admin.php?page=mai-analytics-settings' ) ); ?>" class="page-title-action"><?php esc_html_e( 'Settings', 'mai-analytics' ); ?></a>
-			</h1>
+			<h1><?php esc_html_e( 'Mai Analytics', 'mai-analytics' ); ?></h1>
+
+			<nav class="nav-tab-wrapper" style="margin-bottom:20px;">
+				<a href="<?php echo esc_url( admin_url( 'admin.php?page=mai-analytics' ) ); ?>" class="nav-tab nav-tab-active"><?php esc_html_e( 'Dashboard', 'mai-analytics' ); ?></a>
+				<?php if ( current_user_can( 'manage_options' ) ) : ?>
+				<a href="<?php echo esc_url( admin_url( 'admin.php?page=mai-analytics-settings' ) ); ?>" class="nav-tab"><?php esc_html_e( 'Settings', 'mai-analytics' ); ?></a>
+				<?php endif; ?>
+			</nav>
 
 			<!-- Summary Cards -->
 			<div class="mai-analytics-cards">

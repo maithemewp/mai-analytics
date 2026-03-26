@@ -142,6 +142,10 @@ class ProviderSync {
 		// Fetch trending-window web views from provider.
 		$web_views_trending = $provider->get_views( $paths, $trend_start, $today );
 
+		// If both calls returned empty, the provider likely failed. Skip web meta writes
+		// to preserve existing data. App views still get processed.
+		$provider_failed = empty( $web_views_all ) && empty( $web_views_trending );
+
 		// Options for post_type archives.
 		$pt_views     = get_option( 'mai_analytics_post_type_views', [] );
 		$pt_views_web = get_option( 'mai_analytics_post_type_views_web', [] );
@@ -156,9 +160,9 @@ class ProviderSync {
 			$key  = $obj->object_key;
 			$path = self::get_object_path( $obj );
 
-			// Web views (all-time).
-			$web_total    = $path ? (int) ( $web_views_all[ $path ] ?? 0 ) : 0;
-			$web_trending = $path ? (int) ( $web_views_trending[ $path ] ?? 0 ) : 0;
+			// Web views — only update if provider call succeeded.
+			$web_total    = ( ! $provider_failed && $path ) ? (int) ( $web_views_all[ $path ] ?? 0 ) : null;
+			$web_trending = ( ! $provider_failed && $path ) ? (int) ( $web_views_trending[ $path ] ?? 0 ) : null;
 
 			// App views: count new buffer rows since last sync.
 			$app_new = (int) $wpdb->get_var(
@@ -196,22 +200,28 @@ class ProviderSync {
 
 			if ( 'post_type' === $type ) {
 				// Post type archives use options.
-				$pt_views_web[ $key ] = $web_total;
+				if ( null !== $web_total ) {
+					$pt_views_web[ $key ] = $web_total;
+				}
 				$pt_views_app[ $key ] = ( $pt_views_app[ $key ] ?? 0 ) + $app_new;
-				$pt_views[ $key ]     = $pt_views_web[ $key ] + ( $pt_views_app[ $key ] ?? 0 );
-				$pt_trending[ $key ]  = $web_trending + $app_trending;
+				$pt_views[ $key ]     = ( $pt_views_web[ $key ] ?? 0 ) + ( $pt_views_app[ $key ] ?? 0 );
+				$pt_trending[ $key ]  = ( $web_trending ?? 0 ) + $app_trending;
 				$pt_options_dirty     = true;
 			} else {
 				// Posts, terms, users use meta.
-				Sync::update_meta( $id, $type, 'mai_analytics_views_web', 'replace', $web_total );
+				if ( null !== $web_total ) {
+					Sync::update_meta( $id, $type, 'mai_analytics_views_web', 'replace', $web_total );
+				}
 				Sync::update_meta( $id, $type, 'mai_analytics_views_app', 'increment', $app_new );
 
 				// Recompute total.
+				$current_web = (int) Sync::get_meta( $id, $type, 'mai_analytics_views_web' );
 				$current_app = (int) Sync::get_meta( $id, $type, 'mai_analytics_views_app' );
-				Sync::update_meta( $id, $type, 'mai_analytics_views', 'replace', $web_total + $current_app );
+				Sync::update_meta( $id, $type, 'mai_analytics_views', 'replace', $current_web + $current_app );
 
-				// Trending total.
-				Sync::update_meta( $id, $type, 'mai_analytics_trending', 'replace', $web_trending + $app_trending );
+				// Trending: only update web portion if provider succeeded.
+				$current_web_trending = ( null !== $web_trending ) ? $web_trending : (int) Sync::get_meta( $id, $type, 'mai_analytics_trending' );
+				Sync::update_meta( $id, $type, 'mai_analytics_trending', 'replace', $current_web_trending + $app_trending );
 			}
 
 			// Delete processed web buffer rows for this object.
@@ -380,13 +390,16 @@ class ProviderSync {
 				// Fetch trending-window web views.
 				$web_views_trending = $provider->get_views( $paths, $trend_start, $today );
 
+				// If both calls returned empty, the provider likely failed. Skip web writes.
+				$provider_failed = empty( $web_views_all ) && empty( $web_views_trending );
+
 				foreach ( $path_map as $path => $obj ) {
 					$id   = (int) $obj->object_id;
 					$type = $obj->object_type;
 					$key  = $obj->object_key;
 
-					$web_total    = (int) ( $web_views_all[ $path ] ?? 0 );
-					$web_trending = (int) ( $web_views_trending[ $path ] ?? 0 );
+					$web_total    = $provider_failed ? null : (int) ( $web_views_all[ $path ] ?? 0 );
+					$web_trending = $provider_failed ? null : (int) ( $web_views_trending[ $path ] ?? 0 );
 
 					// App trending from buffer.
 					$app_trending = (int) $wpdb->get_var(
@@ -406,19 +419,25 @@ class ProviderSync {
 					);
 
 					if ( 'post_type' === $type ) {
-						$pt_views_web[ $key ] = $web_total;
+						if ( null !== $web_total ) {
+							$pt_views_web[ $key ] = $web_total;
+						}
 						$app_count            = (int) ( get_option( 'mai_analytics_post_type_views_app', [] )[ $key ] ?? 0 );
-						$pt_views[ $key ]     = $web_total + $app_count;
-						$pt_trending[ $key ]  = $web_trending + $app_trending;
+						$pt_views[ $key ]     = ( $pt_views_web[ $key ] ?? 0 ) + $app_count;
+						$pt_trending[ $key ]  = ( $web_trending ?? 0 ) + $app_trending;
 					} else {
-						Sync::update_meta( $id, $type, 'mai_analytics_views_web', 'replace', $web_total );
+						if ( null !== $web_total ) {
+							Sync::update_meta( $id, $type, 'mai_analytics_views_web', 'replace', $web_total );
+						}
 
-						// Recompute total from current app meta + new web total.
+						// Recompute total from current values.
+						$current_web = (int) Sync::get_meta( $id, $type, 'mai_analytics_views_web' );
 						$current_app = (int) Sync::get_meta( $id, $type, 'mai_analytics_views_app' );
-						Sync::update_meta( $id, $type, 'mai_analytics_views', 'replace', $web_total + $current_app );
+						Sync::update_meta( $id, $type, 'mai_analytics_views', 'replace', $current_web + $current_app );
 
-						// Trending total.
-						Sync::update_meta( $id, $type, 'mai_analytics_trending', 'replace', $web_trending + $app_trending );
+						// Trending total — only update web portion if provider succeeded.
+						$effective_web_trending = ( null !== $web_trending ) ? $web_trending : (int) Sync::get_meta( $id, $type, 'mai_analytics_trending' );
+						Sync::update_meta( $id, $type, 'mai_analytics_trending', 'replace', $effective_web_trending + $app_trending );
 					}
 
 					$updated++;

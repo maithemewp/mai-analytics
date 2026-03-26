@@ -713,9 +713,44 @@ class AdminRestApi {
 			return new WP_REST_Response( [ 'message' => 'Self-hosted sync complete.' ] );
 		}
 
+		$provider = ProviderSync::get_provider();
+
+		// Check provider health before attempting sync.
+		if ( ! $provider || ! $provider->is_available() ) {
+			$reason = ( $provider && method_exists( $provider, 'get_unavailable_reason' ) )
+				? $provider->get_unavailable_reason()
+				: __( 'No provider configured.', 'mai-analytics' );
+
+			return new WP_REST_Response( [ 'message' => $reason ], 500 );
+		}
+
+		// Quick health check: try a small provider query to verify auth works.
+		$test = $provider->get_views( [ '/' ], gmdate( 'Y-m-d' ), gmdate( 'Y-m-d' ) );
+		$error = get_transient( 'mai_analytics_provider_error' );
+
+		if ( $error ) {
+			return new WP_REST_Response( [ 'message' => $error ], 500 );
+		}
+
+		$last_sync  = get_option( 'mai_analytics_provider_last_sync', 0 );
+		$since      = $last_sync ? gmdate( 'Y-m-d H:i:s', $last_sync ) : '1970-01-01 00:00:00';
+		$queue_size = count( Database::get_distinct_objects_since( $since ) );
+
+		if ( 0 === $queue_size ) {
+			return new WP_REST_Response( [ 'message' => __( 'Provider connected. No pages in the queue — try "Warm Stats" to fetch all stats.', 'mai-analytics' ) ] );
+		}
+
+		delete_transient( 'mai_analytics_provider_error' );
+
 		ProviderSync::sync();
 
-		return new WP_REST_Response( [ 'message' => 'Provider sync complete.' ] );
+		$error = get_transient( 'mai_analytics_provider_error' );
+
+		if ( $error ) {
+			return new WP_REST_Response( [ 'message' => $error ], 500 );
+		}
+
+		return new WP_REST_Response( [ 'message' => sprintf( __( 'Sync complete. Processed %d objects.', 'mai-analytics' ), $queue_size ) ] );
 	}
 
 	/**
@@ -730,10 +765,18 @@ class AdminRestApi {
 			return new WP_REST_Response( [ 'message' => 'Warm is only available in provider mode.' ], 400 );
 		}
 
+		delete_transient( 'mai_analytics_provider_error' );
+
 		$total_updated = 0;
 
 		foreach ( ProviderSync::warm() as $progress ) {
 			$total_updated += $progress['updated'] ?? 0;
+		}
+
+		$error = get_transient( 'mai_analytics_provider_error' );
+
+		if ( $error ) {
+			return new WP_REST_Response( [ 'message' => $error ], 500 );
 		}
 
 		return new WP_REST_Response( [

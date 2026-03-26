@@ -133,7 +133,7 @@ class SiteKit implements WebViewProvider {
 		}
 
 		if ( ! $owner_id ) {
-			error_log( '[Mai Analytics] Site Kit owner user not found. Cannot authenticate GA4 request.' );
+			self::set_last_error( __( 'Site Kit owner user not found. Cannot authenticate GA4 request.', 'mai-analytics' ) );
 			return [];
 		}
 
@@ -176,7 +176,7 @@ class SiteKit implements WebViewProvider {
 		// Handle errors.
 		if ( $response->is_error() ) {
 			$error = $response->as_error();
-			error_log( '[Mai Analytics] Site Kit report error: ' . $error->get_error_message() );
+			self::set_last_error( $error->get_error_message() );
 			return [];
 		}
 
@@ -198,6 +198,30 @@ class SiteKit implements WebViewProvider {
 			}
 		}
 
+		// Clear any previous error on success.
+		delete_transient( 'mai_analytics_provider_error' );
+
 		return $views;
+	}
+
+	/**
+	 * Stores the last provider error for display in the admin UI.
+	 *
+	 * @param string $message The error message.
+	 *
+	 * @return void
+	 */
+	private static function set_last_error( string $message ): void {
+		error_log( '[Mai Analytics] Site Kit report error: ' . $message );
+		set_transient( 'mai_analytics_provider_error', $message, HOUR_IN_SECONDS );
+	}
+
+	/**
+	 * Gets the last stored provider error, if any.
+	 *
+	 * @return string The error message, or empty string if none.
+	 */
+	public static function get_last_error(): string {
+		return (string) get_transient( 'mai_analytics_provider_error' );
 	}
 }
