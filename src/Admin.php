@@ -115,7 +115,7 @@ class Admin {
 		$base_url    = admin_url( 'admin.php?page=mai-analytics' );
 		?>
 		<div class="wrap mai-analytics-wrap">
-			<h1><?php esc_html_e( 'Mai Analytics', 'mai-analytics' ); ?></h1>
+			<h1><?php printf( '%s (v%s)', esc_html__( 'Mai Analytics', 'mai-analytics' ), MAI_ANALYTICS_VERSION ); ?></h1>
 
 			<nav class="nav-tab-wrapper" style="margin-bottom:20px;">
 				<a href="<?php echo esc_url( $base_url ); ?>" class="nav-tab <?php echo 'dashboard' === $tab ? 'nav-tab-active' : ''; ?>"><?php esc_html_e( 'Dashboard', 'mai-analytics' ); ?></a>
