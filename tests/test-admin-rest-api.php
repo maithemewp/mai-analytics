@@ -57,10 +57,10 @@ class Test_Admin_REST_API extends WP_UnitTestCase {
 		$data     = $this->server->dispatch( $request )->get_data();
 
 		$this->assertArrayHasKey( 'total_views', $data );
-		$this->assertArrayHasKey( 'views_today', $data );
 		$this->assertArrayHasKey( 'trending_count', $data );
-		$this->assertArrayHasKey( 'buffer_rows', $data );
 		$this->assertArrayHasKey( 'last_sync', $data );
+		$this->assertArrayNotHasKey( 'views_today', $data );
+		$this->assertArrayNotHasKey( 'buffer_rows', $data );
 	}
 
 	public function test_summary_counts_views(): void {
@@ -75,30 +75,6 @@ class Test_Admin_REST_API extends WP_UnitTestCase {
 		$this->assertGreaterThanOrEqual( 42, $data['total_views'] );
 	}
 
-	public function test_chart_returns_7_labels(): void {
-		wp_set_current_user( self::factory()->user->create( [ 'role' => 'editor' ] ) );
-
-		$request = new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/chart' );
-		$data    = $this->server->dispatch( $request )->get_data();
-
-		$this->assertCount( 7, $data['labels'] );
-		$this->assertNotEmpty( $data['datasets'] );
-	}
-
-	public function test_chart_source_filter(): void {
-		wp_set_current_user( self::factory()->user->create( [ 'role' => 'editor' ] ) );
-
-		$post_id = self::factory()->post->create( [ 'post_status' => 'publish' ] );
-		Database::insert_view( $post_id, 'post', 'web' );
-		Database::insert_view( $post_id, 'post', 'app' );
-
-		$request = new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/chart' );
-		$request->set_param( 'source', 'web' );
-		$data = $this->server->dispatch( $request )->get_data();
-
-		$this->assertCount( 1, $data['datasets'] );
-		$this->assertStringContainsString( 'Web', $data['datasets'][0]['label'] );
-	}
 
 	public function test_top_posts_pagination(): void {
 		wp_set_current_user( self::factory()->user->create( [ 'role' => 'editor' ] ) );
@@ -453,5 +429,82 @@ class Test_Admin_REST_API extends WP_UnitTestCase {
 		// Views and trending values are correct regardless of orderby.
 		$this->assertEquals( 100, $data['items'][0]['views'] );
 		$this->assertEquals( 50, $data['items'][0]['trending'] );
+	}
+
+	public function test_top_posts_multi_author_filter(): void {
+		wp_set_current_user( self::factory()->user->create( [ 'role' => 'editor' ] ) );
+
+		$user1 = self::factory()->user->create();
+		$user2 = self::factory()->user->create();
+		$user3 = self::factory()->user->create();
+
+		$id1 = self::factory()->post->create( [ 'post_status' => 'publish', 'post_author' => $user1 ] );
+		$id2 = self::factory()->post->create( [ 'post_status' => 'publish', 'post_author' => $user2 ] );
+		$id3 = self::factory()->post->create( [ 'post_status' => 'publish', 'post_author' => $user3 ] );
+
+		update_post_meta( $id1, 'mai_analytics_views', 50 );
+		update_post_meta( $id2, 'mai_analytics_views', 40 );
+		update_post_meta( $id3, 'mai_analytics_views', 30 );
+
+		// Filter by users 1 and 2 — should exclude user 3.
+		$request = new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/top/posts' );
+		$request->set_param( 'author', $user1 . ',' . $user2 );
+		$data = $this->server->dispatch( $request )->get_data();
+
+		$this->assertEquals( 2, $data['total'] );
+		$ids = array_column( $data['items'], 'id' );
+		$this->assertContains( $id1, $ids );
+		$this->assertContains( $id2, $ids );
+		$this->assertNotContains( $id3, $ids );
+	}
+
+	public function test_top_posts_multi_term_filter(): void {
+		wp_set_current_user( self::factory()->user->create( [ 'role' => 'editor' ] ) );
+
+		$cat1 = self::factory()->category->create();
+		$cat2 = self::factory()->category->create();
+		$cat3 = self::factory()->category->create();
+
+		$id1 = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+		$id2 = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+		$id3 = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+
+		wp_set_object_terms( $id1, $cat1, 'category' );
+		wp_set_object_terms( $id2, $cat2, 'category' );
+		wp_set_object_terms( $id3, $cat3, 'category' );
+
+		update_post_meta( $id1, 'mai_analytics_views', 50 );
+		update_post_meta( $id2, 'mai_analytics_views', 40 );
+		update_post_meta( $id3, 'mai_analytics_views', 30 );
+
+		// Filter by terms 1 and 2 — should exclude term 3.
+		$request = new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/top/posts' );
+		$request->set_param( 'taxonomy', 'category' );
+		$request->set_param( 'term_id', $cat1 . ',' . $cat2 );
+		$data = $this->server->dispatch( $request )->get_data();
+
+		$this->assertEquals( 2, $data['total'] );
+		$ids = array_column( $data['items'], 'id' );
+		$this->assertContains( $id1, $ids );
+		$this->assertContains( $id2, $ids );
+		$this->assertNotContains( $id3, $ids );
+	}
+
+	public function test_trending_count_from_meta(): void {
+		wp_set_current_user( self::factory()->user->create( [ 'role' => 'editor' ] ) );
+
+		$id1 = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+		$id2 = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+		update_post_meta( $id1, 'mai_analytics_trending', 10 );
+		update_post_meta( $id2, 'mai_analytics_trending', 0 );
+
+		$term_id = self::factory()->category->create();
+		update_term_meta( $term_id, 'mai_analytics_trending', 5 );
+
+		$request = new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/summary' );
+		$data    = $this->server->dispatch( $request )->get_data();
+
+		// Should count objects with trending > 0 from meta (post + term = 2).
+		$this->assertGreaterThanOrEqual( 2, $data['trending_count'] );
 	}
 }

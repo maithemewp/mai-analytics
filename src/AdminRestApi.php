@@ -40,28 +40,17 @@ class AdminRestApi {
 				'validate_callback' => fn( $p ) => in_array( $p, [ 'views', 'trending' ], true ),
 				'sanitize_callback' => 'sanitize_key',
 			],
+			'order' => [
+				'default'           => 'desc',
+				'validate_callback' => fn( $p ) => in_array( strtolower( $p ), [ 'asc', 'desc' ], true ),
+				'sanitize_callback' => fn( $p ) => strtoupper( sanitize_key( $p ) ),
+			],
 		];
 
 		register_rest_route( self::NAMESPACE, '/admin/summary', [
 			'methods'             => 'GET',
 			'callback'            => [ $this, 'get_summary' ],
 			'permission_callback' => $permission,
-		] );
-
-		register_rest_route( self::NAMESPACE, '/admin/chart', [
-			'methods'             => 'GET',
-			'callback'            => [ $this, 'get_chart' ],
-			'permission_callback' => $permission,
-			'args'                => [
-				'metric' => [
-					'default'           => 'total',
-					'validate_callback' => fn( $p ) => in_array( $p, [ 'total', 'trending' ], true ),
-				],
-				'source' => [
-					'default'           => 'all',
-					'validate_callback' => fn( $p ) => in_array( $p, [ 'all', 'web', 'app' ], true ),
-				],
-			],
 		] );
 
 		register_rest_route( self::NAMESPACE, '/admin/top/posts', [
@@ -78,12 +67,12 @@ class AdminRestApi {
 					'sanitize_callback' => 'sanitize_key',
 				],
 				'term_id' => [
-					'default'           => 0,
-					'sanitize_callback' => 'absint',
+					'default'           => '',
+					'sanitize_callback' => 'sanitize_text_field',
 				],
 				'author' => [
-					'default'           => 0,
-					'sanitize_callback' => 'absint',
+					'default'           => '',
+					'sanitize_callback' => 'sanitize_text_field',
 				],
 				'search' => [
 					'default'           => '',
@@ -129,6 +118,11 @@ class AdminRestApi {
 					'default'           => 'views',
 					'validate_callback' => fn( $p ) => in_array( $p, [ 'views', 'trending' ], true ),
 				],
+				'order' => [
+					'default'           => 'desc',
+					'validate_callback' => fn( $p ) => in_array( strtolower( $p ), [ 'asc', 'desc' ], true ),
+					'sanitize_callback' => fn( $p ) => strtoupper( sanitize_key( $p ) ),
+				],
 			],
 		] );
 
@@ -153,7 +147,7 @@ class AdminRestApi {
 					'sanitize_callback' => 'sanitize_key',
 				],
 				'search' => [
-					'required'          => true,
+					'default'           => '',
 					'sanitize_callback' => 'sanitize_text_field',
 				],
 			],
@@ -185,9 +179,6 @@ class AdminRestApi {
 	public function get_summary( WP_REST_Request $request ): WP_REST_Response {
 		global $wpdb;
 
-		$table          = Database::get_table_name();
-		$trending_hours = Settings::get( 'trending_window' );
-
 		$total_views = 0;
 		$total_views += (int) $wpdb->get_var( "SELECT COALESCE(SUM(meta_value), 0) FROM $wpdb->postmeta WHERE meta_key = 'mai_analytics_views'" );
 		$total_views += (int) $wpdb->get_var( "SELECT COALESCE(SUM(meta_value), 0) FROM $wpdb->termmeta WHERE meta_key = 'mai_analytics_views'" );
@@ -199,134 +190,38 @@ class AdminRestApi {
 			$total_views += array_sum( $pt_views );
 		}
 
-		$views_today = (int) $wpdb->get_var(
-			"SELECT COUNT(*) FROM $table WHERE viewed_at >= UTC_DATE()"
-		);
+		$trending_count = 0;
+		$trending_count += (int) $wpdb->get_var( "SELECT COUNT(*) FROM $wpdb->postmeta WHERE meta_key = 'mai_analytics_trending' AND CAST(meta_value AS UNSIGNED) > 0" );
+		$trending_count += (int) $wpdb->get_var( "SELECT COUNT(*) FROM $wpdb->termmeta WHERE meta_key = 'mai_analytics_trending' AND CAST(meta_value AS UNSIGNED) > 0" );
+		$trending_count += (int) $wpdb->get_var( "SELECT COUNT(*) FROM $wpdb->usermeta WHERE meta_key = 'mai_analytics_trending' AND CAST(meta_value AS UNSIGNED) > 0" );
 
-		$trending_count = (int) $wpdb->get_var(
-			$wpdb->prepare(
-				"SELECT COUNT(DISTINCT CONCAT(object_id, '-', object_type, '-', object_key))
-				 FROM $table
-				 WHERE viewed_at > DATE_SUB(UTC_TIMESTAMP(), INTERVAL %d HOUR)",
-				$trending_hours
-			)
-		);
+		$pt_trending = get_option( 'mai_analytics_post_type_trending', [] );
 
-		$buffer_rows = (int) $wpdb->get_var( "SELECT COUNT(*) FROM $table" );
-		$last_sync   = get_option( 'mai_analytics_synced', 0 );
+		if ( is_array( $pt_trending ) ) {
+			$trending_count += count( array_filter( $pt_trending ) );
+		}
 
-		$data_source     = Settings::get( 'data_source' );
-		$is_external     = 'self_hosted' !== $data_source;
-		$provider_sync   = $is_external ? get_option( 'mai_analytics_provider_last_sync', 0 ) : 0;
+		$trending_views = 0;
+		$trending_views += (int) $wpdb->get_var( "SELECT COALESCE(SUM(meta_value), 0) FROM $wpdb->postmeta WHERE meta_key = 'mai_analytics_trending'" );
+		$trending_views += (int) $wpdb->get_var( "SELECT COALESCE(SUM(meta_value), 0) FROM $wpdb->termmeta WHERE meta_key = 'mai_analytics_trending'" );
+		$trending_views += (int) $wpdb->get_var( "SELECT COALESCE(SUM(meta_value), 0) FROM $wpdb->usermeta WHERE meta_key = 'mai_analytics_trending'" );
+
+		if ( is_array( $pt_trending ) ) {
+			$trending_views += array_sum( $pt_trending );
+		}
+
+		$data_source   = Settings::get( 'data_source' );
+		$is_external   = 'self_hosted' !== $data_source;
+		$last_sync     = $is_external
+			? get_option( 'mai_analytics_provider_last_sync', 0 )
+			: get_option( 'mai_analytics_synced', 0 );
 
 		return new WP_REST_Response( [
 			'total_views'    => $total_views,
-			'views_today'    => $is_external ? null : $views_today,
+			'trending_views' => $trending_views,
 			'trending_count' => $trending_count,
-			'buffer_rows'    => $is_external ? null : $buffer_rows,
-			'last_sync'      => $is_external
-				? ( $provider_sync ? wp_date( 'Y-m-d H:i:s', $provider_sync ) : null )
-				: ( $last_sync ? wp_date( 'Y-m-d H:i:s', $last_sync ) : null ),
+			'last_sync'      => $last_sync ? wp_date( 'Y-m-d H:i:s', $last_sync ) : null,
 			'data_source'    => $data_source,
-		] );
-	}
-
-	/**
-	 * Returns time-series chart data (last 7 days, daily buckets).
-	 *
-	 * @param WP_REST_Request $request The incoming request with metric and source params.
-	 *
-	 * @return WP_REST_Response Chart data with labels and datasets.
-	 */
-	public function get_chart( WP_REST_Request $request ): WP_REST_Response {
-		// Chart is disabled in external provider mode (buffer only has app events).
-		if ( 'self_hosted' !== Settings::get( 'data_source' ) ) {
-			return new WP_REST_Response( [ 'disabled' => true ] );
-		}
-
-		global $wpdb;
-
-		$table  = Database::get_table_name();
-		$metric = $request->get_param( 'metric' );
-		$source = $request->get_param( 'source' );
-
-		// Build WHERE clauses.
-		$where = [ 'viewed_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL 7 DAY)' ];
-
-		if ( 'trending' === $metric ) {
-			$trending_hours = Settings::get( 'trending_window' );
-			$where          = [ $wpdb->prepare( 'viewed_at > DATE_SUB(UTC_TIMESTAMP(), INTERVAL %d HOUR)', $trending_hours ) ];
-		}
-
-		if ( 'all' !== $source ) {
-			$where[] = $wpdb->prepare( 'source = %s', $source );
-		}
-
-		$where_sql = implode( ' AND ', $where );
-
-		// Query daily counts.
-		if ( 'all' === $source ) {
-			// Two datasets: web and app.
-			$rows = $wpdb->get_results(
-				"SELECT DATE(viewed_at) as day, source, COUNT(*) as cnt
-				 FROM $table WHERE $where_sql
-				 GROUP BY DATE(viewed_at), source
-				 ORDER BY day ASC"
-			);
-		} else {
-			$rows = $wpdb->get_results(
-				"SELECT DATE(viewed_at) as day, COUNT(*) as cnt
-				 FROM $table WHERE $where_sql
-				 GROUP BY DATE(viewed_at)
-				 ORDER BY day ASC"
-			);
-		}
-
-		// Build 7-day label array, filling gaps with zeros.
-		$labels   = [];
-		$days_map = [];
-
-		for ( $i = 6; $i >= 0; $i-- ) {
-			$date              = gmdate( 'Y-m-d', strtotime( "-{$i} days" ) );
-			$labels[]          = wp_date( 'M j', strtotime( $date ) );
-			$days_map[ $date ] = [ 'web' => 0, 'app' => 0, 'total' => 0 ];
-		}
-
-		foreach ( $rows as $row ) {
-			if ( ! isset( $days_map[ $row->day ] ) ) {
-				continue;
-			}
-
-			if ( isset( $row->source ) ) {
-				$days_map[ $row->day ][ $row->source ] = (int) $row->cnt;
-				$days_map[ $row->day ]['total']        += (int) $row->cnt;
-			} else {
-				$days_map[ $row->day ]['total'] = (int) $row->cnt;
-			}
-		}
-
-		// Build datasets.
-		$datasets = [];
-
-		if ( 'all' === $source ) {
-			$datasets[] = [
-				'label' => 'Web',
-				'data'  => array_column( array_values( $days_map ), 'web' ),
-			];
-			$datasets[] = [
-				'label' => 'App',
-				'data'  => array_column( array_values( $days_map ), 'app' ),
-			];
-		} else {
-			$datasets[] = [
-				'label' => ucfirst( $source ) . ' Views',
-				'data'  => array_column( array_values( $days_map ), 'total' ),
-			];
-		}
-
-		return new WP_REST_Response( [
-			'labels'   => $labels,
-			'datasets' => $datasets,
 		] );
 	}
 
@@ -341,10 +236,11 @@ class AdminRestApi {
 		global $wpdb;
 
 		$orderby   = $request->get_param( 'orderby' );
+		$order     = $request->get_param( 'order' );
 		$post_type = $request->get_param( 'post_type' );
 		$taxonomy  = $request->get_param( 'taxonomy' );
-		$term_id   = (int) $request->get_param( 'term_id' );
-		$author    = (int) $request->get_param( 'author' );
+		$term_ids  = array_filter( array_map( 'absint', explode( ',', (string) $request->get_param( 'term_id' ) ) ) );
+		$authors   = array_filter( array_map( 'absint', explode( ',', (string) $request->get_param( 'author' ) ) ) );
 		$search    = $request->get_param( 'search' );
 		$page      = (int) $request->get_param( 'page' );
 		$per_page  = (int) $request->get_param( 'per_page' );
@@ -371,14 +267,16 @@ class AdminRestApi {
 			$wheres[] = "p.post_type IN ('{$type_list}')";
 		}
 
-		if ( $author ) {
-			$wheres[] = $wpdb->prepare( 'p.post_author = %d', $author );
+		if ( $authors ) {
+			$author_placeholders = implode( ', ', array_fill( 0, count( $authors ), '%d' ) );
+			$wheres[]            = $wpdb->prepare( "p.post_author IN ($author_placeholders)", $authors );
 		}
 
-		if ( $taxonomy && $term_id ) {
-			$joins   .= " INNER JOIN $wpdb->term_relationships tr ON p.ID = tr.object_id";
-			$joins   .= " INNER JOIN $wpdb->term_taxonomy tt ON tr.term_taxonomy_id = tt.term_taxonomy_id";
-			$wheres[] = $wpdb->prepare( 'tt.taxonomy = %s AND tt.term_id = %d', $taxonomy, $term_id );
+		if ( $taxonomy && $term_ids ) {
+			$joins              .= " INNER JOIN $wpdb->term_relationships tr ON p.ID = tr.object_id";
+			$joins              .= " INNER JOIN $wpdb->term_taxonomy tt ON tr.term_taxonomy_id = tt.term_taxonomy_id";
+			$term_placeholders   = implode( ', ', array_fill( 0, count( $term_ids ), '%d' ) );
+			$wheres[]            = $wpdb->prepare( "tt.taxonomy = %s AND tt.term_id IN ($term_placeholders)", array_merge( [ $taxonomy ], $term_ids ) );
 		} elseif ( $taxonomy ) {
 			$joins   .= " INNER JOIN $wpdb->term_relationships tr ON p.ID = tr.object_id";
 			$joins   .= " INNER JOIN $wpdb->term_taxonomy tt ON tr.term_taxonomy_id = tt.term_taxonomy_id";
@@ -408,7 +306,7 @@ class AdminRestApi {
 				 LEFT JOIN $wpdb->postmeta pm2 ON p.ID = pm2.post_id AND pm2.meta_key = %s
 				 {$joins}
 				 WHERE {$where_sql} AND CAST(pm.meta_value AS UNSIGNED) > 0
-				 ORDER BY primary_count DESC
+				 ORDER BY primary_count {$order}
 				 LIMIT %d OFFSET %d",
 				$meta_key,
 				$other_key,
@@ -458,6 +356,7 @@ class AdminRestApi {
 		global $wpdb;
 
 		$orderby   = $request->get_param( 'orderby' );
+		$order     = $request->get_param( 'order' );
 		$taxonomy  = $request->get_param( 'taxonomy' );
 		$search    = $request->get_param( 'search' );
 		$page      = (int) $request->get_param( 'page' );
@@ -501,7 +400,7 @@ class AdminRestApi {
 				 INNER JOIN $wpdb->termmeta tm ON t.term_id = tm.term_id AND tm.meta_key = %s
 				 LEFT JOIN $wpdb->termmeta tm2 ON t.term_id = tm2.term_id AND tm2.meta_key = %s
 				 WHERE {$where_sql} AND CAST(tm.meta_value AS UNSIGNED) > 0
-				 ORDER BY primary_count DESC
+				 ORDER BY primary_count {$order}
 				 LIMIT %d OFFSET %d",
 				$meta_key,
 				$other_key,
@@ -551,6 +450,7 @@ class AdminRestApi {
 		global $wpdb;
 
 		$orderby   = $request->get_param( 'orderby' );
+		$order     = $request->get_param( 'order' );
 		$search    = $request->get_param( 'search' );
 		$page      = (int) $request->get_param( 'page' );
 		$per_page  = (int) $request->get_param( 'per_page' );
@@ -584,7 +484,7 @@ class AdminRestApi {
 				 INNER JOIN $wpdb->usermeta um ON u.ID = um.user_id AND um.meta_key = %s
 				 LEFT JOIN $wpdb->usermeta um2 ON u.ID = um2.user_id AND um2.meta_key = %s
 				 WHERE {$where_sql}
-				 ORDER BY primary_count DESC
+				 ORDER BY primary_count {$order}
 				 LIMIT %d OFFSET %d",
 				$meta_key,
 				$other_key,
@@ -630,6 +530,7 @@ class AdminRestApi {
 	 */
 	public function get_top_archives( WP_REST_Request $request ): WP_REST_Response {
 		$orderby   = $request->get_param( 'orderby' );
+		$order     = $request->get_param( 'order' );
 		$views     = get_option( 'mai_analytics_post_type_views', [] );
 		$trending  = get_option( 'mai_analytics_post_type_trending', [] );
 		$views_web = get_option( 'mai_analytics_post_type_views_web', [] );
@@ -657,8 +558,11 @@ class AdminRestApi {
 			];
 		}
 
-		// Sort by requested orderby.
-		usort( $items, fn( $a, $b ) => $b[ $orderby ] <=> $a[ $orderby ] );
+		// Sort by requested orderby and order.
+		usort( $items, fn( $a, $b ) => 'DESC' === $order
+			? $b[ $orderby ] <=> $a[ $orderby ]
+			: $a[ $orderby ] <=> $b[ $orderby ]
+		);
 
 		return new WP_REST_Response( [
 			'items' => $items,
@@ -714,26 +618,22 @@ class AdminRestApi {
 		$type     = $request->get_param( 'type' );
 		$search   = $request->get_param( 'search' );
 		$taxonomy = $request->get_param( 'taxonomy' );
-
-		if ( strlen( $search ) < 2 ) {
-			return new WP_REST_Response( [] );
-		}
-
-		$like = '%' . $wpdb->esc_like( $search ) . '%';
+		$has_search = strlen( $search ) >= 2;
 
 		if ( 'author' === $type ) {
+			$where = "um.meta_key = 'mai_analytics_views' AND CAST(um.meta_value AS UNSIGNED) > 0";
+
+			if ( $has_search ) {
+				$where .= $wpdb->prepare( ' AND u.display_name LIKE %s', '%' . $wpdb->esc_like( $search ) . '%' );
+			}
+
 			$results = $wpdb->get_results(
-				$wpdb->prepare(
-					"SELECT u.ID as id, u.display_name as name
-					 FROM $wpdb->users u
-					 INNER JOIN $wpdb->usermeta um ON u.ID = um.user_id
-					 WHERE um.meta_key = 'mai_analytics_views'
-					   AND CAST(um.meta_value AS UNSIGNED) > 0
-					   AND u.display_name LIKE %s
-					 ORDER BY u.display_name ASC
-					 LIMIT 20",
-					$like
-				)
+				"SELECT u.ID as id, u.display_name as name
+				 FROM $wpdb->users u
+				 INNER JOIN $wpdb->usermeta um ON u.ID = um.user_id
+				 WHERE {$where}
+				 ORDER BY u.display_name ASC
+				 LIMIT 50"
 			);
 		} else {
 			if ( ! $taxonomy ) {
@@ -746,19 +646,19 @@ class AdminRestApi {
 				return new WP_REST_Response( [] );
 			}
 
+			$where = $wpdb->prepare( 'tt.taxonomy = %s AND tt.count > 0', $taxonomy );
+
+			if ( $has_search ) {
+				$where .= $wpdb->prepare( ' AND t.name LIKE %s', '%' . $wpdb->esc_like( $search ) . '%' );
+			}
+
 			$results = $wpdb->get_results(
-				$wpdb->prepare(
-					"SELECT t.term_id as id, t.name
-					 FROM $wpdb->terms t
-					 INNER JOIN $wpdb->term_taxonomy tt ON t.term_id = tt.term_id
-					 WHERE tt.taxonomy = %s
-					   AND tt.count > 0
-					   AND t.name LIKE %s
-					 ORDER BY t.name ASC
-					 LIMIT 20",
-					$taxonomy,
-					$like
-				)
+				"SELECT t.term_id as id, t.name
+				 FROM $wpdb->terms t
+				 INNER JOIN $wpdb->term_taxonomy tt ON t.term_id = tt.term_id
+				 WHERE {$where}
+				 ORDER BY t.name ASC
+				 LIMIT 50"
 			);
 		}
 

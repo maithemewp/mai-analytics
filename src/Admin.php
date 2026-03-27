@@ -59,16 +59,31 @@ class Admin {
 		);
 
 		wp_enqueue_style(
+			'tom-select',
+			MAI_ANALYTICS_PLUGIN_URL . 'assets/css/tom-select.min.css',
+			[],
+			'2.4.1'
+		);
+
+		wp_enqueue_script(
+			'tom-select',
+			MAI_ANALYTICS_PLUGIN_URL . 'assets/js/tom-select.complete.min.js',
+			[],
+			'2.4.1',
+			true
+		);
+
+		wp_enqueue_style(
 			'mai-analytics-admin',
 			MAI_ANALYTICS_PLUGIN_URL . 'assets/css/admin-dashboard.css',
-			[],
+			[ 'tom-select' ],
 			MAI_ANALYTICS_VERSION
 		);
 
 		wp_enqueue_script(
 			'mai-analytics-admin',
 			MAI_ANALYTICS_PLUGIN_URL . 'assets/js/admin-dashboard.js',
-			[ 'chartjs' ],
+			[ 'chartjs', 'tom-select' ],
 			MAI_ANALYTICS_VERSION,
 			true
 		);
@@ -150,44 +165,24 @@ class Admin {
 				<span class="mai-analytics-card__value">—</span>
 				<span class="mai-analytics-card__label"><?php esc_html_e( 'Total Views', 'mai-analytics' ); ?></span>
 			</div>
-			<?php if ( $is_external ) : ?>
-			<div class="mai-analytics-card" data-card="last_sync">
+			<div class="mai-analytics-card" data-card="trending_views">
 				<span class="mai-analytics-card__value">—</span>
-				<span class="mai-analytics-card__label"><?php esc_html_e( 'Last Sync', 'mai-analytics' ); ?></span>
+				<span class="mai-analytics-card__label"><?php esc_html_e( 'Trending Views', 'mai-analytics' ); ?></span>
 			</div>
-			<?php else : ?>
-			<div class="mai-analytics-card" data-card="views_today">
-				<span class="mai-analytics-card__value">—</span>
-				<span class="mai-analytics-card__label"><?php esc_html_e( 'Views Today', 'mai-analytics' ); ?></span>
-			</div>
-			<?php endif; ?>
 			<div class="mai-analytics-card" data-card="trending_count">
 				<span class="mai-analytics-card__value">—</span>
 				<span class="mai-analytics-card__label"><?php esc_html_e( 'Trending Objects', 'mai-analytics' ); ?></span>
 			</div>
-			<?php if ( ! $is_external ) : ?>
-			<div class="mai-analytics-card" data-card="buffer_rows">
+			<div class="mai-analytics-card" data-card="last_sync">
 				<span class="mai-analytics-card__value">—</span>
-				<span class="mai-analytics-card__label"><?php esc_html_e( 'Buffer Rows', 'mai-analytics' ); ?></span>
+				<span class="mai-analytics-card__label"><?php esc_html_e( 'Last Sync', 'mai-analytics' ); ?></span>
 			</div>
-			<?php endif; ?>
 		</div>
 
-		<!-- Chart (hidden in external provider mode) -->
-		<div class="mai-analytics-chart-section"<?php echo $is_external ? ' style="display:none;"' : ''; ?>>
-			<div class="mai-analytics-chart-controls">
-				<div class="mai-analytics-toggle-group" data-toggle="metric">
-					<button class="button active" data-value="total"><?php esc_html_e( 'Total Views', 'mai-analytics' ); ?></button>
-					<button class="button" data-value="trending"><?php esc_html_e( 'Trending', 'mai-analytics' ); ?></button>
-				</div>
-				<div class="mai-analytics-toggle-group" data-toggle="source">
-					<button class="button active" data-value="all"><?php esc_html_e( 'All Sources', 'mai-analytics' ); ?></button>
-					<button class="button" data-value="web"><?php esc_html_e( 'Web', 'mai-analytics' ); ?></button>
-					<button class="button" data-value="app"><?php esc_html_e( 'App', 'mai-analytics' ); ?></button>
-				</div>
-			</div>
+		<!-- Chart -->
+		<div class="mai-analytics-chart-section">
 			<div class="mai-analytics-chart-wrap">
-				<canvas id="mai-analytics-chart" height="300"></canvas>
+				<canvas id="mai-analytics-chart" height="250"></canvas>
 			</div>
 		</div>
 
@@ -207,23 +202,19 @@ class Admin {
 			<select id="mai-analytics-taxonomy" class="mai-analytics-filter-posts mai-analytics-filter-terms">
 				<option value=""><?php esc_html_e( 'All Taxonomies', 'mai-analytics' ); ?></option>
 			</select>
-			<div class="mai-analytics-autocomplete" id="mai-analytics-term-wrap" style="display:none;">
-				<input type="text" id="mai-analytics-term-search" placeholder="<?php esc_attr_e( 'Search terms...', 'mai-analytics' ); ?>" autocomplete="off">
-				<input type="hidden" id="mai-analytics-term" value="">
-				<span class="mai-analytics-autocomplete__clear" style="display:none;">&times;</span>
-				<div class="mai-analytics-autocomplete__results" style="display:none;"></div>
-			</div>
-			<div class="mai-analytics-autocomplete mai-analytics-filter-posts" id="mai-analytics-author-wrap">
-				<input type="text" id="mai-analytics-author-search" placeholder="<?php esc_attr_e( 'Search authors...', 'mai-analytics' ); ?>" autocomplete="off">
-				<input type="hidden" id="mai-analytics-author" value="">
-				<span class="mai-analytics-autocomplete__clear" style="display:none;">&times;</span>
-				<div class="mai-analytics-autocomplete__results" style="display:none;"></div>
-			</div>
+			<select id="mai-analytics-term" class="mai-analytics-tom-select" style="display:none;" placeholder="<?php esc_attr_e( 'Search terms...', 'mai-analytics' ); ?>" multiple></select>
+			<select id="mai-analytics-author" class="mai-analytics-tom-select mai-analytics-filter-posts" placeholder="<?php esc_attr_e( 'Search authors...', 'mai-analytics' ); ?>" multiple></select>
 		</div>
+
+		<!-- Active Filters -->
+		<div class="mai-analytics-active-filters" style="display:none;"></div>
 
 		<!-- Table Controls -->
 		<div class="mai-analytics-table-controls">
-			<input type="text" id="mai-analytics-search" placeholder="<?php esc_attr_e( 'Search by title/name...', 'mai-analytics' ); ?>" class="regular-text">
+			<div class="mai-analytics-search-wrap">
+				<input type="text" id="mai-analytics-search" placeholder="<?php esc_attr_e( 'Search by title/name...', 'mai-analytics' ); ?>">
+				<span class="mai-analytics-search-spinner" style="display:none;"></span>
+			</div>
 			<select id="mai-analytics-per-page">
 				<option value="25"><?php esc_html_e( '25 per page', 'mai-analytics' ); ?></option>
 				<option value="50"><?php esc_html_e( '50 per page', 'mai-analytics' ); ?></option>
