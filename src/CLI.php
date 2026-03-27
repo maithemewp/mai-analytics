@@ -338,7 +338,7 @@ class CLI {
 		$table           = Database::get_table_name();
 		$num_posts       = (int) ( $assoc_args['posts'] ?? 50 );
 		$max_views       = (int) ( $assoc_args['views'] ?? 200 );
-		$days            = (int) ( $assoc_args['days'] ?? 7 );
+		$days            = (int) ( $assoc_args['days'] ?? 30 );
 		$include_terms   = \WP_CLI\Utils\get_flag_value( $assoc_args, 'include-terms', false );
 		$include_authors = \WP_CLI\Utils\get_flag_value( $assoc_args, 'include-authors', false );
 

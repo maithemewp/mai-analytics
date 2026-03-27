@@ -85,6 +85,10 @@ class AdminRestApi {
 					'default'           => 0,
 					'sanitize_callback' => 'absint',
 				],
+				'search' => [
+					'default'           => '',
+					'sanitize_callback' => 'sanitize_text_field',
+				],
 			] ),
 		] );
 
@@ -97,6 +101,10 @@ class AdminRestApi {
 					'default'           => '',
 					'sanitize_callback' => 'sanitize_key',
 				],
+				'search' => [
+					'default'           => '',
+					'sanitize_callback' => 'sanitize_text_field',
+				],
 			] ),
 		] );
 
@@ -104,7 +112,12 @@ class AdminRestApi {
 			'methods'             => 'GET',
 			'callback'            => [ $this, 'get_top_authors' ],
 			'permission_callback' => $permission,
-			'args'                => $page_args,
+			'args'                => array_merge( $page_args, [
+				'search' => [
+					'default'           => '',
+					'sanitize_callback' => 'sanitize_text_field',
+				],
+			] ),
 		] );
 
 		register_rest_route( self::NAMESPACE, '/admin/top/archives', [
@@ -123,6 +136,27 @@ class AdminRestApi {
 			'methods'             => 'GET',
 			'callback'            => [ $this, 'get_filters' ],
 			'permission_callback' => $permission,
+		] );
+
+		register_rest_route( self::NAMESPACE, '/admin/search', [
+			'methods'             => 'GET',
+			'callback'            => [ $this, 'search' ],
+			'permission_callback' => $permission,
+			'args'                => [
+				'type' => [
+					'required'          => true,
+					'validate_callback' => fn( $p ) => in_array( $p, [ 'author', 'term' ], true ),
+					'sanitize_callback' => 'sanitize_key',
+				],
+				'taxonomy' => [
+					'default'           => '',
+					'sanitize_callback' => 'sanitize_key',
+				],
+				'search' => [
+					'required'          => true,
+					'sanitize_callback' => 'sanitize_text_field',
+				],
+			],
 		] );
 
 		// Provider sync/warm endpoints (require manage_options).
@@ -311,6 +345,7 @@ class AdminRestApi {
 		$taxonomy  = $request->get_param( 'taxonomy' );
 		$term_id   = (int) $request->get_param( 'term_id' );
 		$author    = (int) $request->get_param( 'author' );
+		$search    = $request->get_param( 'search' );
 		$page      = (int) $request->get_param( 'page' );
 		$per_page  = (int) $request->get_param( 'per_page' );
 		$offset    = ( $page - 1 ) * $per_page;
@@ -325,6 +360,10 @@ class AdminRestApi {
 		$wheres = [
 			"p.post_status = 'publish'",
 		];
+
+		if ( $search ) {
+			$wheres[] = $wpdb->prepare( 'p.post_title LIKE %s', '%' . $wpdb->esc_like( $search ) . '%' );
+		}
 
 		if ( $post_type && in_array( $post_type, $public_types, true ) ) {
 			$wheres[] = $wpdb->prepare( 'p.post_type = %s', $post_type );
@@ -420,6 +459,7 @@ class AdminRestApi {
 
 		$orderby   = $request->get_param( 'orderby' );
 		$taxonomy  = $request->get_param( 'taxonomy' );
+		$search    = $request->get_param( 'search' );
 		$page      = (int) $request->get_param( 'page' );
 		$per_page  = (int) $request->get_param( 'per_page' );
 		$offset    = ( $page - 1 ) * $per_page;
@@ -433,6 +473,10 @@ class AdminRestApi {
 
 		if ( $taxonomy && in_array( $taxonomy, $public_taxonomies, true ) ) {
 			$wheres = [ $wpdb->prepare( 'txn.taxonomy = %s', $taxonomy ) ];
+		}
+
+		if ( $search ) {
+			$wheres[] = $wpdb->prepare( 't.name LIKE %s', '%' . $wpdb->esc_like( $search ) . '%' );
 		}
 
 		$where_sql = implode( ' AND ', $wheres );
@@ -507,17 +551,26 @@ class AdminRestApi {
 		global $wpdb;
 
 		$orderby   = $request->get_param( 'orderby' );
+		$search    = $request->get_param( 'search' );
 		$page      = (int) $request->get_param( 'page' );
 		$per_page  = (int) $request->get_param( 'per_page' );
 		$offset    = ( $page - 1 ) * $per_page;
 		$meta_key  = 'trending' === $orderby ? 'mai_analytics_trending' : 'mai_analytics_views';
 		$other_key = 'trending' === $orderby ? 'mai_analytics_views' : 'mai_analytics_trending';
 
+		$wheres = [ 'CAST(um.meta_value AS UNSIGNED) > 0' ];
+
+		if ( $search ) {
+			$wheres[] = $wpdb->prepare( 'u.display_name LIKE %s', '%' . $wpdb->esc_like( $search ) . '%' );
+		}
+
+		$where_sql = implode( ' AND ', $wheres );
+
 		$total = (int) $wpdb->get_var(
 			"SELECT COUNT(DISTINCT u.ID)
 			 FROM $wpdb->users u
 			 INNER JOIN $wpdb->usermeta um ON u.ID = um.user_id AND um.meta_key = '{$meta_key}'
-			 WHERE CAST(um.meta_value AS UNSIGNED) > 0"
+			 WHERE {$where_sql}"
 		);
 
 		$pages = (int) ceil( $total / $per_page );
@@ -530,7 +583,7 @@ class AdminRestApi {
 				 FROM $wpdb->users u
 				 INNER JOIN $wpdb->usermeta um ON u.ID = um.user_id AND um.meta_key = %s
 				 LEFT JOIN $wpdb->usermeta um2 ON u.ID = um2.user_id AND um2.meta_key = %s
-				 WHERE CAST(um.meta_value AS UNSIGNED) > 0
+				 WHERE {$where_sql}
 				 ORDER BY primary_count DESC
 				 LIMIT %d OFFSET %d",
 				$meta_key,
@@ -576,26 +629,11 @@ class AdminRestApi {
 	 * @return WP_REST_Response Archive data with source breakdown.
 	 */
 	public function get_top_archives( WP_REST_Request $request ): WP_REST_Response {
-		global $wpdb;
-
-		$orderby  = $request->get_param( 'orderby' );
-		$table    = Database::get_table_name();
-		$views    = get_option( 'mai_analytics_post_type_views', [] );
-		$trending = get_option( 'mai_analytics_post_type_trending', [] );
-
-		// Source breakdown from buffer.
-		$source_rows = $wpdb->get_results(
-			"SELECT object_key, source, COUNT(*) as cnt
-			 FROM $table
-			 WHERE object_type = 'post_type'
-			 GROUP BY object_key, source"
-		);
-
-		$source_map = [];
-
-		foreach ( $source_rows as $row ) {
-			$source_map[ $row->object_key ][ $row->source ] = (int) $row->cnt;
-		}
+		$orderby   = $request->get_param( 'orderby' );
+		$views     = get_option( 'mai_analytics_post_type_views', [] );
+		$trending  = get_option( 'mai_analytics_post_type_trending', [] );
+		$views_web = get_option( 'mai_analytics_post_type_views_web', [] );
+		$views_app = get_option( 'mai_analytics_post_type_views_app', [] );
 
 		// Build items from all known post types with views.
 		$all_keys = array_unique( array_merge( array_keys( $views ), array_keys( $trending ) ) );
@@ -614,8 +652,8 @@ class AdminRestApi {
 				'url'       => get_post_type_archive_link( $key ) ?: '',
 				'views'     => (int) ( $views[ $key ] ?? 0 ),
 				'trending'  => (int) ( $trending[ $key ] ?? 0 ),
-				'web'       => $source_map[ $key ]['web'] ?? 0,
-				'app'       => $source_map[ $key ]['app'] ?? 0,
+				'web'       => (int) ( $views_web[ $key ] ?? 0 ),
+				'app'       => (int) ( $views_app[ $key ] ?? 0 ),
 			];
 		}
 
@@ -634,11 +672,9 @@ class AdminRestApi {
 	 *
 	 * @param WP_REST_Request $request The incoming request.
 	 *
-	 * @return WP_REST_Response Available post types, taxonomies, and authors.
+	 * @return WP_REST_Response Available post types and taxonomies.
 	 */
 	public function get_filters( WP_REST_Request $request ): WP_REST_Response {
-		global $wpdb;
-
 		// Public post types.
 		$post_types = [];
 
@@ -659,45 +695,79 @@ class AdminRestApi {
 			];
 		}
 
-		// Authors who have views.
-		$authors = $wpdb->get_results(
-			"SELECT u.ID, u.display_name
-			 FROM $wpdb->users u
-			 INNER JOIN $wpdb->usermeta um ON u.ID = um.user_id
-			 WHERE um.meta_key = 'mai_analytics_views' AND CAST(um.meta_value AS UNSIGNED) > 0
-			 ORDER BY u.display_name ASC"
-		);
-
-		$author_list = array_map( fn( $a ) => [
-			'id'   => (int) $a->ID,
-			'name' => $a->display_name,
-		], $authors );
-
-		// Terms grouped by taxonomy (for taxonomy term filter).
-		$terms = [];
-
-		foreach ( get_taxonomies( [ 'public' => true ] ) as $tax_name ) {
-			$tax_terms = get_terms( [
-				'taxonomy'   => $tax_name,
-				'hide_empty' => true,
-				'number'     => 100,
-				'orderby'    => 'name',
-			] );
-
-			if ( ! is_wp_error( $tax_terms ) && $tax_terms ) {
-				$terms[ $tax_name ] = array_map( fn( $t ) => [
-					'id'   => $t->term_id,
-					'name' => $t->name,
-				], $tax_terms );
-			}
-		}
-
 		return new WP_REST_Response( [
 			'post_types' => $post_types,
 			'taxonomies' => $taxonomies,
-			'authors'    => $author_list,
-			'terms'      => $terms,
 		] );
+	}
+
+	/**
+	 * Searches authors or terms by name for the autocomplete filters.
+	 *
+	 * @param WP_REST_Request $request The incoming request with type, taxonomy, and search params.
+	 *
+	 * @return WP_REST_Response Up to 20 matching results.
+	 */
+	public function search( WP_REST_Request $request ): WP_REST_Response {
+		global $wpdb;
+
+		$type     = $request->get_param( 'type' );
+		$search   = $request->get_param( 'search' );
+		$taxonomy = $request->get_param( 'taxonomy' );
+
+		if ( strlen( $search ) < 2 ) {
+			return new WP_REST_Response( [] );
+		}
+
+		$like = '%' . $wpdb->esc_like( $search ) . '%';
+
+		if ( 'author' === $type ) {
+			$results = $wpdb->get_results(
+				$wpdb->prepare(
+					"SELECT u.ID as id, u.display_name as name
+					 FROM $wpdb->users u
+					 INNER JOIN $wpdb->usermeta um ON u.ID = um.user_id
+					 WHERE um.meta_key = 'mai_analytics_views'
+					   AND CAST(um.meta_value AS UNSIGNED) > 0
+					   AND u.display_name LIKE %s
+					 ORDER BY u.display_name ASC
+					 LIMIT 20",
+					$like
+				)
+			);
+		} else {
+			if ( ! $taxonomy ) {
+				return new WP_REST_Response( [] );
+			}
+
+			$public_taxonomies = get_taxonomies( [ 'public' => true ] );
+
+			if ( ! in_array( $taxonomy, $public_taxonomies, true ) ) {
+				return new WP_REST_Response( [] );
+			}
+
+			$results = $wpdb->get_results(
+				$wpdb->prepare(
+					"SELECT t.term_id as id, t.name
+					 FROM $wpdb->terms t
+					 INNER JOIN $wpdb->term_taxonomy tt ON t.term_id = tt.term_id
+					 WHERE tt.taxonomy = %s
+					   AND tt.count > 0
+					   AND t.name LIKE %s
+					 ORDER BY t.name ASC
+					 LIMIT 20",
+					$taxonomy,
+					$like
+				)
+			);
+		}
+
+		$items = array_map( fn( $r ) => [
+			'id'   => (int) $r->id,
+			'name' => $r->name,
+		], $results );
+
+		return new WP_REST_Response( $items );
 	}
 
 	/**
@@ -786,7 +856,7 @@ class AdminRestApi {
 	}
 
 	/**
-	 * Gets web/app source breakdown for a set of object IDs from the buffer table.
+	 * Gets web/app source breakdown for a set of object IDs from meta.
 	 * Only queries the current page's IDs (max 25) to avoid expensive joins.
 	 *
 	 * @param int[]  $ids         The object IDs to get source counts for.
@@ -801,23 +871,35 @@ class AdminRestApi {
 
 		global $wpdb;
 
-		$table        = Database::get_table_name();
+		$meta_table = match ( $object_type ) {
+			'post' => $wpdb->postmeta,
+			'term' => $wpdb->termmeta,
+			'user' => $wpdb->usermeta,
+			default => '',
+		};
+
+		if ( ! $meta_table ) {
+			return [];
+		}
+
+		$id_column    = 'user' === $object_type ? 'user_id' : ( 'term' === $object_type ? 'term_id' : 'post_id' );
 		$placeholders = implode( ', ', array_fill( 0, count( $ids ), '%d' ) );
 
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
-				"SELECT object_id, source, COUNT(*) as cnt
-				 FROM $table
-				 WHERE object_id IN ($placeholders) AND object_type = %s
-				 GROUP BY object_id, source",
-				array_merge( $ids, [ $object_type ] )
+				"SELECT $id_column as object_id, meta_key, meta_value
+				 FROM $meta_table
+				 WHERE $id_column IN ($placeholders)
+				   AND meta_key IN ('mai_analytics_views_web', 'mai_analytics_views_app')",
+				$ids
 			)
 		);
 
 		$map = [];
 
 		foreach ( $rows as $row ) {
-			$map[ (int) $row->object_id ][ $row->source ] = (int) $row->cnt;
+			$source = 'mai_analytics_views_web' === $row->meta_key ? 'web' : 'app';
+			$map[ (int) $row->object_id ][ $source ] = (int) $row->meta_value;
 		}
 
 		return $map;

@@ -201,21 +201,33 @@ class Admin {
 
 		<!-- Filters -->
 		<div class="mai-analytics-filters">
-			<select id="mai-analytics-orderby">
-				<option value="views"><?php esc_html_e( 'Order by Views', 'mai-analytics' ); ?></option>
-				<option value="trending"><?php esc_html_e( 'Order by Trending', 'mai-analytics' ); ?></option>
-			</select>
 			<select id="mai-analytics-post-type" class="mai-analytics-filter-posts">
 				<option value=""><?php esc_html_e( 'All Post Types', 'mai-analytics' ); ?></option>
 			</select>
 			<select id="mai-analytics-taxonomy" class="mai-analytics-filter-posts mai-analytics-filter-terms">
 				<option value=""><?php esc_html_e( 'All Taxonomies', 'mai-analytics' ); ?></option>
 			</select>
-			<select id="mai-analytics-term" class="mai-analytics-filter-posts" style="display:none;">
-				<option value=""><?php esc_html_e( 'All Terms', 'mai-analytics' ); ?></option>
-			</select>
-			<select id="mai-analytics-author" class="mai-analytics-filter-posts">
-				<option value=""><?php esc_html_e( 'All Authors', 'mai-analytics' ); ?></option>
+			<div class="mai-analytics-autocomplete" id="mai-analytics-term-wrap" style="display:none;">
+				<input type="text" id="mai-analytics-term-search" placeholder="<?php esc_attr_e( 'Search terms...', 'mai-analytics' ); ?>" autocomplete="off">
+				<input type="hidden" id="mai-analytics-term" value="">
+				<span class="mai-analytics-autocomplete__clear" style="display:none;">&times;</span>
+				<div class="mai-analytics-autocomplete__results" style="display:none;"></div>
+			</div>
+			<div class="mai-analytics-autocomplete mai-analytics-filter-posts" id="mai-analytics-author-wrap">
+				<input type="text" id="mai-analytics-author-search" placeholder="<?php esc_attr_e( 'Search authors...', 'mai-analytics' ); ?>" autocomplete="off">
+				<input type="hidden" id="mai-analytics-author" value="">
+				<span class="mai-analytics-autocomplete__clear" style="display:none;">&times;</span>
+				<div class="mai-analytics-autocomplete__results" style="display:none;"></div>
+			</div>
+		</div>
+
+		<!-- Table Controls -->
+		<div class="mai-analytics-table-controls">
+			<input type="text" id="mai-analytics-search" placeholder="<?php esc_attr_e( 'Search by title/name...', 'mai-analytics' ); ?>" class="regular-text">
+			<select id="mai-analytics-per-page">
+				<option value="25"><?php esc_html_e( '25 per page', 'mai-analytics' ); ?></option>
+				<option value="50"><?php esc_html_e( '50 per page', 'mai-analytics' ); ?></option>
+				<option value="100"><?php esc_html_e( '100 per page', 'mai-analytics' ); ?></option>
 			</select>
 		</div>
 

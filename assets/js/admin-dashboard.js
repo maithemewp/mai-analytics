@@ -5,12 +5,15 @@
 	var headers = { 'X-WP-Nonce': maiAnalytics.nonce };
 
 	// State.
-	var activeTab    = 'posts';
-	var chartMetric  = 'total';
-	var chartSource  = 'all';
-	var chartInstance = null;
-	var currentPage  = 1;
-	var filtersData  = null;
+	var activeTab     = 'posts';
+	var chartMetric   = 'total';
+	var chartSource   = 'all';
+	var chartInstance  = null;
+	var currentPage   = 1;
+	var currentOrderby = 'views';
+	var searchQuery   = '';
+	var searchTimer   = null;
+	var filtersData   = null;
 
 	/**
 	 * Initialize on DOM ready.
@@ -33,8 +36,11 @@
 				e.preventDefault();
 				document.querySelector('.nav-tab-active').classList.remove('nav-tab-active');
 				this.classList.add('nav-tab-active');
-				activeTab   = this.dataset.tab;
-				currentPage = 1;
+				activeTab      = this.dataset.tab;
+				currentPage    = 1;
+				currentOrderby = 'views';
+				searchQuery    = '';
+				document.getElementById('mai-analytics-search').value = '';
 				updateFilterVisibility();
 				loadTable();
 			});
@@ -58,11 +64,9 @@
 		});
 
 		// Filter changes.
-		['mai-analytics-orderby', 'mai-analytics-post-type', 'mai-analytics-author'].forEach(function (id) {
-			document.getElementById(id).addEventListener('change', function () {
-				currentPage = 1;
-				loadTable();
-			});
+		document.getElementById('mai-analytics-post-type').addEventListener('change', function () {
+			currentPage = 1;
+			loadTable();
 		});
 
 		document.getElementById('mai-analytics-taxonomy').addEventListener('change', function () {
@@ -71,9 +75,45 @@
 			loadTable();
 		});
 
-		document.getElementById('mai-analytics-term').addEventListener('change', function () {
+		// Per-page selector.
+		document.getElementById('mai-analytics-per-page').addEventListener('change', function () {
 			currentPage = 1;
 			loadTable();
+		});
+
+		// Table search.
+		document.getElementById('mai-analytics-search').addEventListener('input', function () {
+			clearTimeout(searchTimer);
+			var val = this.value.trim();
+			searchTimer = setTimeout(function () {
+				searchQuery = val;
+				currentPage = 1;
+				loadTable();
+			}, 300);
+		});
+
+		// Author autocomplete.
+		initAutocomplete({
+			wrapperId:  'mai-analytics-author-wrap',
+			searchType: 'author',
+			getParams:  function () { return {}; },
+			onChange:    function () {
+				currentPage = 1;
+				loadTable();
+			},
+		});
+
+		// Term autocomplete.
+		initAutocomplete({
+			wrapperId:  'mai-analytics-term-wrap',
+			searchType: 'term',
+			getParams:  function () {
+				return { taxonomy: document.getElementById('mai-analytics-taxonomy').value };
+			},
+			onChange: function () {
+				currentPage = 1;
+				loadTable();
+			},
 		});
 	}
 
@@ -84,6 +124,7 @@
 		apiFetch('summary').then(function (data) {
 			setCardValue('total_views', formatNumber(data.total_views));
 			setCardValue('views_today', formatNumber(data.views_today));
+			setCardValue('last_sync', data.last_sync || '—');
 			setCardValue('trending_count', formatNumber(data.trending_count));
 			setCardValue('buffer_rows', formatNumber(data.buffer_rows));
 		});
@@ -167,12 +208,8 @@
 				taxSelect.add(new Option(tax.label, tax.slug));
 			});
 
-			var authorSelect = document.getElementById('mai-analytics-author');
-			data.authors.forEach(function (a) {
-				authorSelect.add(new Option(a.name, a.id));
-			});
-
 			updateFilterVisibility();
+			updateTermDropdown();
 		});
 	}
 
@@ -182,9 +219,9 @@
 	function loadTable() {
 		var endpoint = 'top/' + activeTab;
 		var params   = new URLSearchParams({
-			orderby:  document.getElementById('mai-analytics-orderby').value,
+			orderby:  currentOrderby,
 			page:     currentPage,
-			per_page: 25,
+			per_page: document.getElementById('mai-analytics-per-page').value,
 		});
 
 		if (activeTab === 'posts') {
@@ -200,6 +237,10 @@
 		} else if (activeTab === 'terms') {
 			var tax2 = document.getElementById('mai-analytics-taxonomy').value;
 			if (tax2) params.set('taxonomy', tax2);
+		}
+
+		if (searchQuery) {
+			params.set('search', searchQuery);
 		}
 
 		showLoading(true);
@@ -245,11 +286,11 @@
 
 			if (col.key === 'views' || col.key === 'trending') {
 				th.classList.add('sortable');
-				if (document.getElementById('mai-analytics-orderby').value === col.key) {
+				if (currentOrderby === col.key) {
 					th.classList.add('sorted');
 				}
 				th.addEventListener('click', function () {
-					document.getElementById('mai-analytics-orderby').value = col.key;
+					currentOrderby = col.key;
 					currentPage = 1;
 					loadTable();
 				});
@@ -404,9 +445,9 @@
 			el.style.display = showTerms ? '' : 'none';
 		});
 
-		// Hide all non-orderby filters for authors and archives.
+		// Hide all filters for authors and archives tabs.
 		if (activeTab === 'authors' || activeTab === 'archives') {
-			document.querySelectorAll('.mai-analytics-filters select:not(#mai-analytics-orderby)').forEach(function (el) {
+			document.querySelectorAll('.mai-analytics-filters select, .mai-analytics-filters .mai-analytics-autocomplete').forEach(function (el) {
 				el.style.display = 'none';
 			});
 		}
@@ -416,32 +457,126 @@
 	 * Update the term dropdown based on selected taxonomy.
 	 */
 	function updateTermDropdown() {
-		var termSelect = document.getElementById('mai-analytics-term');
-		var taxonomy   = document.getElementById('mai-analytics-taxonomy').value;
+		var termWrap = document.getElementById('mai-analytics-term-wrap');
+		var taxonomy = document.getElementById('mai-analytics-taxonomy').value;
 
-		// Clear and reset.
-		while (termSelect.options.length > 0) termSelect.remove(0);
-		termSelect.add(new Option('All Terms', ''));
-
-		if (!taxonomy || !filtersData || !filtersData.terms[taxonomy]) {
-			termSelect.style.display = 'none';
+		if (!taxonomy) {
+			termWrap.style.display = 'none';
+			// Clear any existing selection.
+			clearAutocomplete(termWrap);
 			return;
 		}
 
-		filtersData.terms[taxonomy].forEach(function (t) {
-			termSelect.add(new Option(t.name, t.id));
+		termWrap.style.display = '';
+	}
+
+	/**
+	 * Initialize an AJAX autocomplete on a wrapper element.
+	 */
+	function initAutocomplete(config) {
+		var wrap    = document.getElementById(config.wrapperId);
+		var input   = wrap.querySelector('input[type="text"]');
+		var hidden  = wrap.querySelector('input[type="hidden"]');
+		var clear   = wrap.querySelector('.mai-analytics-autocomplete__clear');
+		var results = wrap.querySelector('.mai-analytics-autocomplete__results');
+		var timer   = null;
+
+		input.addEventListener('input', function () {
+			clearTimeout(timer);
+			var val = input.value.trim();
+
+			if (val.length < 2) {
+				results.style.display = 'none';
+				return;
+			}
+
+			timer = setTimeout(function () {
+				var params = new URLSearchParams({ type: config.searchType, search: val });
+				var extra  = config.getParams ? config.getParams() : {};
+
+				Object.keys(extra).forEach(function (k) {
+					if (extra[k]) params.set(k, extra[k]);
+				});
+
+				apiFetch('search?' + params.toString()).then(function (items) {
+					while (results.firstChild) results.removeChild(results.firstChild);
+
+					if (!items.length) {
+						var noResult       = document.createElement('div');
+						noResult.className = 'mai-analytics-autocomplete__no-results';
+						noResult.textContent = 'No results found';
+						results.appendChild(noResult);
+						results.style.display = '';
+						return;
+					}
+
+					items.forEach(function (item) {
+						var div       = document.createElement('div');
+						div.className = 'mai-analytics-autocomplete__item';
+						div.textContent = item.name;
+						div.dataset.id  = item.id;
+
+						div.addEventListener('click', function () {
+							hidden.value          = item.id;
+							input.value           = item.name;
+							input.readOnly        = true;
+							clear.style.display   = '';
+							results.style.display = 'none';
+							config.onChange(item.id);
+						});
+
+						results.appendChild(div);
+					});
+
+					results.style.display = '';
+				});
+			}, 300);
 		});
 
-		termSelect.style.display = '';
+		clear.addEventListener('click', function () {
+			hidden.value          = '';
+			input.value           = '';
+			input.readOnly        = false;
+			clear.style.display   = 'none';
+			results.style.display = 'none';
+			config.onChange('');
+		});
+
+		// Close results when clicking outside.
+		document.addEventListener('click', function (e) {
+			if (!wrap.contains(e.target)) {
+				results.style.display = 'none';
+			}
+		});
+	}
+
+	/**
+	 * Clear an autocomplete wrapper's selection.
+	 */
+	function clearAutocomplete(wrap) {
+		var hidden  = wrap.querySelector('input[type="hidden"]');
+		var input   = wrap.querySelector('input[type="text"]');
+		var clear   = wrap.querySelector('.mai-analytics-autocomplete__clear');
+		var results = wrap.querySelector('.mai-analytics-autocomplete__results');
+
+		hidden.value          = '';
+		input.value           = '';
+		input.readOnly        = false;
+		clear.style.display   = 'none';
+		results.style.display = 'none';
 	}
 
 	/**
 	 * Show or hide loading state.
 	 */
 	function showLoading(show) {
-		document.querySelector('.mai-analytics-loading').style.display    = show ? '' : 'none';
-		document.querySelector('.mai-analytics-table').style.display      = show ? 'none' : '';
-		document.querySelector('.mai-analytics-pagination').style.display = show ? 'none' : '';
+		document.querySelector('.mai-analytics-loading').style.display = show ? '' : 'none';
+		document.querySelector('.mai-analytics-table').style.display   = show ? 'none' : '';
+
+		// Only hide pagination when loading starts. renderPagination() controls whether it shows.
+		if (show) {
+			document.querySelector('.mai-analytics-pagination').style.display = 'none';
+		}
 	}
 
 	/**
