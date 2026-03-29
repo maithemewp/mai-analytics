@@ -1,8 +1,8 @@
 (function () {
 	'use strict';
 
-	var API     = maiAnalytics.restBase;
-	var headers = { 'X-WP-Nonce': maiAnalytics.nonce };
+	var API     = maiViews.restBase;
+	var headers = { 'X-WP-Nonce': maiViews.nonce };
 
 	// State.
 	var activeTab      = 'posts';
@@ -32,7 +32,7 @@
 	 */
 	function bindEvents() {
 		// Tab switching.
-		document.querySelectorAll('.mai-analytics-tabs .nav-tab').forEach(function (tab) {
+		document.querySelectorAll('.mai-views-tabs .nav-tab').forEach(function (tab) {
 			tab.addEventListener('click', function (e) {
 				e.preventDefault();
 				document.querySelector('.nav-tab-active').classList.remove('nav-tab-active');
@@ -42,34 +42,34 @@
 				currentOrderby = 'views';
 				currentOrder   = 'desc';
 				searchQuery    = '';
-				document.getElementById('mai-analytics-search').value = '';
+				document.getElementById('mai-views-search').value = '';
 				updateFilterVisibility();
 				loadTable();
 			});
 		});
 
 		// Filter changes.
-		document.getElementById('mai-analytics-post-type').addEventListener('change', function () {
+		document.getElementById('mai-views-post-type').addEventListener('change', function () {
 			currentPage = 1;
 			loadTable();
 		});
 
-		document.getElementById('mai-analytics-taxonomy').addEventListener('change', function () {
+		document.getElementById('mai-views-taxonomy').addEventListener('change', function () {
 			currentPage = 1;
 			updateTermDropdown();
 			loadTable();
 		});
 
 		// Per-page selector.
-		document.getElementById('mai-analytics-per-page').addEventListener('change', function () {
+		document.getElementById('mai-views-per-page').addEventListener('change', function () {
 			currentPage = 1;
 			loadTable();
 		});
 
 		// Table search.
-		var searchSpinner = document.querySelector('.mai-analytics-search-spinner');
+		var searchSpinner = document.querySelector('.mai-views-search-spinner');
 
-		document.getElementById('mai-analytics-search').addEventListener('input', function () {
+		document.getElementById('mai-views-search').addEventListener('input', function () {
 			clearTimeout(searchTimer);
 			var val = this.value.trim();
 
@@ -92,12 +92,12 @@
 	 * Initialize Tom Select instances.
 	 */
 	function initSelects() {
-		authorSelect = initTomSelect('mai-analytics-author', 'author', function () {
+		authorSelect = initTomSelect('mai-views-author', 'author', function () {
 			return {};
 		});
 
-		termSelect = initTomSelect('mai-analytics-term', 'term', function () {
-			return { taxonomy: document.getElementById('mai-analytics-taxonomy').value };
+		termSelect = initTomSelect('mai-views-term', 'term', function () {
+			return { taxonomy: document.getElementById('mai-views-taxonomy').value };
 		});
 
 		// Hide term select wrapper initially (no taxonomy selected).
@@ -124,9 +124,9 @@
 			return;
 		}
 
-		var canvas = document.getElementById('mai-analytics-chart');
+		var canvas = document.getElementById('mai-views-chart');
 		var ctx    = canvas.getContext('2d');
-		var section = document.querySelector('.mai-analytics-chart-section');
+		var section = document.querySelector('.mai-views-chart-section');
 
 		if (chartInstance) {
 			chartInstance.destroy();
@@ -197,12 +197,12 @@
 		apiFetch('filters').then(function (data) {
 			filtersData = data;
 
-			var ptSelect = document.getElementById('mai-analytics-post-type');
+			var ptSelect = document.getElementById('mai-views-post-type');
 			data.post_types.forEach(function (pt) {
 				ptSelect.add(new Option(pt.label, pt.slug));
 			});
 
-			var taxSelect = document.getElementById('mai-analytics-taxonomy');
+			var taxSelect = document.getElementById('mai-views-taxonomy');
 			data.taxonomies.forEach(function (tax) {
 				taxSelect.add(new Option(tax.label, tax.slug));
 			});
@@ -221,12 +221,12 @@
 			orderby:  currentOrderby,
 			order:    currentOrder,
 			page:     currentPage,
-			per_page: document.getElementById('mai-analytics-per-page').value,
+			per_page: document.getElementById('mai-views-per-page').value,
 		});
 
 		if (activeTab === 'posts') {
-			var pt     = document.getElementById('mai-analytics-post-type').value;
-			var tax    = document.getElementById('mai-analytics-taxonomy').value;
+			var pt     = document.getElementById('mai-views-post-type').value;
+			var tax    = document.getElementById('mai-views-taxonomy').value;
 			var terms  = termSelect ? termSelect.getValue() : [];
 			var authors = authorSelect ? authorSelect.getValue() : [];
 
@@ -235,7 +235,7 @@
 			if (terms.length)    params.set('term_id', terms.join(','));
 			if (authors.length)  params.set('author', authors.join(','));
 		} else if (activeTab === 'terms') {
-			var tax2 = document.getElementById('mai-analytics-taxonomy').value;
+			var tax2 = document.getElementById('mai-views-taxonomy').value;
 			if (tax2) params.set('taxonomy', tax2);
 		}
 
@@ -251,10 +251,10 @@
 			updateChart(data.items || []);
 			updateActiveFilters();
 			showLoading(false);
-			document.querySelector('.mai-analytics-search-spinner').style.display = 'none';
+			document.querySelector('.mai-views-search-spinner').style.display = 'none';
 		}).catch(function () {
 			showLoading(false);
-			document.querySelector('.mai-analytics-search-spinner').style.display = 'none';
+			document.querySelector('.mai-views-search-spinner').style.display = 'none';
 		});
 	}
 
@@ -262,10 +262,10 @@
 	 * Render table rows using safe DOM methods.
 	 */
 	function renderTable(data) {
-		var table = document.querySelector('.mai-analytics-table');
+		var table = document.querySelector('.mai-views-table');
 		var thead = table.querySelector('thead tr');
 		var tbody = table.querySelector('tbody');
-		var empty = document.querySelector('.mai-analytics-empty');
+		var empty = document.querySelector('.mai-views-empty');
 
 		// Clear existing content safely.
 		while (thead.firstChild) thead.removeChild(thead.firstChild);
@@ -302,7 +302,7 @@
 				th.appendChild(label);
 
 				var caret       = document.createElement('span');
-				caret.className = 'mai-analytics-caret';
+				caret.className = 'mai-views-caret';
 
 				if (isSorted) {
 					caret.textContent = 'asc' === currentOrder ? ' \u25B2' : ' \u25BC';
@@ -405,9 +405,9 @@
 	 * Render pagination controls using safe DOM methods.
 	 */
 	function renderPagination(total, pages) {
-		var wrap = document.querySelector('.mai-analytics-pagination');
-		var info = wrap.querySelector('.mai-analytics-pagination__info');
-		var btns = wrap.querySelector('.mai-analytics-pagination__buttons');
+		var wrap = document.querySelector('.mai-views-pagination');
+		var info = wrap.querySelector('.mai-views-pagination__info');
+		var btns = wrap.querySelector('.mai-views-pagination__buttons');
 
 		if (pages <= 1) {
 			wrap.style.display = 'none';
@@ -468,19 +468,19 @@
 		var showTerms = (activeTab === 'terms' || activeTab === 'posts');
 
 		// Tom Select wraps elements in .ts-wrapper — target those for Tom Select elements.
-		document.querySelectorAll('.mai-analytics-filter-posts').forEach(function (el) {
+		document.querySelectorAll('.mai-views-filter-posts').forEach(function (el) {
 			var target = el.closest('.ts-wrapper') || el;
 			target.style.display = showPosts ? '' : 'none';
 		});
 
-		document.querySelectorAll('.mai-analytics-filter-terms').forEach(function (el) {
+		document.querySelectorAll('.mai-views-filter-terms').forEach(function (el) {
 			var target = el.closest('.ts-wrapper') || el;
 			target.style.display = showTerms ? '' : 'none';
 		});
 
 		// Hide all filters for authors and archives tabs.
 		if (activeTab === 'authors' || activeTab === 'archives') {
-			document.querySelectorAll('.mai-analytics-filters').forEach(function (wrap) {
+			document.querySelectorAll('.mai-views-filters').forEach(function (wrap) {
 				Array.prototype.forEach.call(wrap.children, function (el) {
 					el.style.display = 'none';
 				});
@@ -492,7 +492,7 @@
 	 * Update the term dropdown based on selected taxonomy.
 	 */
 	function updateTermDropdown() {
-		var taxonomy = document.getElementById('mai-analytics-taxonomy').value;
+		var taxonomy = document.getElementById('mai-views-taxonomy').value;
 
 		if (!termSelect) {
 			return;
@@ -517,20 +517,20 @@
 	 * Build and display active filter tags.
 	 */
 	function updateActiveFilters() {
-		var wrap = document.querySelector('.mai-analytics-active-filters');
+		var wrap = document.querySelector('.mai-views-active-filters');
 
 		while (wrap.firstChild) wrap.removeChild(wrap.firstChild);
 
 		var filters = [];
 
 		// Post type.
-		var ptSelect = document.getElementById('mai-analytics-post-type');
+		var ptSelect = document.getElementById('mai-views-post-type');
 		if (ptSelect.value && (activeTab === 'posts')) {
 			filters.push(ptSelect.options[ptSelect.selectedIndex].text);
 		}
 
 		// Taxonomy.
-		var taxSelect = document.getElementById('mai-analytics-taxonomy');
+		var taxSelect = document.getElementById('mai-views-taxonomy');
 		if (taxSelect.value && (activeTab === 'posts' || activeTab === 'terms')) {
 			filters.push(taxSelect.options[taxSelect.selectedIndex].text);
 		}
@@ -564,13 +564,13 @@
 		wrap.style.display = '';
 
 		var label       = document.createElement('span');
-		label.className = 'mai-analytics-active-filters__label';
+		label.className = 'mai-views-active-filters__label';
 		label.textContent = 'Filtered by: ';
 		wrap.appendChild(label);
 
 		filters.forEach(function (text) {
 			var tag       = document.createElement('span');
-			tag.className = 'mai-analytics-active-filters__tag';
+			tag.className = 'mai-views-active-filters__tag';
 			tag.textContent = text;
 			wrap.appendChild(tag);
 		});
@@ -628,12 +628,12 @@
 	 * Show or hide loading state.
 	 */
 	function showLoading(show) {
-		document.querySelector('.mai-analytics-loading').style.display = show ? '' : 'none';
-		document.querySelector('.mai-analytics-table').style.display   = show ? 'none' : '';
+		document.querySelector('.mai-views-loading').style.display = show ? '' : 'none';
+		document.querySelector('.mai-views-table').style.display   = show ? 'none' : '';
 
 		// Only hide pagination when loading starts. renderPagination() controls whether it shows.
 		if (show) {
-			document.querySelector('.mai-analytics-pagination').style.display = 'none';
+			document.querySelector('.mai-views-pagination').style.display = 'none';
 		}
 	}
 
@@ -641,7 +641,7 @@
 	 * Set a summary card value.
 	 */
 	function setCardValue(key, value) {
-		var card = document.querySelector('[data-card="' + key + '"] .mai-analytics-card__value');
+		var card = document.querySelector('[data-card="' + key + '"] .mai-views-card__value');
 		if (!card) return;
 
 		// Last sync may contain HTML for the time span.
@@ -709,6 +709,6 @@
 
 		var date = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 
-		return date + '<span class="mai-analytics-card__time">' + time + '</span>';
+		return date + '<span class="mai-views-card__time">' + time + '</span>';
 	}
 })();

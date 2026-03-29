@@ -1,6 +1,6 @@
 <?php
 
-namespace Mai\Analytics;
+namespace Mai\Views;
 
 class MaiGrid {
 
@@ -28,7 +28,7 @@ class MaiGrid {
 	}
 
 	/**
-	 * Adds "Trending (Mai Analytics)" as a "Get Entries By" choice.
+	 * Adds "Trending (Mai Views)" as a "Get Entries By" choice.
 	 *
 	 * @param array $field The ACF field configuration.
 	 *
@@ -39,13 +39,13 @@ class MaiGrid {
 			return $field;
 		}
 
-		$field['choices']['trending'] = __( 'Trending', 'mai-analytics' ) . ' (Mai Analytics)';
+		$field['choices']['trending'] = __( 'Trending', 'mai-views' ) . ' (Mai Views)';
 
 		return $field;
 	}
 
 	/**
-	 * Adds "Views (Mai Analytics)" as an "Order By" choice.
+	 * Adds "Views (Mai Views)" as an "Order By" choice.
 	 *
 	 * @param array $field The ACF field configuration.
 	 *
@@ -57,7 +57,7 @@ class MaiGrid {
 		}
 
 		$field['choices'] = array_merge(
-			[ 'views' => __( 'Views', 'mai-analytics' ) . ' (Mai Analytics)' ],
+			[ 'views' => __( 'Views', 'mai-views' ) . ' (Mai Views)' ],
 			$field['choices']
 		);
 
@@ -129,13 +129,13 @@ class MaiGrid {
 	 */
 	public function handle_query( array $query_args, array $args ): array {
 		if ( isset( $args['query_by'] ) && 'trending' === $args['query_by'] ) {
-			$query_args['meta_key'] = 'mai_analytics_trending';
+			$query_args['meta_key'] = 'mai_trending';
 			$query_args['orderby']  = 'meta_value_num';
 			$query_args['order']    = 'DESC';
 		}
 
 		if ( isset( $args['orderby'] ) && 'views' === $args['orderby'] ) {
-			$query_args['meta_key'] = 'mai_analytics_views';
+			$query_args['meta_key'] = 'mai_views';
 			$query_args['orderby']  = 'meta_value_num';
 		}
 

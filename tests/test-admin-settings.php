@@ -1,20 +1,20 @@
 <?php
 
-use Mai\Analytics\AdminSettings;
-use Mai\Analytics\Settings;
+use Mai\Views\AdminSettings;
+use Mai\Views\Settings;
 
 class Test_Admin_Settings extends WP_UnitTestCase {
 
 	public function setUp(): void {
 		parent::setUp();
-		delete_option( 'mai_analytics_settings' );
-		remove_all_filters( 'mai_analytics_providers' );
+		delete_option( 'mai_views_settings' );
+		remove_all_filters( 'mai_views_providers' );
 	}
 
 	public function tearDown(): void {
-		delete_option( 'mai_analytics_settings' );
-		remove_all_filters( 'mai_analytics_providers' );
-		remove_all_filters( 'mai_analytics_data_source' );
+		delete_option( 'mai_views_settings' );
+		remove_all_filters( 'mai_views_providers' );
+		remove_all_filters( 'mai_views_data_source' );
 		parent::tearDown();
 	}
 
@@ -23,9 +23,9 @@ class Test_Admin_Settings extends WP_UnitTestCase {
 	}
 
 	public function test_filter_overrides_data_source(): void {
-		update_option( 'mai_analytics_settings', [ 'data_source' => 'self_hosted' ] );
+		update_option( 'mai_views_settings', [ 'data_source' => 'self_hosted' ] );
 
-		add_filter( 'mai_analytics_data_source', function () {
+		add_filter( 'mai_views_data_source', function () {
 			return 'custom_override';
 		} );
 
@@ -44,8 +44,8 @@ class Test_Admin_Settings extends WP_UnitTestCase {
 
 	public function test_sanitize_accepts_valid_provider(): void {
 		// Register a mock provider so its slug becomes valid.
-		add_filter( 'mai_analytics_providers', function () {
-			return [ new class implements \Mai\Analytics\WebViewProvider {
+		add_filter( 'mai_views_providers', function () {
+			return [ new class implements \Mai\Views\WebViewProvider {
 				public function get_slug(): string { return 'test_provider'; }
 				public function get_label(): string { return 'Test'; }
 				public function is_available(): bool { return true; }
@@ -80,11 +80,11 @@ class Test_Admin_Settings extends WP_UnitTestCase {
 
 	public function test_provider_notice_shown_when_unavailable(): void {
 		// Set data source to a provider that isn't available.
-		update_option( 'mai_analytics_settings', [ 'data_source' => 'site_kit' ] );
+		update_option( 'mai_views_settings', [ 'data_source' => 'site_kit' ] );
 
 		// Register the SiteKit provider (is_available() will be false since GOOGLESITEKIT_VERSION isn't defined).
-		add_filter( 'mai_analytics_providers', function () {
-			return [ new \Mai\Analytics\Providers\SiteKit() ];
+		add_filter( 'mai_views_providers', function () {
+			return [ new \Mai\Views\Providers\SiteKit() ];
 		} );
 
 		$admin_settings = new AdminSettings();
@@ -98,7 +98,7 @@ class Test_Admin_Settings extends WP_UnitTestCase {
 	}
 
 	public function test_provider_notice_not_shown_for_self_hosted(): void {
-		update_option( 'mai_analytics_settings', [ 'data_source' => 'self_hosted' ] );
+		update_option( 'mai_views_settings', [ 'data_source' => 'self_hosted' ] );
 
 		$admin_settings = new AdminSettings();
 

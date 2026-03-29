@@ -1,6 +1,6 @@
 <?php
 
-namespace Mai\Analytics;
+namespace Mai\Views;
 
 class AdminSettings {
 
@@ -10,7 +10,7 @@ class AdminSettings {
 	public function __construct() {
 		add_action( 'admin_init', [ $this, 'register_settings' ] );
 		add_action( 'admin_notices', [ $this, 'maybe_show_provider_notice' ] );
-		add_filter( 'plugin_action_links_' . MAI_ANALYTICS_BASENAME . '/mai-analytics.php', [ $this, 'add_action_links' ] );
+		add_filter( 'plugin_action_links_' . MAI_VIEWS_BASENAME . '/mai-views.php', [ $this, 'add_action_links' ] );
 	}
 
 	/**
@@ -23,8 +23,8 @@ class AdminSettings {
 	public function add_action_links( array $links ): array {
 		$settings_link = sprintf(
 			'<a href="%s">%s</a>',
-			admin_url( 'admin.php?page=mai-analytics&tab=settings' ),
-			__( 'Settings', 'mai-analytics' )
+			admin_url( 'admin.php?page=mai-views&tab=settings' ),
+			__( 'Settings', 'mai-views' )
 		);
 
 		array_unshift( $links, $settings_link );
@@ -59,7 +59,7 @@ class AdminSettings {
 			// Provider is available but had a sync error.
 			$message = sprintf(
 				/* translators: %s: provider name */
-				esc_html__( '%s sync error:', 'mai-analytics' ),
+				esc_html__( '%s sync error:', 'mai-views' ),
 				esc_html( $label )
 			) . ' ' . esc_html( $last_error );
 		} else {
@@ -70,7 +70,7 @@ class AdminSettings {
 
 			$message = sprintf(
 				/* translators: %s: provider name */
-				esc_html__( 'The selected analytics provider (%s) is not available.', 'mai-analytics' ),
+				esc_html__( 'The selected analytics provider (%s) is not available.', 'mai-views' ),
 				esc_html( $label )
 			);
 
@@ -78,15 +78,15 @@ class AdminSettings {
 				$message .= ' ' . esc_html( $reason );
 			}
 
-			$message .= ' ' . esc_html__( 'View syncing is paused — existing stats are preserved.', 'mai-analytics' );
+			$message .= ' ' . esc_html__( 'View syncing is paused — existing stats are preserved.', 'mai-views' );
 		}
 
 		printf(
 			'<div class="notice notice-warning"><p><strong>%s</strong> %s <a href="%s">%s</a></p></div>',
-			esc_html__( 'Mai Analytics:', 'mai-analytics' ),
+			esc_html__( 'Mai Views:', 'mai-views' ),
 			$message,
-			esc_url( admin_url( 'admin.php?page=mai-analytics&tab=settings' ) ),
-			esc_html__( 'Check settings', 'mai-analytics' )
+			esc_url( admin_url( 'admin.php?page=mai-views&tab=settings' ) ),
+			esc_html__( 'Check settings', 'mai-views' )
 		);
 	}
 
@@ -96,70 +96,70 @@ class AdminSettings {
 	 * @return void
 	 */
 	public function register_settings(): void {
-		register_setting( 'mai_analytics_settings', 'mai_analytics_settings', [
+		register_setting( 'mai_views_settings', 'mai_views_settings', [
 			'sanitize_callback' => [ $this, 'sanitize' ],
 		] );
 
 		add_settings_section(
-			'mai_analytics_data_source',
+			'mai_views_data_source',
 			'',
 			'__return_null',
-			'mai-analytics-settings'
+			'mai-views-settings'
 		);
 
 		add_settings_field(
 			'data_source',
-			__( 'View Tracking Source', 'mai-analytics' ),
+			__( 'View Tracking Source', 'mai-views' ),
 			[ $this, 'render_data_source_field' ],
-			'mai-analytics-settings',
-			'mai_analytics_data_source'
+			'mai-views-settings',
+			'mai_views_data_source'
 		);
 
 		add_settings_field(
 			'provider_status',
-			__( 'Provider Status', 'mai-analytics' ),
+			__( 'Provider Status', 'mai-views' ),
 			[ $this, 'render_provider_status' ],
-			'mai-analytics-settings',
-			'mai_analytics_data_source',
-			[ 'class' => 'mai-analytics-provider-status' ]
+			'mai-views-settings',
+			'mai_views_data_source',
+			[ 'class' => 'mai-views-provider-status' ]
 		);
 
 		// Matomo-specific settings fields (toggled via CSS).
 		add_settings_field(
 			'matomo_url',
-			__( 'Matomo URL', 'mai-analytics' ),
+			__( 'Matomo URL', 'mai-views' ),
 			[ $this, 'render_text_field' ],
-			'mai-analytics-settings',
-			'mai_analytics_data_source',
-			[ 'key' => 'matomo_url', 'type' => 'url', 'description' => __( 'The URL of your Matomo instance.', 'mai-analytics' ), 'class' => 'mai-analytics-provider-matomo' ]
+			'mai-views-settings',
+			'mai_views_data_source',
+			[ 'key' => 'matomo_url', 'type' => 'url', 'description' => __( 'The URL of your Matomo instance.', 'mai-views' ), 'class' => 'mai-views-provider-matomo' ]
 		);
 
 		add_settings_field(
 			'matomo_site_id',
-			__( 'Site ID', 'mai-analytics' ),
+			__( 'Site ID', 'mai-views' ),
 			[ $this, 'render_text_field' ],
-			'mai-analytics-settings',
-			'mai_analytics_data_source',
-			[ 'key' => 'matomo_site_id', 'type' => 'number', 'description' => __( 'Matomo site/app ID.', 'mai-analytics' ), 'class' => 'mai-analytics-provider-matomo' ]
+			'mai-views-settings',
+			'mai_views_data_source',
+			[ 'key' => 'matomo_site_id', 'type' => 'number', 'description' => __( 'Matomo site/app ID.', 'mai-views' ), 'class' => 'mai-views-provider-matomo' ]
 		);
 
 		add_settings_field(
 			'matomo_token',
-			__( 'Auth Token', 'mai-analytics' ),
+			__( 'Auth Token', 'mai-views' ),
 			[ $this, 'render_text_field' ],
-			'mai-analytics-settings',
-			'mai_analytics_data_source',
-			[ 'key' => 'matomo_token', 'type' => 'password', 'description' => __( 'Matomo API authentication token.', 'mai-analytics' ), 'class' => 'mai-analytics-provider-matomo' ]
+			'mai-views-settings',
+			'mai_views_data_source',
+			[ 'key' => 'matomo_token', 'type' => 'password', 'description' => __( 'Matomo API authentication token.', 'mai-views' ), 'class' => 'mai-views-provider-matomo' ]
 		);
 
 		// Redirect back to our tab after settings save.
 		add_filter( 'wp_redirect', function( string $location ): string {
-			if ( str_contains( $location, 'page=mai-analytics-settings' ) ) {
-				return admin_url( 'admin.php?page=mai-analytics&tab=settings&settings-updated=true' );
+			if ( str_contains( $location, 'page=mai-views-settings' ) ) {
+				return admin_url( 'admin.php?page=mai-views&tab=settings&settings-updated=true' );
 			}
 
 			if ( str_contains( $location, 'settings-updated=true' ) && str_contains( $location, 'options.php' ) ) {
-				return admin_url( 'admin.php?page=mai-analytics&tab=settings&settings-updated=true' );
+				return admin_url( 'admin.php?page=mai-views&tab=settings&settings-updated=true' );
 			}
 
 			return $location;
@@ -174,9 +174,9 @@ class AdminSettings {
 	 * @return array The sanitized settings.
 	 */
 	public function sanitize( array $input ): array {
-		$valid_sources = [ 'self_hosted' ];
+		$valid_sources = [ 'disabled', 'self_hosted' ];
 
-		$providers = apply_filters( 'mai_analytics_providers', [] );
+		$providers = apply_filters( 'mai_views_providers', [] );
 
 		foreach ( $providers as $provider ) {
 			$valid_sources[] = $provider->get_slug();
@@ -202,11 +202,14 @@ class AdminSettings {
 	 */
 	public function render_data_source_field(): void {
 		$current   = Settings::get( 'data_source' );
-		$providers = apply_filters( 'mai_analytics_providers', [] );
+		$providers = apply_filters( 'mai_views_providers', [] );
 		?>
-		<select name="mai_analytics_settings[data_source]" id="mai-analytics-data-source">
+		<select name="mai_views_settings[data_source]" id="mai-views-data-source">
+			<option value="disabled" <?php selected( $current, 'disabled' ); ?>>
+				<?php esc_html_e( 'Disabled', 'mai-views' ); ?>
+			</option>
 			<option value="self_hosted" <?php selected( $current, 'self_hosted' ); ?>>
-				<?php esc_html_e( 'Self-Hosted (built-in tracking)', 'mai-analytics' ); ?>
+				<?php esc_html_e( 'Self-Hosted (built-in tracking)', 'mai-views' ); ?>
 			</option>
 			<?php foreach ( $providers as $provider ) : ?>
 				<option value="<?php echo esc_attr( $provider->get_slug() ); ?>"
@@ -214,7 +217,7 @@ class AdminSettings {
 					<?php disabled( ! $provider->is_available() ); ?>>
 					<?php echo esc_html( $provider->get_label() ); ?>
 					<?php if ( ! $provider->is_available() ) : ?>
-						<?php esc_html_e( '(not available)', 'mai-analytics' ); ?>
+						<?php esc_html_e( '(not available)', 'mai-views' ); ?>
 					<?php endif; ?>
 				</option>
 			<?php endforeach; ?>
@@ -231,15 +234,15 @@ class AdminSettings {
 		$provider = ProviderSync::get_provider();
 
 		if ( ! $provider ) {
-			echo '<p class="description">' . esc_html__( 'Select a provider to see its status.', 'mai-analytics' ) . '</p>';
+			echo '<p class="description">' . esc_html__( 'Select a provider to see its status.', 'mai-views' ) . '</p>';
 			return;
 		}
 
 		if ( $provider->is_available() ) {
-			printf( '<span style="color:green;">&#10003; %s</span>', esc_html__( 'Connected', 'mai-analytics' ) );
+			printf( '<span style="color:green;">&#10003; %s</span>', esc_html__( 'Connected', 'mai-views' ) );
 		} else {
 			$reason = method_exists( $provider, 'get_unavailable_reason' ) ? $provider->get_unavailable_reason() : '';
-			printf( '<span style="color:#d63638;">&#10007; %s</span>', esc_html( $reason ?: __( 'Not configured', 'mai-analytics' ) ) );
+			printf( '<span style="color:#d63638;">&#10007; %s</span>', esc_html( $reason ?: __( 'Not configured', 'mai-views' ) ) );
 		}
 
 		$last_error = method_exists( $provider, 'get_last_error' ) ? $provider::get_last_error() : '';
@@ -247,7 +250,7 @@ class AdminSettings {
 		if ( $last_error ) {
 			printf(
 				'<p style="color:#d63638; margin-top:8px;"><strong>%s</strong> %s</p>',
-				esc_html__( 'Last error:', 'mai-analytics' ),
+				esc_html__( 'Last error:', 'mai-views' ),
 				esc_html( $last_error )
 			);
 		}
@@ -268,7 +271,7 @@ class AdminSettings {
 		?>
 		<input
 			type="<?php echo esc_attr( $type ); ?>"
-			name="mai_analytics_settings[<?php echo esc_attr( $key ); ?>]"
+			name="mai_views_settings[<?php echo esc_attr( $key ); ?>]"
 			value="<?php echo esc_attr( $value ); ?>"
 			class="regular-text"
 		>

@@ -1,243 +1,194 @@
-# Mai Analytics — Architecture Plan
+# Mai Views — Architecture
 
 ## Overview
-Standalone WordPress plugin for self-hosted analytics, starting with view tracking for posts, terms, and authors. Handles both web visitors (via JS beacon) and app users (via REST API). Designed for high-traffic sites with page caching, CDN, and Varnish. Coexists with mai-publisher (different meta keys).
 
-## Meta keys
+WordPress plugin for view tracking across posts, terms, and authors. Handles web visitors (JS beacon) and app users (REST API). Designed for high-traffic sites with page caching, CDN, and Varnish. Uses the same meta keys as Mai Publisher (`mai_views`, `mai_trending`) for backward compatibility. Can run standalone or as a Composer dependency inside Mai Publisher.
 
-Uses `mai_analytics_` prefix to avoid collision with mai-publisher's `mai_views` / `mai_trending`.
+## Meta Keys
 
 | Key | Stored on | Value |
 |-----|-----------|-------|
-| `mai_analytics_views` | post_meta, term_meta, user_meta | Lifetime view count |
-| `mai_analytics_trending` | post_meta, term_meta, user_meta | Views in trending window (default 6h) |
-| `mai_analytics_synced` | option | Last sync timestamp |
+| `mai_views` | post_meta, term_meta, user_meta | Lifetime total views (web + app) |
+| `mai_views_web` | post_meta, term_meta, user_meta | Lifetime web-only views |
+| `mai_views_app` | post_meta, term_meta, user_meta | Lifetime app-only views |
+| `mai_trending` | post_meta, term_meta, user_meta | Views in trending window (default 7 days) |
 
-Both `mai_analytics_views` and `mai_analytics_trending` registered with `show_in_rest: true` so they are automatically included in `wp/v2/posts` responses (no separate endpoint call needed from apps using maiexpowp).
+All registered with `show_in_rest: true` so they appear in `wp/v2/posts` responses.
 
-## Counting flow
+Post type archive counts stored in options: `mai_views_post_type_views`, `mai_views_post_type_views_web`, `mai_views_post_type_views_app`, `mai_views_post_type_trending`.
+
+## Data Sources
+
+| Source | Slug | How it works |
+|--------|------|-------------|
+| Disabled | `disabled` | No tracking, no sync. Dashboard shows existing data. |
+| Self-Hosted | `self_hosted` | Beacon records every view in buffer. Sync aggregates to meta. |
+| Site Kit (GA4) | `site_kit` | Beacon deduplicates in buffer. Provider sync fetches from GA4 via Site Kit REST API. |
+| Matomo | `matomo` | Same dedup pattern. Fetches via Matomo Bulk API. |
+| Jetpack Stats | `jetpack` | Same dedup pattern. Fetches via `WPCOM_Stats::get_post_views()`. Posts only. |
+
+## Counting Flow
+
+### Self-Hosted Mode
 
 ```
 WEB: Page loads from cache (PHP never runs)
-  → Inline JS in wp_footer: navigator.sendBeacon('/wp-json/mai-analytics/v1/view/post/{id}')
-  → Fire and forget, no response needed
+  -> Inline JS in wp_footer: navigator.sendBeacon('/wp-json/mai-views/v1/view/post/{id}')
 
 APP: Article screen opens
-  → fetch() fire-and-forget POST to mai-analytics/v1/view/post/{id}
-  → No await, no response needed
+  -> POST to mai-views/v1/view/post/{id} with source=app
 
 SERVER (REST endpoint):
-  1. INSERT INTO wp_mai_analytics_views (object_id, object_type, viewed_at, source)
-  2. get_transient('mai_analytics_sync_lock')
-     → Expired: set_transient (5 min TTL), register shutdown sync
-     → Set: skip
-  3. Return { success: true }
+  1. Bot filter check (user-agent)
+  2. INSERT INTO wp_mai_views_buffer (object_id, object_type, viewed_at, source)
+  3. Transient-gated shutdown sync trigger
+  4. Return { success: true }
 
-SHUTDOWN (after response sent, via PHP-FPM):
-  4. Aggregate table → update post/term/user meta
-  5. Prune old rows
+SHUTDOWN SYNC (after response sent):
+  5. Aggregate buffer rows -> increment mai_views, mai_views_web, mai_views_app meta
+  6. Recalculate mai_trending from buffer rows in trending window
+  7. Prune old buffer rows beyond retention
 
-WP CRON BACKUP (every 15 min):
-  If last sync > 10 min ago → sync (safety net)
+CRON BACKUP (every 15 min):
+  If last sync > 10 min ago -> sync (safety net)
 ```
 
-## What gets tracked
+### Provider Mode (Site Kit / Matomo / Jetpack)
 
-- **All public post types** — auto-detected via `get_post_types(['public' => true])`
-- **All taxonomy archives** — auto-detected via `get_taxonomies(['public' => true])`
-- **Author/user archives** — tracked as `object_type = 'user'`
+```
+WEB: Beacon fires same as self-hosted
+  -> REST endpoint deduplicates: only INSERT if object not already in buffer since last provider sync
 
-No configuration needed for which types to track — if it's public, it's tracked.
+PROVIDER SYNC (cron, every 15 min):
+  1. Get distinct objects from buffer since last sync
+  2. Resolve object URLs to paths
+  3. Batch-fetch pageview counts from provider API (all-time + trending window)
+  4. Count app buffer rows per object
+  5. Write: mai_views_web = provider total, mai_views_app += buffer app count, mai_views = web + app
+  6. Write: mai_trending = provider trending + app trending
+  7. Delete processed web buffer rows
+  8. Prune old app buffer rows
+```
 
-## Database table: `wp_mai_analytics_views`
+## Database Table: `wp_mai_views_buffer`
 
 | Column | Type | Notes |
 |--------|------|-------|
 | `id` | BIGINT AUTO_INCREMENT | PK |
-| `object_id` | BIGINT | Post ID, term ID, or user ID |
-| `object_type` | VARCHAR(20) | `'post'`, `'term'`, or `'user'` |
+| `object_id` | BIGINT | Post ID, term ID, user ID, or 0 for post_type archives |
+| `object_type` | VARCHAR(20) | `'post'`, `'term'`, `'user'`, or `'post_type'` |
+| `object_key` | VARCHAR(50) | Archive key for post_type objects |
 | `viewed_at` | DATETIME | UTC |
 | `source` | VARCHAR(10) | `'web'` or `'app'` |
 
-**Index:** `(object_id, object_type, viewed_at)` for aggregate queries.
-Append-only INSERTs. 7-day default retention, auto-pruned by flush.
+**Indexes:**
+- Primary: `(id)`
+- `(object_id, object_type, viewed_at)` — aggregate queries
+- `(object_key, object_type, viewed_at)` — archive lookups
 
-## Sync logic (shutdown callback)
+## REST Endpoints
 
-```
-1. Aggregate new views since last sync:
-   SELECT object_id, object_type, COUNT(*) as cnt
-   FROM wp_mai_analytics_views
-   WHERE viewed_at > {last_flush}
-   GROUP BY object_id, object_type
+### Public (no auth)
 
-2. For each: increment mai_analytics_views (post_meta, term_meta, or user_meta)
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `mai-views/v1/view/post/{id}` | POST | Record a post view |
+| `mai-views/v1/view/term/{id}` | POST | Record a term view |
+| `mai-views/v1/view/user/{id}` | POST | Record an author view |
+| `mai-views/v1/view/post_type/{type}` | POST | Record a post type archive view |
+| `mai-views/v1/views/post/{id}` | GET | Get counts for a post |
+| `mai-views/v1/views/term/{id}` | GET | Get counts for a term |
+| `mai-views/v1/views/user/{id}` | GET | Get counts for an author |
+| `mai-views/v1/views/post_type/{type}` | GET | Get counts for a post type archive |
+| `mai-views/v1/views/trending` | GET | Top objects by trending views |
 
-3. Recalculate trending:
-   SELECT object_id, object_type, COUNT(*) as cnt
-   FROM wp_mai_analytics_views
-   WHERE viewed_at > NOW() - INTERVAL {trending_window}
-   GROUP BY object_id, object_type
-   → Replace mai_analytics_trending for each
+### Admin (`edit_others_posts` required)
 
-4. Prune: DELETE WHERE viewed_at < NOW() - INTERVAL {retention}
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `mai-views/v1/admin/summary` | GET | Dashboard card data |
+| `mai-views/v1/admin/top/posts` | GET | Paginated post list with filters |
+| `mai-views/v1/admin/top/terms` | GET | Paginated term list |
+| `mai-views/v1/admin/top/authors` | GET | Paginated author list |
+| `mai-views/v1/admin/top/archives` | GET | Post type archive list |
+| `mai-views/v1/admin/filters` | GET | Dropdown options (post types, taxonomies, authors) |
+| `mai-views/v1/admin/search` | GET | Search posts/terms/authors |
+| `mai-views/v1/admin/sync-now` | POST | Trigger manual sync |
+| `mai-views/v1/admin/warm` | POST | Trigger provider warm |
 
-5. update_option('mai_analytics_synced', time())
-```
+## Plugin Settings
 
-## REST endpoints
+### DB-backed (Settings page)
 
-| Endpoint | Method | Auth | Purpose |
-|----------|--------|------|---------|
-| `mai-analytics/v1/view/post/{id}` | POST | None | Record a post view |
-| `mai-analytics/v1/view/term/{id}` | POST | None | Record a term view |
-| `mai-analytics/v1/view/user/{id}` | POST | None | Record an author archive view |
-| `mai-analytics/v1/views/post/{id}` | GET | None | Get counts for a post |
-| `mai-analytics/v1/views/term/{id}` | GET | None | Get counts for a term |
-| `mai-analytics/v1/views/user/{id}` | GET | None | Get counts for an author |
-| `mai-analytics/v1/views/trending` | GET | None | Top objects by views |
+| Key | Default | Description |
+|-----|---------|-------------|
+| `data_source` | `self_hosted` | `disabled`, `self_hosted`, `site_kit`, `matomo`, `jetpack` |
+| `sync_user` | `0` | User ID for provider API auth context during cron |
+| `matomo_url` | `''` | Matomo instance URL |
+| `matomo_site_id` | `''` | Matomo site/app ID |
+| `matomo_token` | `''` | Matomo API token |
 
-### `GET mai-analytics/v1/views/trending` params
-- `type` — `post`, `term`, `user` (default `post`)
-- `period` — `6h`, `24h`, `7d`
-- `per_page` — default 10
-- `taxonomy` — filter by taxonomy (when type=post or type=term)
-- `terms` — comma-separated term IDs (when type=post)
+Stored in `mai_views_settings` option.
 
-## Web tracking
+### Filter-only
 
-Inline script output via `wp_footer`, auto-detected based on current page:
+| Setting | Default | Filter |
+|---------|---------|--------|
+| `trending_window` | `7` (days) | `mai_views_trending_window` |
+| `retention` | `14` (days) | `mai_views_retention` |
+| `sync_interval` | `5` (minutes) | `mai_views_sync_interval` |
+| `exclude_bots` | `true` | `mai_views_exclude_bots` |
 
-**Singular posts/pages (any public post type):**
-```html
-<script>
-if('sendBeacon' in navigator){
-  navigator.sendBeacon('/wp-json/mai-analytics/v1/view/post/<?php echo get_the_ID(); ?>');
+## Environment Handling
+
+Beacon tracking disabled on non-production (`wp_get_environment_type() !== 'production'`). Also disabled when `data_source` is `disabled`. Override with `MAI_VIEWS_ENABLE_TRACKING` constant or `mai_views_tracking_enabled` filter.
+
+Provider sync, dashboard, CLI, and all read operations work on any environment.
+
+## Dual-Load Prevention
+
+```php
+if ( defined( 'MAI_VIEWS_VERSION' ) ) {
+    return;
 }
-</script>
 ```
 
-**Taxonomy archives:**
-```html
-<script>
-if('sendBeacon' in navigator){
-  navigator.sendBeacon('/wp-json/mai-analytics/v1/view/term/<?php echo get_queried_object_id(); ?>');
-}
-</script>
-```
+When loaded both as a standalone plugin and via Composer inside Mai Publisher, whichever loads first wins. The plugin update checker skips when running from `vendor/`.
 
-**Author archives:**
-```html
-<script>
-if('sendBeacon' in navigator){
-  navigator.sendBeacon('/wp-json/mai-analytics/v1/view/user/<?php echo get_queried_object_id(); ?>');
-}
-</script>
-```
+## Migration
 
-Detection logic: `is_singular()`, `is_tax() || is_category() || is_tag()`, `is_author()`.
+`src/Migration.php` handles one-time migrations:
 
-Bot filtering: `sendBeacon` inherently filters bots on the web (bots don't execute JS). REST endpoint also checks user-agent against known bot list.
+1. **From Mai Publisher:** Reads `mai_publisher` option, maps `views_api` -> `data_source`, carries over Matomo credentials and filter defaults.
+2. **From Mai Analytics (pre-rename):** Renames `mai_analytics_*` options and meta keys to new names. Keeps higher count where both exist.
 
-Logged-in user filtering: The beacon script is not output for any user with `edit_posts` capability (`current_user_can('edit_posts')`). This excludes Editors, Admins, Authors, and Contributors from inflating counts.
-
-## Plugin settings (filterable, sensible defaults)
-
-| Setting | Default | Filter | Purpose |
-|---------|---------|--------|---------|
-| `trending_window` | `6` (hours) | `mai_analytics_trending_window` | Trending calculation window |
-| `retention` | `7` (days) | `mai_analytics_retention` | Raw view row retention (must be >= trending_window) |
-| `sync_interval` | `5` (minutes) | `mai_analytics_sync_interval` | Transient TTL |
-| `exclude_bots` | `true` | `mai_analytics_exclude_bots` | Filter bot user-agents |
-
-Tracking is automatic for all public post types, public taxonomies, and authors. No UI settings needed for what to track — if it's public, it's tracked.
-
-## Mai Post/Term Grid integration
-
-Same pattern as mai-publisher's `class-views.php`:
-
-- Add "Views (Mai Analytics)" as an `orderby` choice via `acf/load_field/key=mai_grid_block_posts_orderby`
-- Add "Trending (Mai Analytics)" as a `query_by` choice via `acf/load_field/key=mai_grid_block_query_by`
-- Same for term grid equivalents
-- Hook `mai_post_grid_query_args` / `mai_term_grid_query_args` to set `meta_key` to `mai_analytics_views` or `mai_analytics_trending` with `orderby: meta_value_num`
-
-## Cache compatibility
-
-- **Page cache / CDN / Varnish:** Views counted via JS beacon POST (bypasses all page caches)
-- **Object cache (Redis):** Not in critical write path. Speeds up meta reads if available.
-- **wp cache flush:** No data loss — views live in DB table, not cache
-- **Deploys / restarts:** Table persists, flush catches up on next view
-
-## Scale
-
-- 500 views/sec = 1 INSERT each (~1ms). MySQL handles this easily.
-- Buffer table at 500/sec sustained, 7d retention = ~300K rows. Trivial for MySQL with proper indexing.
-- Sync every 5 min = ~200-500 meta UPDATEs per batch.
-- Retention auto-enforced: must be >= trending_window. Changing trending from 6h to 7d works immediately if retention covers it.
-
----
-
-## CLI commands (WP-CLI)
-
-### `wp mai-analytics migrate`
-Import view data from Mai Publisher. Compares values and keeps the higher count.
+## File Structure
 
 ```
-wp mai-analytics migrate [--dry-run] [--post-types=post,page] [--verbose]
+mai-views.php              — Entry point, constants, dual-load guard, activation/deactivation
+composer.json              — PSR-4 autoload (Mai\Views\ -> src/), files autoload (includes/functions.php)
+includes/
+  functions.php            — Global functions: mai_views_get_views(), mai_views_get_count(), mai_views_get_short_number()
+src/
+  Plugin.php               — Bootstrap, provider registration, updater
+  Database.php             — Buffer table schema, insert, dedup, migration
+  Tracker.php              — Beacon output, environment detection
+  RestApi.php              — Public REST endpoints (view recording + reading)
+  AdminRestApi.php         — Admin dashboard REST endpoints
+  Sync.php                 — Buffer-to-meta aggregation
+  ProviderSync.php         — External provider fetch + merge
+  Meta.php                 — Meta key registration
+  Settings.php             — Config management
+  Migration.php            — One-time settings/meta migration
+  Cron.php                 — 15-min schedule, sync triggers
+  MaiGrid.php              — Mai Post/Term Grid integration
+  BotFilter.php            — User-agent bot detection
+  Admin.php                — Menu, assets, dashboard shell
+  AdminSettings.php        — WP Settings API
+  CLI.php                  — WP-CLI commands (doctor, migrate, sync, stats, etc.)
+  WebViewProvider.php      — Provider interface
+  Providers/
+    SiteKit.php            — Google Analytics 4 via Site Kit
+    Matomo.php             — Self-hosted Matomo
+    Jetpack.php            — Jetpack Stats
 ```
-
-**Logic:**
-1. Query all posts/terms with `mai_views` meta (mai-publisher key)
-2. For each, compare `mai_views` vs `mai_analytics_views` (mai-analytics key)
-3. If mai-publisher value is higher → write it to `mai_analytics_views`
-4. Same for `mai_trending` vs `mai_analytics_trending`
-5. Report: "Migrated X posts, Y terms. Skipped Z (mai-analytics already higher)."
-
-### `wp mai-analytics sync`
-Force a manual sync of the buffer table to meta.
-
-```
-wp mai-analytics sync [--verbose]
-```
-
-### `wp mai-analytics stats`
-Show current stats summary.
-
-```
-wp mai-analytics stats [--type=post|term|user]
-```
-
-Output: total tracked objects, total views, buffer table row count, last flush time.
-
-### `wp mai-analytics prune`
-Manually prune old buffer rows.
-
-```
-wp mai-analytics prune [--older-than=48h] [--dry-run]
-```
-
----
-
-## Testing
-
-PHPUnit test suite covering:
-- Table creation on activation
-- REST endpoint view recording (post/term/user)
-- Bot filtering on REST endpoint
-- Flush logic (aggregation, trending calculation, pruning)
-- Transient-gated sync trigger
-- WP Cron backup sync
-- Meta registration and `show_in_rest`
-- WP-CLI commands
-- Edge cases (invalid IDs, non-public post types, concurrent flush safety)
-
----
-
-## Phases summary
-
-| Phase | Scope |
-|-------|-------|
-| **1** | Core plugin: buffer table, REST endpoints, web beacon, transient-gated flush, cron backup, meta storage, Mai Grid integration, PHPUnit tests |
-| **1b** | CLI commands: migrate, sync, stats, prune |
-| **2** | Admin reports screen: top posts/terms/authors, filters, source breakdown |
-| **2b** | Charts and visualizations (optional) |

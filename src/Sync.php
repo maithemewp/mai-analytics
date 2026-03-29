@@ -1,6 +1,6 @@
 <?php
 
-namespace Mai\Analytics;
+namespace Mai\Views;
 
 class Sync {
 
@@ -10,12 +10,12 @@ class Sync {
 	 * @return void
 	 */
 	public static function maybe_schedule_sync(): void {
-		if ( get_transient( 'mai_analytics_sync_lock' ) ) {
+		if ( get_transient( 'mai_views_sync_lock' ) ) {
 			return;
 		}
 
 		$interval = Settings::get( 'sync_interval' );
-		set_transient( 'mai_analytics_sync_lock', 1, $interval * MINUTE_IN_SECONDS );
+		set_transient( 'mai_views_sync_lock', 1, $interval * MINUTE_IN_SECONDS );
 
 		register_shutdown_function( [ self::class, 'sync' ] );
 	}
@@ -30,11 +30,11 @@ class Sync {
 	 */
 	public static function sync(): void {
 		// Prevent concurrent syncs from double-counting.
-		if ( get_transient( 'mai_analytics_syncing' ) ) {
+		if ( get_transient( 'mai_views_syncing' ) ) {
 			return;
 		}
 
-		set_transient( 'mai_analytics_syncing', 1, MINUTE_IN_SECONDS );
+		set_transient( 'mai_views_syncing', 1, MINUTE_IN_SECONDS );
 
 		// Finish the HTTP response before doing work (PHP-FPM only).
 		if ( function_exists( 'fastcgi_finish_request' ) ) {
@@ -44,7 +44,7 @@ class Sync {
 		global $wpdb;
 
 		$table          = Database::get_table_name();
-		$last_sync      = get_option( 'mai_analytics_synced', 0 );
+		$last_sync      = get_option( 'mai_views_synced', 0 );
 		$last_sync_date = $last_sync ? gmdate( 'Y-m-d H:i:s', $last_sync ) : '1970-01-01 00:00:00';
 		$trending_days  = Settings::get( 'trending_window' );
 		$retention_days = Settings::get( 'retention' );
@@ -66,13 +66,13 @@ class Sync {
 		);
 
 		if ( $new_views ) {
-			$pt_views     = get_option( 'mai_analytics_post_type_views', [] );
-			$pt_views_web = get_option( 'mai_analytics_post_type_views_web', [] );
-			$pt_views_app = get_option( 'mai_analytics_post_type_views_app', [] );
+			$pt_views     = get_option( 'mai_views_post_type_views', [] );
+			$pt_views_web = get_option( 'mai_views_post_type_views_web', [] );
+			$pt_views_app = get_option( 'mai_views_post_type_views_app', [] );
 
 			foreach ( $new_views as $row ) {
 				$cnt        = (int) $row->cnt;
-				$source_key = 'app' === $row->source ? 'mai_analytics_views_app' : 'mai_analytics_views_web';
+				$source_key = 'app' === $row->source ? 'mai_views_app' : 'mai_views_web';
 
 				if ( 'post_type' === $row->object_type ) {
 					$pt_views[ $row->object_key ] = ( $pt_views[ $row->object_key ] ?? 0 ) + $cnt;
@@ -87,15 +87,15 @@ class Sync {
 					self::update_meta( (int) $row->object_id, $row->object_type, $source_key, 'increment', $cnt );
 
 					// Recompute total.
-					$web = (int) self::get_meta( (int) $row->object_id, $row->object_type, 'mai_analytics_views_web' );
-					$app = (int) self::get_meta( (int) $row->object_id, $row->object_type, 'mai_analytics_views_app' );
-					self::update_meta( (int) $row->object_id, $row->object_type, 'mai_analytics_views', 'replace', $web + $app );
+					$web = (int) self::get_meta( (int) $row->object_id, $row->object_type, 'mai_views_web' );
+					$app = (int) self::get_meta( (int) $row->object_id, $row->object_type, 'mai_views_app' );
+					self::update_meta( (int) $row->object_id, $row->object_type, 'mai_views', 'replace', $web + $app );
 				}
 			}
 
-			update_option( 'mai_analytics_post_type_views', $pt_views, false );
-			update_option( 'mai_analytics_post_type_views_web', $pt_views_web, false );
-			update_option( 'mai_analytics_post_type_views_app', $pt_views_app, false );
+			update_option( 'mai_views_post_type_views', $pt_views, false );
+			update_option( 'mai_views_post_type_views_web', $pt_views_web, false );
+			update_option( 'mai_views_post_type_views_app', $pt_views_app, false );
 		}
 
 		// 2. Recalculate trending: query the trending window (all sources merged).
@@ -119,13 +119,13 @@ class Sync {
 					$has_trending[ 'post_type:' . $row->object_key ] = true;
 				} else {
 					$has_trending[ $row->object_type . ':' . $row->object_id ] = true;
-					self::update_meta( (int) $row->object_id, $row->object_type, 'mai_analytics_trending', 'replace', (int) $row->trending_count );
+					self::update_meta( (int) $row->object_id, $row->object_type, 'mai_trending', 'replace', (int) $row->trending_count );
 				}
 			}
 		}
 
 		// Zero out post_type trending for archives that fell out of the window.
-		$existing_pt_trending = get_option( 'mai_analytics_post_type_trending', [] );
+		$existing_pt_trending = get_option( 'mai_views_post_type_trending', [] );
 
 		foreach ( $existing_pt_trending as $key => $count ) {
 			if ( ! isset( $pt_trending[ $key ] ) ) {
@@ -133,7 +133,7 @@ class Sync {
 			}
 		}
 
-		update_option( 'mai_analytics_post_type_trending', $pt_trending, false );
+		update_option( 'mai_views_post_type_trending', $pt_trending, false );
 
 		// Zero out trending for non-archive objects that fell out of the trending window.
 		$all_in_buffer = $wpdb->get_results(
@@ -151,7 +151,7 @@ class Sync {
 		if ( $all_in_buffer ) {
 			foreach ( $all_in_buffer as $row ) {
 				if ( ! isset( $has_trending[ $row->object_type . ':' . $row->object_id ] ) ) {
-					self::update_meta( (int) $row->object_id, $row->object_type, 'mai_analytics_trending', 'replace', 0 );
+					self::update_meta( (int) $row->object_id, $row->object_type, 'mai_trending', 'replace', 0 );
 				}
 			}
 		}
@@ -165,8 +165,8 @@ class Sync {
 		);
 
 		// 4. Record sync time and release lock.
-		update_option( 'mai_analytics_synced', time(), false );
-		delete_transient( 'mai_analytics_syncing' );
+		update_option( 'mai_views_synced', time(), false );
+		delete_transient( 'mai_views_syncing' );
 	}
 
 	/**

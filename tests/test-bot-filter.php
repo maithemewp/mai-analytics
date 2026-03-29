@@ -1,6 +1,6 @@
 <?php
 
-use Mai\Analytics\BotFilter;
+use Mai\Views\BotFilter;
 
 class Test_Bot_Filter extends WP_UnitTestCase {
 
@@ -30,7 +30,7 @@ class Test_Bot_Filter extends WP_UnitTestCase {
 	}
 
 	public function test_patterns_are_filterable(): void {
-		add_filter( 'mai_analytics_bot_patterns', fn( $p ) => array_merge( $p, [ 'MyCustomBot' ] ) );
+		add_filter( 'mai_views_bot_patterns', fn( $p ) => array_merge( $p, [ 'MyCustomBot' ] ) );
 		$this->assertTrue( BotFilter::is_bot( 'MyCustomBot/1.0' ) );
 	}
 }

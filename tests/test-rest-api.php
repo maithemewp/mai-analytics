@@ -1,6 +1,6 @@
 <?php
 
-use Mai\Analytics\Database;
+use Mai\Views\Database;
 
 class Test_REST_API extends WP_UnitTestCase {
 
@@ -24,7 +24,7 @@ class Test_REST_API extends WP_UnitTestCase {
 
 	public function test_record_post_view(): void {
 		$post_id = self::factory()->post->create( [ 'post_status' => 'publish' ] );
-		$request = new WP_REST_Request( 'POST', '/mai-analytics/v1/view/post/' . $post_id );
+		$request = new WP_REST_Request( 'POST', '/mai-views/v1/view/post/' . $post_id );
 		$request->set_header( 'User-Agent', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)' );
 
 		$response = $this->server->dispatch( $request );
@@ -35,7 +35,7 @@ class Test_REST_API extends WP_UnitTestCase {
 
 	public function test_record_term_view(): void {
 		$term_id = self::factory()->category->create();
-		$request = new WP_REST_Request( 'POST', '/mai-analytics/v1/view/term/' . $term_id );
+		$request = new WP_REST_Request( 'POST', '/mai-views/v1/view/term/' . $term_id );
 		$request->set_header( 'User-Agent', 'Mozilla/5.0' );
 
 		$this->assertEquals( 200, $this->server->dispatch( $request )->get_status() );
@@ -43,14 +43,14 @@ class Test_REST_API extends WP_UnitTestCase {
 
 	public function test_record_user_view(): void {
 		$user_id = self::factory()->user->create();
-		$request = new WP_REST_Request( 'POST', '/mai-analytics/v1/view/user/' . $user_id );
+		$request = new WP_REST_Request( 'POST', '/mai-views/v1/view/user/' . $user_id );
 		$request->set_header( 'User-Agent', 'Mozilla/5.0' );
 
 		$this->assertEquals( 200, $this->server->dispatch( $request )->get_status() );
 	}
 
 	public function test_reject_invalid_post_id(): void {
-		$request = new WP_REST_Request( 'POST', '/mai-analytics/v1/view/post/999999' );
+		$request = new WP_REST_Request( 'POST', '/mai-views/v1/view/post/999999' );
 		$request->set_header( 'User-Agent', 'Mozilla/5.0' );
 
 		$this->assertEquals( 404, $this->server->dispatch( $request )->get_status() );
@@ -58,7 +58,7 @@ class Test_REST_API extends WP_UnitTestCase {
 
 	public function test_reject_draft_post(): void {
 		$post_id = self::factory()->post->create( [ 'post_status' => 'draft' ] );
-		$request = new WP_REST_Request( 'POST', '/mai-analytics/v1/view/post/' . $post_id );
+		$request = new WP_REST_Request( 'POST', '/mai-views/v1/view/post/' . $post_id );
 		$request->set_header( 'User-Agent', 'Mozilla/5.0' );
 
 		$this->assertEquals( 404, $this->server->dispatch( $request )->get_status() );
@@ -66,7 +66,7 @@ class Test_REST_API extends WP_UnitTestCase {
 
 	public function test_reject_bot_user_agent(): void {
 		$post_id = self::factory()->post->create( [ 'post_status' => 'publish' ] );
-		$request = new WP_REST_Request( 'POST', '/mai-analytics/v1/view/post/' . $post_id );
+		$request = new WP_REST_Request( 'POST', '/mai-views/v1/view/post/' . $post_id );
 		$request->set_header( 'User-Agent', 'Googlebot/2.1' );
 
 		$this->assertEquals( 403, $this->server->dispatch( $request )->get_status() );
@@ -74,10 +74,10 @@ class Test_REST_API extends WP_UnitTestCase {
 
 	public function test_get_post_views(): void {
 		$post_id = self::factory()->post->create();
-		update_post_meta( $post_id, 'mai_analytics_views', 42 );
-		update_post_meta( $post_id, 'mai_analytics_trending', 7 );
+		update_post_meta( $post_id, 'mai_views', 42 );
+		update_post_meta( $post_id, 'mai_trending', 7 );
 
-		$request  = new WP_REST_Request( 'GET', '/mai-analytics/v1/views/post/' . $post_id );
+		$request  = new WP_REST_Request( 'GET', '/mai-views/v1/views/post/' . $post_id );
 		$data     = $this->server->dispatch( $request )->get_data();
 
 		$this->assertEquals( 42, $data['views'] );
@@ -91,7 +91,7 @@ class Test_REST_API extends WP_UnitTestCase {
 		for ( $i = 0; $i < 5; $i++ ) { Database::insert_view( $post_a, 'post' ); }
 		for ( $i = 0; $i < 2; $i++ ) { Database::insert_view( $post_b, 'post' ); }
 
-		$request = new WP_REST_Request( 'GET', '/mai-analytics/v1/views/trending' );
+		$request = new WP_REST_Request( 'GET', '/mai-views/v1/views/trending' );
 		$request->set_param( 'type', 'post' );
 		$data = $this->server->dispatch( $request )->get_data();
 
@@ -103,7 +103,7 @@ class Test_REST_API extends WP_UnitTestCase {
 		global $wpdb;
 		$post_id = self::factory()->post->create( [ 'post_status' => 'publish' ] );
 
-		$request = new WP_REST_Request( 'POST', '/mai-analytics/v1/view/post/' . $post_id );
+		$request = new WP_REST_Request( 'POST', '/mai-views/v1/view/post/' . $post_id );
 		$request->set_header( 'User-Agent', 'Mozilla/5.0' );
 		$request->set_param( 'source', 'app' );
 		$this->server->dispatch( $request );

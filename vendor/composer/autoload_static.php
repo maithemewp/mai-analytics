@@ -8,17 +8,18 @@ class ComposerStaticInit300e4e250d9eeac43d7bac96dfe77492
 {
     public static $files = array (
         'f6d4f6bcee7247df6b777884c3e22f98' => __DIR__ . '/..' . '/yahnis-elsts/plugin-update-checker/load-v5p6.php',
+        '744154817c2e6e27af7a230ff1e1ffde' => __DIR__ . '/../..' . '/includes/functions.php',
     );
 
     public static $prefixLengthsPsr4 = array (
         'M' =>
         array (
-            'Mai\\Analytics\\' => 14,
+            'Mai\\Views\\' => 10,
         ),
     );
 
     public static $prefixDirsPsr4 = array (
-        'Mai\\Analytics\\' =>
+        'Mai\\Views\\' =>
         array (
             0 => __DIR__ . '/../..' . '/src',
         ),

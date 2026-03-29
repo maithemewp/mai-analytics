@@ -22,7 +22,7 @@ echo "Fetching bot patterns from Matomo device-detector...\n";
 $context = stream_context_create( [
 	'http' => [
 		'timeout'    => 15,
-		'user_agent' => 'Mai-Analytics-Bot-Updater/1.0',
+		'user_agent' => 'Mai-Views-Bot-Updater/1.0',
 	],
 ] );
 

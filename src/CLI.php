@@ -1,144 +1,381 @@
 <?php
 
-namespace Mai\Analytics;
+namespace Mai\Views;
 
 use WP_CLI;
 
 class CLI {
 
 	/**
-	 * Registers all WP-CLI subcommands for Mai Analytics.
+	 * Registers all WP-CLI subcommands for Mai Views.
 	 */
 	public function __construct() {
-		WP_CLI::add_command( 'mai-analytics migrate',       [ $this, 'migrate' ] );
-		WP_CLI::add_command( 'mai-analytics sync',          [ $this, 'sync' ] );
-		WP_CLI::add_command( 'mai-analytics stats',         [ $this, 'stats' ] );
-		WP_CLI::add_command( 'mai-analytics prune',         [ $this, 'prune' ] );
-		WP_CLI::add_command( 'mai-analytics seed',          [ $this, 'seed' ] );
-		WP_CLI::add_command( 'mai-analytics reset',         [ $this, 'reset' ] );
-		WP_CLI::add_command( 'mai-analytics update-bots',   [ $this, 'update_bots' ] );
-		WP_CLI::add_command( 'mai-analytics provider-sync', [ $this, 'provider_sync' ] );
-		WP_CLI::add_command( 'mai-analytics warm',          [ $this, 'warm' ] );
+		WP_CLI::add_command( 'mai-views doctor',        [ $this, 'doctor' ] );
+		WP_CLI::add_command( 'mai-views migrate',       [ $this, 'migrate' ] );
+		WP_CLI::add_command( 'mai-views sync',          [ $this, 'sync' ] );
+		WP_CLI::add_command( 'mai-views stats',         [ $this, 'stats' ] );
+		WP_CLI::add_command( 'mai-views prune',         [ $this, 'prune' ] );
+		WP_CLI::add_command( 'mai-views seed',          [ $this, 'seed' ] );
+		WP_CLI::add_command( 'mai-views reset',         [ $this, 'reset' ] );
+		WP_CLI::add_command( 'mai-views update-bots',   [ $this, 'update_bots' ] );
+		WP_CLI::add_command( 'mai-views provider-sync', [ $this, 'provider_sync' ] );
+		WP_CLI::add_command( 'mai-views warm',          [ $this, 'warm' ] );
 	}
 
 	/**
-	 * Import view data from Mai Publisher. Keeps the higher count.
+	 * Run diagnostics on the Mai Views installation.
+	 *
+	 * Checks plugin health, database state, REST endpoints, provider connectivity,
+	 * view recording, and Mai Publisher coexistence. Exits with error if any
+	 * critical check fails.
 	 *
 	 * ## OPTIONS
 	 *
-	 * [--dry-run]
-	 * : Preview changes without writing.
-	 *
-	 * [--post-types=<types>]
-	 * : Comma-separated post types to migrate. Default: all public.
-	 *
-	 * [--verbose]
-	 * : Show detailed output.
+	 * [--fix]
+	 * : Attempt to auto-fix issues found (re-create table, reschedule cron, etc.).
 	 *
 	 * ## EXAMPLES
 	 *
-	 *     wp mai-analytics migrate
-	 *     wp mai-analytics migrate --dry-run --verbose
-	 *     wp mai-analytics migrate --post-types=post,page
+	 *     wp mai-views doctor
+	 *     wp mai-views doctor --fix
 	 *
 	 * @param array $args       Positional arguments (unused).
-	 * @param array $assoc_args Associative arguments: --dry-run, --post-types, --verbose.
+	 * @param array $assoc_args Associative arguments: --fix.
+	 *
+	 * @return void
+	 */
+	public function doctor( array $args, array $assoc_args ): void {
+		global $wpdb;
+
+		$fix    = \WP_CLI\Utils\get_flag_value( $assoc_args, 'fix', false );
+		$pass   = 0;
+		$fail   = 0;
+		$warn   = 0;
+		$table  = Database::get_table_name();
+
+		$check = function( string $label, bool $ok, string $detail = '', bool $critical = true ) use ( &$pass, &$fail, &$warn ) {
+			if ( $ok ) {
+				WP_CLI::log( WP_CLI::colorize( "  %G\u{2713}%n {$label}" . ( $detail ? " — {$detail}" : '' ) ) );
+				$pass++;
+			} elseif ( $critical ) {
+				WP_CLI::log( WP_CLI::colorize( "  %R\u{2717}%n {$label}" . ( $detail ? " — {$detail}" : '' ) ) );
+				$fail++;
+			} else {
+				WP_CLI::log( WP_CLI::colorize( "  %Y!%n {$label}" . ( $detail ? " — {$detail}" : '' ) ) );
+				$warn++;
+			}
+		};
+
+		// ── Core ──
+		WP_CLI::log( '' );
+		WP_CLI::log( WP_CLI::colorize( '%B=== Core ===%n' ) );
+
+		$check( 'Plugin loaded', defined( 'MAI_VIEWS_VERSION' ), 'v' . MAI_VIEWS_VERSION );
+		$check( 'Constants defined', defined( 'MAI_VIEWS_PLUGIN_DIR' ) && defined( 'MAI_VIEWS_PLUGIN_FILE' ) );
+		$check( 'Autoloader', class_exists( Plugin::class ) && class_exists( Sync::class ) );
+
+		$env = wp_get_environment_type();
+		$tracking = Tracker::is_tracking_enabled();
+		$check( 'Environment', true, $env );
+		$check( 'Beacon tracking', $tracking, $tracking ? 'enabled' : "disabled (environment={$env}, set MAI_VIEWS_ENABLE_TRACKING to override)", false );
+
+		// ── Database ──
+		WP_CLI::log( '' );
+		WP_CLI::log( WP_CLI::colorize( '%B=== Database ===%n' ) );
+
+		$table_exists = (bool) $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) );
+		$check( 'Buffer table exists', $table_exists, $table );
+
+		if ( ! $table_exists && $fix ) {
+			Database::create_table();
+			$table_exists = (bool) $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) );
+			WP_CLI::log( WP_CLI::colorize( "    %C\u{2192} Fixed: created table%n" ) );
+		}
+
+		$db_version = get_option( Database::DB_VERSION_OPTION, '0' );
+		$check( 'DB version current', version_compare( $db_version, MAI_VIEWS_DB_VERSION, '>=' ), "stored={$db_version} required=" . MAI_VIEWS_DB_VERSION );
+
+		$buffer_rows = $table_exists ? (int) $wpdb->get_var( "SELECT COUNT(*) FROM $table" ) : 0;
+		WP_CLI::log( WP_CLI::colorize( "  %w  Buffer rows: " . number_format( $buffer_rows ) . "%n" ) );
+
+		$stale = (int) $wpdb->get_var( "SELECT COUNT(*) FROM $wpdb->postmeta WHERE meta_key LIKE 'mai_analytics_%'" );
+		$check( 'No stale mai_analytics_* meta', 0 === $stale, $stale ? "{$stale} rows (run: wp mai-views migrate --force)" : 'clean', false );
+
+		// ── Meta & Shortcode ──
+		WP_CLI::log( '' );
+		WP_CLI::log( WP_CLI::colorize( '%B=== Meta & Shortcode ===%n' ) );
+
+		$post_meta = get_registered_meta_keys( 'post' );
+		$expected_keys = [ 'mai_views', 'mai_views_web', 'mai_views_app', 'mai_trending' ];
+		$missing_keys  = array_filter( $expected_keys, fn( $k ) => ! isset( $post_meta[ $k ] ) );
+		$check( 'Post meta keys registered', empty( $missing_keys ), empty( $missing_keys ) ? 'all 4' : 'missing: ' . implode( ', ', $missing_keys ) );
+
+		$term_meta = get_registered_meta_keys( 'term' );
+		$check( 'Term meta keys registered', isset( $term_meta['mai_views'] ) && isset( $term_meta['mai_trending'] ) );
+
+		$user_meta = get_registered_meta_keys( 'user' );
+		$check( 'User meta keys registered', isset( $user_meta['mai_views'] ) && isset( $user_meta['mai_trending'] ) );
+
+		$check( '[mai_views] shortcode', shortcode_exists( 'mai_views' ) );
+		$check( 'mai_views_get_count()', function_exists( 'mai_views_get_count' ) );
+		$check( 'mai_views_get_views()', function_exists( 'mai_views_get_views' ) );
+
+		// ── Cron ──
+		WP_CLI::log( '' );
+		WP_CLI::log( WP_CLI::colorize( '%B=== Cron ===%n' ) );
+
+		$next_cron = wp_next_scheduled( 'mai_views_cron_sync' );
+		$check( 'Cron scheduled', (bool) $next_cron, $next_cron ? wp_date( 'Y-m-d H:i:s', $next_cron ) : 'not scheduled' );
+
+		if ( ! $next_cron && $fix ) {
+			wp_schedule_event( time(), 'mai_views_15min', 'mai_views_cron_sync' );
+			WP_CLI::log( WP_CLI::colorize( "    %C\u{2192} Fixed: rescheduled cron%n" ) );
+		}
+
+		$schedules = wp_get_schedules();
+		$check( 'mai_views_15min schedule', isset( $schedules['mai_views_15min'] ), isset( $schedules['mai_views_15min'] ) ? $schedules['mai_views_15min']['interval'] . 's' : 'missing' );
+
+		$last_sync = get_option( 'mai_views_synced', 0 );
+		$sync_age  = $last_sync ? human_time_diff( $last_sync ) . ' ago' : 'never';
+		$sync_stale = $last_sync && ( time() - $last_sync ) > 3600;
+		$check( 'Last sync recent', ! $sync_stale, $sync_age, false );
+
+		// ── Settings & Provider ──
+		WP_CLI::log( '' );
+		WP_CLI::log( WP_CLI::colorize( '%B=== Settings & Provider ===%n' ) );
+
+		$settings = get_option( 'mai_views_settings', [] );
+		$check( 'Settings saved', ! empty( $settings ), 'data_source=' . ( $settings['data_source'] ?? 'NOT SET' ) );
+
+		$data_source = $settings['data_source'] ?? 'self_hosted';
+
+		if ( 'self_hosted' !== $data_source ) {
+			$provider = ProviderSync::get_provider();
+			$check( 'Provider found', (bool) $provider, $provider ? $provider->get_label() : 'no matching provider for ' . $data_source );
+
+			if ( $provider ) {
+				$check( 'Provider available', $provider->is_available(), $provider->is_available() ? 'connected' : ( method_exists( $provider, 'get_unavailable_reason' ) ? $provider->get_unavailable_reason() : 'unavailable' ) );
+
+				$last_error = method_exists( $provider, 'get_last_error' ) ? $provider::get_last_error() : '';
+				$check( 'No provider errors', empty( $last_error ), $last_error ?: 'clean', false );
+
+				$provider_sync = get_option( 'mai_views_provider_last_sync', 0 );
+				$provider_age  = $provider_sync ? human_time_diff( $provider_sync ) . ' ago' : 'never';
+				WP_CLI::log( WP_CLI::colorize( "  %w  Last provider sync: {$provider_age}%n" ) );
+			}
+		} else {
+			WP_CLI::log( '  Self-hosted mode — no external provider.' );
+		}
+
+		// ── REST Endpoints ──
+		WP_CLI::log( '' );
+		WP_CLI::log( WP_CLI::colorize( '%B=== REST Endpoints ===%n' ) );
+
+		$server     = rest_get_server();
+		$routes     = array_keys( $server->get_routes() );
+		$mai_routes = array_filter( $routes, fn( $r ) => str_starts_with( $r, '/mai-views/' ) );
+		$check( 'REST routes registered', count( $mai_routes ) >= 10, count( $mai_routes ) . ' routes' );
+
+		// Find a published post to test with.
+		$test_post_id = (int) $wpdb->get_var(
+			"SELECT ID FROM $wpdb->posts WHERE post_status = 'publish' AND post_type = 'post' ORDER BY ID ASC LIMIT 1"
+		);
+
+		if ( $test_post_id ) {
+			// Test GET views endpoint.
+			$request  = new \WP_REST_Request( 'GET', "/mai-views/v1/views/post/{$test_post_id}" );
+			$response = rest_do_request( $request );
+			$check( 'GET /views/post/{id}', ! $response->is_error(), 'status=' . $response->get_status() );
+
+			if ( ! $response->is_error() ) {
+				$data = $response->get_data();
+				$has_keys = isset( $data['views'] ) && isset( $data['trending'] );
+				$check( '  Response shape', $has_keys, $has_keys ? "views={$data['views']} trending={$data['trending']}" : 'missing keys' );
+			}
+
+			// Test POST view endpoint (records a real view).
+			$request = new \WP_REST_Request( 'POST', "/mai-views/v1/view/post/{$test_post_id}" );
+			$request->set_header( 'User-Agent', 'Mai-Views-Doctor/1.0' );
+			$response = rest_do_request( $request );
+			$check( 'POST /view/post/{id}', ! $response->is_error(), 'status=' . $response->get_status() );
+
+			if ( ! $response->is_error() ) {
+				$data = $response->get_data();
+				$succeeded = ! empty( $data['success'] );
+
+				// Check if a row exists in the buffer for this post (may be deduped in provider mode).
+				$in_buffer = (int) $wpdb->get_var(
+					$wpdb->prepare(
+						"SELECT COUNT(*) FROM $table WHERE object_id = %d AND object_type = 'post'",
+						$test_post_id
+					)
+				);
+
+				$detail = $succeeded
+					? ( $in_buffer ? "{$in_buffer} buffer rows (ok — may have deduped)" : 'accepted but not in buffer (check bot filter)' )
+					: 'endpoint returned failure';
+
+				$check( '  View accepted', $succeeded, $detail );
+			}
+
+			// Test trending endpoint.
+			$request  = new \WP_REST_Request( 'GET', '/mai-views/v1/views/trending' );
+			$response = rest_do_request( $request );
+			$check( 'GET /views/trending', ! $response->is_error(), 'status=' . $response->get_status() );
+		} else {
+			WP_CLI::log( '  (no published posts to test endpoints against)' );
+		}
+
+		// Test admin endpoints (need a privileged user).
+		$admin_id = (int) $wpdb->get_var(
+			"SELECT u.ID FROM $wpdb->users u
+			 INNER JOIN $wpdb->usermeta um ON u.ID = um.user_id
+			 WHERE um.meta_key = '{$wpdb->prefix}capabilities'
+			   AND um.meta_value LIKE '%administrator%'
+			 LIMIT 1"
+		);
+
+		if ( $admin_id ) {
+			wp_set_current_user( $admin_id );
+
+			$request  = new \WP_REST_Request( 'GET', '/mai-views/v1/admin/summary' );
+			$response = rest_do_request( $request );
+			$check( 'GET /admin/summary', ! $response->is_error(), 'status=' . $response->get_status() );
+
+			if ( ! $response->is_error() ) {
+				$data  = $response->get_data();
+				$parts = [];
+				foreach ( $data as $k => $v ) {
+					$parts[] = "{$k}={$v}";
+				}
+				WP_CLI::log( '      ' . implode( ' ', $parts ) );
+			}
+
+			$request  = new \WP_REST_Request( 'GET', '/mai-views/v1/admin/top/posts' );
+			$response = rest_do_request( $request );
+			$check( 'GET /admin/top/posts', ! $response->is_error(), 'status=' . $response->get_status() . ' items=' . count( $response->get_data()['items'] ?? [] ) );
+
+			$request  = new \WP_REST_Request( 'GET', '/mai-views/v1/admin/top/terms' );
+			$response = rest_do_request( $request );
+			$check( 'GET /admin/top/terms', ! $response->is_error(), 'status=' . $response->get_status() );
+
+			$request  = new \WP_REST_Request( 'GET', '/mai-views/v1/admin/filters' );
+			$response = rest_do_request( $request );
+			$check( 'GET /admin/filters', ! $response->is_error(), 'status=' . $response->get_status() );
+
+			wp_set_current_user( 0 );
+		}
+
+		// ── Provider API Test ──
+		if ( 'self_hosted' !== $data_source && isset( $provider ) && $provider && $provider->is_available() && $test_post_id ) {
+			WP_CLI::log( '' );
+			WP_CLI::log( WP_CLI::colorize( '%B=== Provider API Test ===%n' ) );
+
+			$path = wp_parse_url( get_permalink( $test_post_id ), PHP_URL_PATH ) ?: '/';
+			$today = gmdate( 'Y-m-d' );
+			$week_ago = gmdate( 'Y-m-d', strtotime( '-7 days' ) );
+
+			// Need auth context for Site Kit.
+			if ( $admin_id ) {
+				wp_set_current_user( $admin_id );
+			}
+
+			$alltime = $provider->get_views( [ $path ], '', $today );
+			$check( 'Provider all-time fetch', ! empty( $alltime ) || is_array( $alltime ), empty( $alltime ) ? 'empty (post may have no views)' : 'views=' . ( $alltime[ $path ] ?? 0 ) . " for {$path}", false );
+
+			$trending = $provider->get_views( [ $path ], $week_ago, $today );
+			$check( 'Provider trending fetch', ! empty( $trending ) || is_array( $trending ), empty( $trending ) ? 'empty (no recent views)' : 'views=' . ( $trending[ $path ] ?? 0 ) . ' (7d)', false );
+
+			if ( $admin_id ) {
+				wp_set_current_user( 0 );
+			}
+		}
+
+		// ── Mai Publisher Coexistence ──
+		WP_CLI::log( '' );
+		WP_CLI::log( WP_CLI::colorize( '%B=== Mai Publisher Coexistence ===%n' ) );
+
+		$pub_active = class_exists( 'Mai_Publisher_Plugin' );
+		WP_CLI::log( '  Mai Publisher: ' . ( $pub_active ? 'active' : 'not active' ) );
+
+		if ( $pub_active ) {
+			$has_ajax = has_action( 'wp_ajax_maipub_views' );
+			$check( 'Views class NOT instantiated', ! $has_ajax, $has_ajax ? 'maipub_views AJAX hook found (double-loading!)' : 'correctly gated' );
+
+			$pub_settings = get_option( 'mai_publisher', [] );
+			$check( 'Publisher settings readable', ! empty( $pub_settings ), ! empty( $pub_settings ) ? 'views_api=' . ( $pub_settings['views_api'] ?? 'not set' ) : 'empty', false );
+		}
+
+		// ── Summary ──
+		WP_CLI::log( '' );
+		$total = $pass + $fail + $warn;
+		$summary = sprintf( '%d passed, %d failed, %d warnings out of %d checks', $pass, $fail, $warn, $total );
+
+		if ( $fail > 0 ) {
+			WP_CLI::error( $summary, false );
+		} elseif ( $warn > 0 ) {
+			WP_CLI::warning( $summary );
+		} else {
+			WP_CLI::success( $summary );
+		}
+	}
+
+	/**
+	 * Migrate settings from Mai Publisher and/or old Mai Analytics installs.
+	 *
+	 * Runs the automatic migration that normally fires on plugins_loaded,
+	 * but forced and with verbose output.
+	 *
+	 * ## OPTIONS
+	 *
+	 * [--force]
+	 * : Run migration even if it has already completed.
+	 *
+	 * ## EXAMPLES
+	 *
+	 *     wp mai-views migrate
+	 *     wp mai-views migrate --force
+	 *
+	 * @param array $args       Positional arguments (unused).
+	 * @param array $assoc_args Associative arguments: --force.
 	 *
 	 * @return void
 	 */
 	public function migrate( array $args, array $assoc_args ): void {
-		global $wpdb;
+		$force = \WP_CLI\Utils\get_flag_value( $assoc_args, 'force', false );
 
-		$dry_run    = \WP_CLI\Utils\get_flag_value( $assoc_args, 'dry-run', false );
-		$verbose    = \WP_CLI\Utils\get_flag_value( $assoc_args, 'verbose', false );
-		$post_types = isset( $assoc_args['post-types'] ) ? explode( ',', $assoc_args['post-types'] ) : [];
-		$batch_size = 500;
-
-		$migrated_posts = 0;
-		$migrated_terms = 0;
-		$skipped        = 0;
-
-		// --- Migrate posts (batched via keyset pagination) ---
-		WP_CLI::log( 'Migrating post views...' );
-
-		$types = $post_types ?: get_post_types( [ 'public' => true ] );
-		$type_placeholders = implode( ', ', array_fill( 0, count( $types ), '%s' ) );
-		$last_id = 0;
-
-		while ( true ) {
-			$query = $wpdb->prepare(
-				"SELECT DISTINCT pm.post_id
-				 FROM $wpdb->postmeta pm
-				 INNER JOIN $wpdb->posts p ON p.ID = pm.post_id
-				 WHERE pm.meta_key IN ('mai_views', 'mai_trending')
-				 AND p.post_type IN ($type_placeholders)
-				 AND pm.post_id > %d
-				 ORDER BY pm.post_id ASC
-				 LIMIT %d",
-				array_merge( $types, [ $last_id, $batch_size ] )
-			);
-
-			$post_ids = $wpdb->get_col( $query );
-
-			if ( empty( $post_ids ) ) {
-				break;
-			}
-
-			foreach ( $post_ids as $post_id ) {
-				$post_id = (int) $post_id;
-				$updated = $this->migrate_object_meta( 'post', $post_id, $dry_run, $verbose );
-				$updated ? $migrated_posts++ : $skipped++;
-				$last_id = $post_id;
-			}
-
-			$this->clear_caches();
-
-			if ( $verbose ) {
-				WP_CLI::log( sprintf( '  Processed through post ID %d...', $last_id ) );
-			}
+		if ( $force ) {
+			delete_option( 'mai_views_migrated_from_publisher' );
+			delete_option( 'mai_views_migrated_from_analytics' );
+			WP_CLI::log( 'Force flag set. Cleared migration flags.' );
 		}
 
-		// --- Migrate terms (batched) ---
-		WP_CLI::log( 'Migrating term views...' );
+		$had_publisher_settings = (bool) get_option( 'mai_publisher' );
+		$had_analytics_settings = (bool) get_option( 'mai_analytics_settings' );
+		$already_configured     = (bool) get_option( 'mai_views_settings' );
 
-		$last_term_id = 0;
-
-		while ( true ) {
-			$term_ids = $wpdb->get_col(
-				$wpdb->prepare(
-					"SELECT DISTINCT tm.term_id
-					 FROM $wpdb->termmeta tm
-					 WHERE tm.meta_key IN ('mai_views', 'mai_trending')
-					 AND tm.term_id > %d
-					 ORDER BY tm.term_id ASC
-					 LIMIT %d",
-					$last_term_id,
-					$batch_size
-				)
-			);
-
-			if ( empty( $term_ids ) ) {
-				break;
-			}
-
-			foreach ( $term_ids as $term_id ) {
-				$term_id = (int) $term_id;
-				$updated = $this->migrate_object_meta( 'term', $term_id, $dry_run, $verbose );
-				$updated ? $migrated_terms++ : $skipped++;
-				$last_term_id = $term_id;
-			}
-
-			$this->clear_caches();
+		if ( $already_configured && ! $force ) {
+			WP_CLI::log( 'Mai Views settings already exist. Use --force to re-run migration.' );
 		}
 
-		$prefix = $dry_run ? '[DRY RUN] ' : '';
-		WP_CLI::success( sprintf(
-			'%sMigrated %d posts, %d terms. Skipped %d (mai-analytics already higher).',
-			$prefix,
-			$migrated_posts,
-			$migrated_terms,
-			$skipped
-		) );
+		Migration::maybe_migrate();
+
+		if ( $had_publisher_settings ) {
+			$settings = get_option( 'mai_views_settings', [] );
+			WP_CLI::log( sprintf( 'Migrated from Mai Publisher: data_source=%s', $settings['data_source'] ?? 'unknown' ) );
+
+			$defaults = get_option( 'mai_views_migrated_defaults', [] );
+
+			if ( $defaults ) {
+				WP_CLI::log( sprintf( 'Migrated filter defaults: %s', wp_json_encode( $defaults ) ) );
+			}
+		} elseif ( $had_analytics_settings ) {
+			WP_CLI::log( 'Migrated from old Mai Analytics install.' );
+		} elseif ( ! $already_configured ) {
+			WP_CLI::log( 'No Mai Publisher or Mai Analytics settings found. Nothing to migrate.' );
+		}
+
+		WP_CLI::success( 'Migration complete.' );
 	}
 
 	/**
@@ -151,8 +388,8 @@ class CLI {
 	 *
 	 * ## EXAMPLES
 	 *
-	 *     wp mai-analytics sync
-	 *     wp mai-analytics sync --verbose
+	 *     wp mai-views sync
+	 *     wp mai-views sync --verbose
 	 *
 	 * @param array $args       Positional arguments (unused).
 	 * @param array $assoc_args Associative arguments: --verbose.
@@ -174,7 +411,7 @@ class CLI {
 
 		if ( $verbose ) {
 			$count = (int) $wpdb->get_var( "SELECT COUNT(*) FROM $table" );
-			$last  = get_option( 'mai_analytics_synced', 0 );
+			$last  = get_option( 'mai_views_synced', 0 );
 			WP_CLI::log( sprintf( 'Buffer table rows after sync:  %s', number_format( $count ) ) );
 			WP_CLI::log( sprintf( 'Last sync: %s', $last ? wp_date( 'Y-m-d H:i:s', $last ) : 'never' ) );
 		}
@@ -192,8 +429,8 @@ class CLI {
 	 *
 	 * ## EXAMPLES
 	 *
-	 *     wp mai-analytics stats
-	 *     wp mai-analytics stats --type=post
+	 *     wp mai-views stats
+	 *     wp mai-views stats --type=post
 	 *
 	 * @param array $args       Positional arguments (unused).
 	 * @param array $assoc_args Associative arguments: --type.
@@ -217,18 +454,18 @@ class CLI {
 		$total_views = 0;
 
 		if ( ! $type || 'post' === $type ) {
-			$total_views += (int) $wpdb->get_var( "SELECT COALESCE(SUM(meta_value), 0) FROM $wpdb->postmeta WHERE meta_key = 'mai_analytics_views'" );
+			$total_views += (int) $wpdb->get_var( "SELECT COALESCE(SUM(meta_value), 0) FROM $wpdb->postmeta WHERE meta_key = 'mai_views'" );
 		}
 
 		if ( ! $type || 'term' === $type ) {
-			$total_views += (int) $wpdb->get_var( "SELECT COALESCE(SUM(meta_value), 0) FROM $wpdb->termmeta WHERE meta_key = 'mai_analytics_views'" );
+			$total_views += (int) $wpdb->get_var( "SELECT COALESCE(SUM(meta_value), 0) FROM $wpdb->termmeta WHERE meta_key = 'mai_views'" );
 		}
 
 		if ( ! $type || 'user' === $type ) {
-			$total_views += (int) $wpdb->get_var( "SELECT COALESCE(SUM(meta_value), 0) FROM $wpdb->usermeta WHERE meta_key = 'mai_analytics_views'" );
+			$total_views += (int) $wpdb->get_var( "SELECT COALESCE(SUM(meta_value), 0) FROM $wpdb->usermeta WHERE meta_key = 'mai_views'" );
 		}
 
-		$last_sync = get_option( 'mai_analytics_synced', 0 );
+		$last_sync = get_option( 'mai_views_synced', 0 );
 
 		$data_source = Settings::get( 'data_source' );
 
@@ -239,7 +476,7 @@ class CLI {
 		WP_CLI::log( sprintf( 'Last sync:                %s', $last_sync ? wp_date( 'Y-m-d H:i:s', $last_sync ) : 'never' ) );
 
 		if ( 'self_hosted' !== $data_source ) {
-			$provider_sync = get_option( 'mai_analytics_provider_last_sync', 0 );
+			$provider_sync = get_option( 'mai_views_provider_last_sync', 0 );
 
 			WP_CLI::log( sprintf( 'Last provider sync:       %s', $provider_sync ? wp_date( 'Y-m-d H:i:s', $provider_sync ) : 'never' ) );
 		}
@@ -258,8 +495,8 @@ class CLI {
 	 *
 	 * ## EXAMPLES
 	 *
-	 *     wp mai-analytics prune
-	 *     wp mai-analytics prune --older-than=48h --dry-run
+	 *     wp mai-views prune
+	 *     wp mai-views prune --older-than=48h --dry-run
 	 *
 	 * @param array $args       Positional arguments (unused).
 	 * @param array $assoc_args Associative arguments: --older-than, --dry-run.
@@ -323,9 +560,9 @@ class CLI {
 	 *
 	 * ## EXAMPLES
 	 *
-	 *     wp mai-analytics seed
-	 *     wp mai-analytics seed --posts=100 --views=500 --days=14
-	 *     wp mai-analytics seed --include-terms --include-authors
+	 *     wp mai-views seed
+	 *     wp mai-views seed --posts=100 --views=500 --days=14
+	 *     wp mai-views seed --include-terms --include-authors
 	 *
 	 * @param array $args       Positional arguments (unused).
 	 * @param array $assoc_args Associative arguments: --posts, --views, --days, --include-terms, --include-authors.
@@ -410,16 +647,16 @@ class CLI {
 		WP_CLI::log( sprintf( 'Inserted %s raw view rows. Running sync...', number_format( $total_views ) ) );
 
 		// Reset sync timestamp so all seeded rows are picked up.
-		update_option( 'mai_analytics_synced', 0 );
-		delete_transient( 'mai_analytics_syncing' );
+		update_option( 'mai_views_synced', 0 );
+		delete_transient( 'mai_views_syncing' );
 
 		Sync::sync();
 
-		WP_CLI::success( 'Seed complete. Run `wp mai-analytics stats` to see results.' );
+		WP_CLI::success( 'Seed complete. Run `wp mai-views stats` to see results.' );
 	}
 
 	/**
-	 * Wipe all Mai Analytics data (buffer table, meta, options).
+	 * Wipe all Mai Views data (buffer table, meta, options).
 	 *
 	 * ## OPTIONS
 	 *
@@ -428,8 +665,8 @@ class CLI {
 	 *
 	 * ## EXAMPLES
 	 *
-	 *     wp mai-analytics reset
-	 *     wp mai-analytics reset --yes
+	 *     wp mai-views reset
+	 *     wp mai-views reset --yes
 	 *
 	 * @param array $args       Positional arguments (unused).
 	 * @param array $assoc_args Associative arguments: --yes.
@@ -439,14 +676,14 @@ class CLI {
 	public function reset( array $args, array $assoc_args ): void {
 		global $wpdb;
 
-		WP_CLI::confirm( 'This will DELETE all Mai Analytics data (buffer table, view/trending meta, options). Continue?', $assoc_args );
+		WP_CLI::confirm( 'This will DELETE all Mai Views data (buffer table, view/trending meta, options). Continue?', $assoc_args );
 
 		$table = Database::get_table_name();
 
 		$wpdb->query( "TRUNCATE TABLE $table" );
 		WP_CLI::log( 'Buffer table truncated.' );
 
-		$meta_keys    = "'mai_analytics_views','mai_analytics_views_web','mai_analytics_views_app','mai_analytics_trending'";
+		$meta_keys    = "'mai_views','mai_views_web','mai_views_app','mai_trending'";
 		$post_deleted = (int) $wpdb->query( "DELETE FROM $wpdb->postmeta WHERE meta_key IN ({$meta_keys})" );
 		WP_CLI::log( sprintf( 'Deleted %s post meta rows.', number_format( $post_deleted ) ) );
 
@@ -456,16 +693,16 @@ class CLI {
 		$user_deleted = (int) $wpdb->query( "DELETE FROM $wpdb->usermeta WHERE meta_key IN ({$meta_keys})" );
 		WP_CLI::log( sprintf( 'Deleted %s user meta rows.', number_format( $user_deleted ) ) );
 
-		delete_option( 'mai_analytics_synced' );
-		delete_option( 'mai_analytics_provider_last_sync' );
-		delete_option( 'mai_analytics_post_type_views_web' );
-		delete_option( 'mai_analytics_post_type_views_app' );
-		delete_transient( 'mai_analytics_sync_lock' );
-		delete_transient( 'mai_analytics_syncing' );
-		delete_transient( 'mai_analytics_provider_syncing' );
+		delete_option( 'mai_views_synced' );
+		delete_option( 'mai_views_provider_last_sync' );
+		delete_option( 'mai_views_post_type_views_web' );
+		delete_option( 'mai_views_post_type_views_app' );
+		delete_transient( 'mai_views_sync_lock' );
+		delete_transient( 'mai_views_syncing' );
+		delete_transient( 'mai_views_provider_syncing' );
 		WP_CLI::log( 'Options and transients cleared.' );
 
-		WP_CLI::success( 'All Mai Analytics data has been reset.' );
+		WP_CLI::success( 'All Mai Views data has been reset.' );
 	}
 
 	/**
@@ -478,7 +715,7 @@ class CLI {
 	 *
 	 * ## EXAMPLES
 	 *
-	 *     wp mai-analytics provider-sync
+	 *     wp mai-views provider-sync
 	 *
 	 * @param array $args       Positional arguments (unused).
 	 * @param array $assoc_args Associative arguments: --verbose.
@@ -494,7 +731,7 @@ class CLI {
 
 		ProviderSync::sync();
 
-		$last_sync = get_option( 'mai_analytics_provider_last_sync', 0 );
+		$last_sync = get_option( 'mai_views_provider_last_sync', 0 );
 
 		WP_CLI::success( sprintf(
 			'Provider sync complete. Last sync: %s',
@@ -524,9 +761,9 @@ class CLI {
 	 *
 	 * ## EXAMPLES
 	 *
-	 *     wp mai-analytics warm
-	 *     wp mai-analytics warm --type=post --ids=1,2,3
-	 *     wp mai-analytics warm --type=term --taxonomy=category --verbose
+	 *     wp mai-views warm
+	 *     wp mai-views warm --type=post --ids=1,2,3
+	 *     wp mai-views warm --type=term --taxonomy=category --verbose
 	 *
 	 * @param array $args       Positional arguments (unused).
 	 * @param array $assoc_args Associative arguments.
@@ -584,7 +821,7 @@ class CLI {
 	 *
 	 * ## EXAMPLES
 	 *
-	 *     wp mai-analytics update-bots
+	 *     wp mai-views update-bots
 	 *
 	 * @param array $args       Positional arguments (unused).
 	 * @param array $assoc_args Associative arguments (unused).
@@ -592,7 +829,7 @@ class CLI {
 	 * @return void
 	 */
 	public function update_bots( array $args, array $assoc_args ): void {
-		$script = MAI_ANALYTICS_PLUGIN_DIR . 'bin/update-bot-patterns.php';
+		$script = MAI_VIEWS_PLUGIN_DIR . 'bin/update-bot-patterns.php';
 
 		if ( ! file_exists( $script ) ) {
 			WP_CLI::error( 'bin/update-bot-patterns.php not found.' );
@@ -638,46 +875,6 @@ class CLI {
 		}
 
 		return $num_views;
-	}
-
-	/**
-	 * Migrates meta values for a single object. Keeps the higher count.
-	 *
-	 * @param string $type    The object type: 'post' or 'term'.
-	 * @param int    $id      The object ID.
-	 * @param bool   $dry_run Whether to skip writing changes.
-	 * @param bool   $verbose Whether to log detailed output.
-	 *
-	 * @return bool True if any meta value was updated (or would be in dry-run mode).
-	 */
-	private function migrate_object_meta( string $type, int $id, bool $dry_run, bool $verbose ): bool {
-		$get_func    = 'post' === $type ? 'get_post_meta' : 'get_term_meta';
-		$update_func = 'post' === $type ? 'update_post_meta' : 'update_term_meta';
-		$updated     = false;
-
-		$pairs = [
-			[ 'mai_views', 'mai_analytics_views' ],
-			[ 'mai_trending', 'mai_analytics_trending' ],
-		];
-
-		foreach ( $pairs as [ $old_key, $new_key ] ) {
-			$old_val = (int) call_user_func( $get_func, $id, $old_key, true );
-			$new_val = (int) call_user_func( $get_func, $id, $new_key, true );
-
-			if ( $old_val > $new_val ) {
-				if ( ! $dry_run ) {
-					call_user_func( $update_func, $id, $new_key, $old_val );
-				}
-
-				$updated = true;
-
-				if ( $verbose ) {
-					WP_CLI::log( sprintf( '  %s %d: %s %d → %d', ucfirst( $type ), $id, $new_key, $new_val, $old_val ) );
-				}
-			}
-		}
-
-		return $updated;
 	}
 
 	/**

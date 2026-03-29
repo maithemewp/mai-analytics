@@ -1,6 +1,6 @@
 <?php
 
-namespace Mai\Analytics;
+namespace Mai\Views;
 
 interface WebViewProvider {
 

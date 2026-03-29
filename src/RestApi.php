@@ -1,13 +1,13 @@
 <?php
 
-namespace Mai\Analytics;
+namespace Mai\Views;
 
 use WP_REST_Request;
 use WP_REST_Response;
 
 class RestApi {
 
-	private const NAMESPACE = 'mai-analytics/v1';
+	private const NAMESPACE = 'mai-views/v1';
 
 	/**
 	 * Hooks into rest_api_init to register analytics REST routes.
@@ -155,7 +155,7 @@ class RestApi {
 
 		// External provider mode + web visit: dedup check before INSERT.
 		if ( 'self_hosted' !== $data_source && 'web' === $source ) {
-			$last_sync = (int) get_option( 'mai_analytics_provider_last_sync', 0 );
+			$last_sync = (int) get_option( 'mai_views_provider_last_sync', 0 );
 
 			if ( ! Database::is_queued( $id, $type, $last_sync ) ) {
 				Database::insert_view( $id, $type, $source );
@@ -187,9 +187,9 @@ class RestApi {
 		}
 
 		[ $views, $trending ] = match ( $type ) {
-			'post' => [ (int) get_post_meta( $id, 'mai_analytics_views', true ), (int) get_post_meta( $id, 'mai_analytics_trending', true ) ],
-			'term' => [ (int) get_term_meta( $id, 'mai_analytics_views', true ), (int) get_term_meta( $id, 'mai_analytics_trending', true ) ],
-			'user' => [ (int) get_user_meta( $id, 'mai_analytics_views', true ), (int) get_user_meta( $id, 'mai_analytics_trending', true ) ],
+			'post' => [ (int) get_post_meta( $id, 'mai_views', true ), (int) get_post_meta( $id, 'mai_trending', true ) ],
+			'term' => [ (int) get_term_meta( $id, 'mai_views', true ), (int) get_term_meta( $id, 'mai_trending', true ) ],
+			'user' => [ (int) get_user_meta( $id, 'mai_views', true ), (int) get_user_meta( $id, 'mai_trending', true ) ],
 			default => [ 0, 0 ],
 		};
 
@@ -232,7 +232,7 @@ class RestApi {
 
 		// External provider mode + web visit: dedup check before INSERT.
 		if ( 'self_hosted' !== $data_source && 'web' === $source ) {
-			$last_sync = (int) get_option( 'mai_analytics_provider_last_sync', 0 );
+			$last_sync = (int) get_option( 'mai_views_provider_last_sync', 0 );
 
 			if ( ! Database::is_queued( 0, 'post_type', $last_sync ) ) {
 				Database::insert_view( 0, 'post_type', $source, $post_type );
@@ -257,8 +257,8 @@ class RestApi {
 	 */
 	public function get_post_type_views( WP_REST_Request $request ): WP_REST_Response {
 		$post_type = $request->get_param( 'post_type' );
-		$counts    = get_option( 'mai_analytics_post_type_views', [] );
-		$trending  = get_option( 'mai_analytics_post_type_trending', [] );
+		$counts    = get_option( 'mai_views_post_type_views', [] );
+		$trending  = get_option( 'mai_views_post_type_trending', [] );
 
 		return new WP_REST_Response( [
 			'post_type' => $post_type,

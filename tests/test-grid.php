@@ -1,6 +1,6 @@
 <?php
 
-use Mai\Analytics\MaiGrid;
+use Mai\Views\MaiGrid;
 
 class Test_Grid extends WP_UnitTestCase {
 
@@ -18,7 +18,7 @@ class Test_Grid extends WP_UnitTestCase {
 		$result = $this->grid->add_trending_choice( $field );
 
 		$this->assertArrayHasKey( 'trending', $result['choices'] );
-		$this->assertStringContainsString( 'Mai Analytics', $result['choices']['trending'] );
+		$this->assertStringContainsString( 'Mai Views', $result['choices']['trending'] );
 	}
 
 	public function test_views_choice_added_first(): void {
@@ -34,7 +34,7 @@ class Test_Grid extends WP_UnitTestCase {
 	public function test_query_modified_for_trending(): void {
 		$result = $this->grid->handle_query( [], [ 'query_by' => 'trending' ] );
 
-		$this->assertEquals( 'mai_analytics_trending', $result['meta_key'] );
+		$this->assertEquals( 'mai_trending', $result['meta_key'] );
 		$this->assertEquals( 'meta_value_num', $result['orderby'] );
 		$this->assertEquals( 'DESC', $result['order'] );
 	}
@@ -42,7 +42,7 @@ class Test_Grid extends WP_UnitTestCase {
 	public function test_query_modified_for_views(): void {
 		$result = $this->grid->handle_query( [], [ 'orderby' => 'views' ] );
 
-		$this->assertEquals( 'mai_analytics_views', $result['meta_key'] );
+		$this->assertEquals( 'mai_views', $result['meta_key'] );
 		$this->assertEquals( 'meta_value_num', $result['orderby'] );
 	}
 

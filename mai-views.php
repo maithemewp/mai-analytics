@@ -1,0 +1,50 @@
+<?php
+
+/**
+ * Plugin Name:     Mai Views
+ * Plugin URI:      https://bizbudding.com/
+ * Description:     View tracking for posts, terms, and authors. Supports self-hosted tracking, Google Analytics (via Site Kit), Matomo, and Jetpack Stats.
+ * Version:         1.0.0
+ *
+ * Author:          BizBudding
+ * Author URI:      https://bizbudding.com
+ */
+
+// Exit if accessed directly.
+if ( ! defined( 'ABSPATH' ) ) exit;
+
+// Prevent double-loading when installed standalone AND bundled via Composer.
+if ( defined( 'MAI_VIEWS_VERSION' ) ) {
+	return;
+}
+
+use Mai\Views\Database;
+use Mai\Views\Plugin;
+
+// Constants.
+define( 'MAI_VIEWS_VERSION', '1.0.0' );
+define( 'MAI_VIEWS_DB_VERSION', '1.0.2' );
+define( 'MAI_VIEWS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
+define( 'MAI_VIEWS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
+define( 'MAI_VIEWS_PLUGIN_FILE', __FILE__ );
+define( 'MAI_VIEWS_BASENAME', dirname( plugin_basename( __FILE__ ) ) );
+
+// Composer autoload (PSR-4 + plugin-update-checker).
+require_once __DIR__ . '/vendor/autoload.php';
+
+// Activation: create database table and schedule cron.
+register_activation_hook( __FILE__, function(): void {
+	Database::create_table();
+
+	if ( ! wp_next_scheduled( 'mai_views_cron_sync' ) ) {
+		wp_schedule_event( time(), 'mai_views_15min', 'mai_views_cron_sync' );
+	}
+} );
+
+// Deactivation: clear scheduled cron.
+register_deactivation_hook( __FILE__, function(): void {
+	wp_clear_scheduled_hook( 'mai_views_cron_sync' );
+} );
+
+// Initialize on plugins_loaded.
+add_action( 'plugins_loaded', [ Plugin::class, 'init' ] );

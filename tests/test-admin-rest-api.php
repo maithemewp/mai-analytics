@@ -1,7 +1,7 @@
 <?php
 
-use Mai\Analytics\Database;
-use Mai\Analytics\Sync;
+use Mai\Views\Database;
+use Mai\Views\Sync;
 
 class Test_Admin_REST_API extends WP_UnitTestCase {
 
@@ -26,7 +26,7 @@ class Test_Admin_REST_API extends WP_UnitTestCase {
 	public function test_unauthenticated_user_denied(): void {
 		wp_set_current_user( 0 );
 
-		$request  = new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/summary' );
+		$request  = new WP_REST_Request( 'GET', '/mai-views/v1/admin/summary' );
 		$response = $this->server->dispatch( $request );
 
 		$this->assertEquals( 401, $response->get_status() );
@@ -35,7 +35,7 @@ class Test_Admin_REST_API extends WP_UnitTestCase {
 	public function test_subscriber_denied(): void {
 		wp_set_current_user( self::factory()->user->create( [ 'role' => 'subscriber' ] ) );
 
-		$request  = new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/summary' );
+		$request  = new WP_REST_Request( 'GET', '/mai-views/v1/admin/summary' );
 		$response = $this->server->dispatch( $request );
 
 		$this->assertEquals( 403, $response->get_status() );
@@ -44,7 +44,7 @@ class Test_Admin_REST_API extends WP_UnitTestCase {
 	public function test_editor_allowed(): void {
 		wp_set_current_user( self::factory()->user->create( [ 'role' => 'editor' ] ) );
 
-		$request  = new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/summary' );
+		$request  = new WP_REST_Request( 'GET', '/mai-views/v1/admin/summary' );
 		$response = $this->server->dispatch( $request );
 
 		$this->assertEquals( 200, $response->get_status() );
@@ -53,7 +53,7 @@ class Test_Admin_REST_API extends WP_UnitTestCase {
 	public function test_summary_returns_expected_shape(): void {
 		wp_set_current_user( self::factory()->user->create( [ 'role' => 'editor' ] ) );
 
-		$request  = new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/summary' );
+		$request  = new WP_REST_Request( 'GET', '/mai-views/v1/admin/summary' );
 		$data     = $this->server->dispatch( $request )->get_data();
 
 		$this->assertArrayHasKey( 'total_views', $data );
@@ -67,9 +67,9 @@ class Test_Admin_REST_API extends WP_UnitTestCase {
 		wp_set_current_user( self::factory()->user->create( [ 'role' => 'editor' ] ) );
 
 		$post_id = self::factory()->post->create();
-		update_post_meta( $post_id, 'mai_analytics_views', 42 );
+		update_post_meta( $post_id, 'mai_views', 42 );
 
-		$request = new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/summary' );
+		$request = new WP_REST_Request( 'GET', '/mai-views/v1/admin/summary' );
 		$data    = $this->server->dispatch( $request )->get_data();
 
 		$this->assertGreaterThanOrEqual( 42, $data['total_views'] );
@@ -82,10 +82,10 @@ class Test_Admin_REST_API extends WP_UnitTestCase {
 		// Create 3 posts with views.
 		for ( $i = 0; $i < 3; $i++ ) {
 			$id = self::factory()->post->create( [ 'post_status' => 'publish' ] );
-			update_post_meta( $id, 'mai_analytics_views', 100 - $i );
+			update_post_meta( $id, 'mai_views', 100 - $i );
 		}
 
-		$request = new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/top/posts' );
+		$request = new WP_REST_Request( 'GET', '/mai-views/v1/admin/top/posts' );
 		$request->set_param( 'per_page', 2 );
 		$request->set_param( 'page', 1 );
 		$data = $this->server->dispatch( $request )->get_data();
@@ -100,10 +100,10 @@ class Test_Admin_REST_API extends WP_UnitTestCase {
 
 		$id1 = self::factory()->post->create( [ 'post_status' => 'publish' ] );
 		$id2 = self::factory()->post->create( [ 'post_status' => 'publish' ] );
-		update_post_meta( $id1, 'mai_analytics_views', 50 );
-		update_post_meta( $id2, 'mai_analytics_views', 200 );
+		update_post_meta( $id1, 'mai_views', 50 );
+		update_post_meta( $id2, 'mai_views', 200 );
 
-		$request = new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/top/posts' );
+		$request = new WP_REST_Request( 'GET', '/mai-views/v1/admin/top/posts' );
 		$data    = $this->server->dispatch( $request )->get_data();
 
 		$this->assertEquals( $id2, $data['items'][0]['id'] );
@@ -113,9 +113,9 @@ class Test_Admin_REST_API extends WP_UnitTestCase {
 		wp_set_current_user( self::factory()->user->create( [ 'role' => 'editor' ] ) );
 
 		$term_id = self::factory()->category->create();
-		update_term_meta( $term_id, 'mai_analytics_views', 75 );
+		update_term_meta( $term_id, 'mai_views', 75 );
 
-		$request = new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/top/terms' );
+		$request = new WP_REST_Request( 'GET', '/mai-views/v1/admin/top/terms' );
 		$data    = $this->server->dispatch( $request )->get_data();
 
 		$this->assertGreaterThanOrEqual( 1, count( $data['items'] ) );
@@ -126,9 +126,9 @@ class Test_Admin_REST_API extends WP_UnitTestCase {
 		wp_set_current_user( self::factory()->user->create( [ 'role' => 'editor' ] ) );
 
 		$user_id = self::factory()->user->create();
-		update_user_meta( $user_id, 'mai_analytics_views', 30 );
+		update_user_meta( $user_id, 'mai_views', 30 );
 
-		$request = new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/top/authors' );
+		$request = new WP_REST_Request( 'GET', '/mai-views/v1/admin/top/authors' );
 		$data    = $this->server->dispatch( $request )->get_data();
 
 		$this->assertGreaterThanOrEqual( 1, count( $data['items'] ) );
@@ -137,7 +137,7 @@ class Test_Admin_REST_API extends WP_UnitTestCase {
 	public function test_filters_returns_expected_shape(): void {
 		wp_set_current_user( self::factory()->user->create( [ 'role' => 'editor' ] ) );
 
-		$request = new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/filters' );
+		$request = new WP_REST_Request( 'GET', '/mai-views/v1/admin/filters' );
 		$data    = $this->server->dispatch( $request )->get_data();
 
 		$this->assertArrayHasKey( 'post_types', $data );
@@ -149,7 +149,7 @@ class Test_Admin_REST_API extends WP_UnitTestCase {
 	public function test_empty_state_returns_gracefully(): void {
 		wp_set_current_user( self::factory()->user->create( [ 'role' => 'editor' ] ) );
 
-		$request = new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/top/posts' );
+		$request = new WP_REST_Request( 'GET', '/mai-views/v1/admin/top/posts' );
 		$data    = $this->server->dispatch( $request )->get_data();
 
 		$this->assertEmpty( $data['items'] );
@@ -160,15 +160,15 @@ class Test_Admin_REST_API extends WP_UnitTestCase {
 		wp_set_current_user( self::factory()->user->create( [ 'role' => 'editor' ] ) );
 
 		$post_id = self::factory()->post->create( [ 'post_status' => 'publish' ] );
-		update_post_meta( $post_id, 'mai_analytics_views', 500 );
-		update_post_meta( $post_id, 'mai_analytics_views_web', 400 );
-		update_post_meta( $post_id, 'mai_analytics_views_app', 100 );
+		update_post_meta( $post_id, 'mai_views', 500 );
+		update_post_meta( $post_id, 'mai_views_web', 400 );
+		update_post_meta( $post_id, 'mai_views_app', 100 );
 
 		// Insert a single buffer row — if source breakdown read from buffer,
 		// web would be 1 instead of 400.
 		Database::insert_view( $post_id, 'post', 'web' );
 
-		$request = new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/top/posts' );
+		$request = new WP_REST_Request( 'GET', '/mai-views/v1/admin/top/posts' );
 		$data    = $this->server->dispatch( $request )->get_data();
 
 		$this->assertCount( 1, $data['items'] );
@@ -180,11 +180,11 @@ class Test_Admin_REST_API extends WP_UnitTestCase {
 		wp_set_current_user( self::factory()->user->create( [ 'role' => 'editor' ] ) );
 
 		$term_id = self::factory()->category->create();
-		update_term_meta( $term_id, 'mai_analytics_views', 200 );
-		update_term_meta( $term_id, 'mai_analytics_views_web', 150 );
-		update_term_meta( $term_id, 'mai_analytics_views_app', 50 );
+		update_term_meta( $term_id, 'mai_views', 200 );
+		update_term_meta( $term_id, 'mai_views_web', 150 );
+		update_term_meta( $term_id, 'mai_views_app', 50 );
 
-		$request = new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/top/terms' );
+		$request = new WP_REST_Request( 'GET', '/mai-views/v1/admin/top/terms' );
 		$data    = $this->server->dispatch( $request )->get_data();
 
 		$this->assertGreaterThanOrEqual( 1, count( $data['items'] ) );
@@ -196,11 +196,11 @@ class Test_Admin_REST_API extends WP_UnitTestCase {
 		wp_set_current_user( self::factory()->user->create( [ 'role' => 'editor' ] ) );
 
 		$user_id = self::factory()->user->create();
-		update_user_meta( $user_id, 'mai_analytics_views', 80 );
-		update_user_meta( $user_id, 'mai_analytics_views_web', 60 );
-		update_user_meta( $user_id, 'mai_analytics_views_app', 20 );
+		update_user_meta( $user_id, 'mai_views', 80 );
+		update_user_meta( $user_id, 'mai_views_web', 60 );
+		update_user_meta( $user_id, 'mai_views_app', 20 );
 
-		$request = new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/top/authors' );
+		$request = new WP_REST_Request( 'GET', '/mai-views/v1/admin/top/authors' );
 		$data    = $this->server->dispatch( $request )->get_data();
 
 		$found = false;
@@ -220,12 +220,12 @@ class Test_Admin_REST_API extends WP_UnitTestCase {
 	public function test_source_breakdown_archives(): void {
 		wp_set_current_user( self::factory()->user->create( [ 'role' => 'editor' ] ) );
 
-		update_option( 'mai_analytics_post_type_views', [ 'post' => 300 ] );
-		update_option( 'mai_analytics_post_type_trending', [ 'post' => 10 ] );
-		update_option( 'mai_analytics_post_type_views_web', [ 'post' => 250 ] );
-		update_option( 'mai_analytics_post_type_views_app', [ 'post' => 50 ] );
+		update_option( 'mai_views_post_type_views', [ 'post' => 300 ] );
+		update_option( 'mai_views_post_type_trending', [ 'post' => 10 ] );
+		update_option( 'mai_views_post_type_views_web', [ 'post' => 250 ] );
+		update_option( 'mai_views_post_type_views_app', [ 'post' => 50 ] );
 
-		$request = new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/top/archives' );
+		$request = new WP_REST_Request( 'GET', '/mai-views/v1/admin/top/archives' );
 		$data    = $this->server->dispatch( $request )->get_data();
 
 		$found = false;
@@ -247,9 +247,9 @@ class Test_Admin_REST_API extends WP_UnitTestCase {
 		wp_set_current_user( self::factory()->user->create( [ 'role' => 'editor' ] ) );
 
 		$user_id = self::factory()->user->create( [ 'display_name' => 'Jane Analytics' ] );
-		update_user_meta( $user_id, 'mai_analytics_views', 10 );
+		update_user_meta( $user_id, 'mai_views', 10 );
 
-		$request = new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/search' );
+		$request = new WP_REST_Request( 'GET', '/mai-views/v1/admin/search' );
 		$request->set_param( 'type', 'author' );
 		$request->set_param( 'search', 'Jane' );
 		$data = $this->server->dispatch( $request )->get_data();
@@ -261,7 +261,7 @@ class Test_Admin_REST_API extends WP_UnitTestCase {
 	public function test_search_authors_requires_min_2_chars(): void {
 		wp_set_current_user( self::factory()->user->create( [ 'role' => 'editor' ] ) );
 
-		$request = new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/search' );
+		$request = new WP_REST_Request( 'GET', '/mai-views/v1/admin/search' );
 		$request->set_param( 'type', 'author' );
 		$request->set_param( 'search', 'J' );
 		$data = $this->server->dispatch( $request )->get_data();
@@ -278,7 +278,7 @@ class Test_Admin_REST_API extends WP_UnitTestCase {
 		$post_id = self::factory()->post->create( [ 'post_status' => 'publish' ] );
 		wp_set_object_terms( $post_id, $term_id, 'category' );
 
-		$request = new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/search' );
+		$request = new WP_REST_Request( 'GET', '/mai-views/v1/admin/search' );
 		$request->set_param( 'type', 'term' );
 		$request->set_param( 'taxonomy', 'category' );
 		$request->set_param( 'search', 'Analytics' );
@@ -291,7 +291,7 @@ class Test_Admin_REST_API extends WP_UnitTestCase {
 	public function test_search_terms_requires_taxonomy(): void {
 		wp_set_current_user( self::factory()->user->create( [ 'role' => 'editor' ] ) );
 
-		$request = new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/search' );
+		$request = new WP_REST_Request( 'GET', '/mai-views/v1/admin/search' );
 		$request->set_param( 'type', 'term' );
 		$request->set_param( 'search', 'News' );
 		$data = $this->server->dispatch( $request )->get_data();
@@ -304,10 +304,10 @@ class Test_Admin_REST_API extends WP_UnitTestCase {
 
 		$id1 = self::factory()->post->create( [ 'post_title' => 'Alpha Report', 'post_status' => 'publish' ] );
 		$id2 = self::factory()->post->create( [ 'post_title' => 'Beta Summary', 'post_status' => 'publish' ] );
-		update_post_meta( $id1, 'mai_analytics_views', 10 );
-		update_post_meta( $id2, 'mai_analytics_views', 20 );
+		update_post_meta( $id1, 'mai_views', 10 );
+		update_post_meta( $id2, 'mai_views', 20 );
 
-		$request = new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/top/posts' );
+		$request = new WP_REST_Request( 'GET', '/mai-views/v1/admin/top/posts' );
 		$request->set_param( 'search', 'Alpha' );
 		$data = $this->server->dispatch( $request )->get_data();
 
@@ -320,10 +320,10 @@ class Test_Admin_REST_API extends WP_UnitTestCase {
 
 		$term1 = self::factory()->category->create( [ 'name' => 'Sports' ] );
 		$term2 = self::factory()->category->create( [ 'name' => 'Technology' ] );
-		update_term_meta( $term1, 'mai_analytics_views', 50 );
-		update_term_meta( $term2, 'mai_analytics_views', 30 );
+		update_term_meta( $term1, 'mai_views', 50 );
+		update_term_meta( $term2, 'mai_views', 30 );
 
-		$request = new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/top/terms' );
+		$request = new WP_REST_Request( 'GET', '/mai-views/v1/admin/top/terms' );
 		$request->set_param( 'search', 'Tech' );
 		$data = $this->server->dispatch( $request )->get_data();
 
@@ -336,10 +336,10 @@ class Test_Admin_REST_API extends WP_UnitTestCase {
 
 		$user1 = self::factory()->user->create( [ 'display_name' => 'Alice Writer' ] );
 		$user2 = self::factory()->user->create( [ 'display_name' => 'Bob Editor' ] );
-		update_user_meta( $user1, 'mai_analytics_views', 10 );
-		update_user_meta( $user2, 'mai_analytics_views', 20 );
+		update_user_meta( $user1, 'mai_views', 10 );
+		update_user_meta( $user2, 'mai_views', 20 );
 
-		$request = new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/top/authors' );
+		$request = new WP_REST_Request( 'GET', '/mai-views/v1/admin/top/authors' );
 		$request->set_param( 'search', 'Alice' );
 		$data = $this->server->dispatch( $request )->get_data();
 
@@ -355,10 +355,10 @@ class Test_Admin_REST_API extends WP_UnitTestCase {
 		$id2    = self::factory()->post->create( [ 'post_status' => 'publish' ] );
 
 		wp_set_object_terms( $id1, $cat_id, 'category' );
-		update_post_meta( $id1, 'mai_analytics_views', 50 );
-		update_post_meta( $id2, 'mai_analytics_views', 100 );
+		update_post_meta( $id1, 'mai_views', 50 );
+		update_post_meta( $id2, 'mai_views', 100 );
 
-		$request = new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/top/posts' );
+		$request = new WP_REST_Request( 'GET', '/mai-views/v1/admin/top/posts' );
 		$request->set_param( 'taxonomy', 'category' );
 		$request->set_param( 'term_id', $cat_id );
 		$data = $this->server->dispatch( $request )->get_data();
@@ -375,14 +375,14 @@ class Test_Admin_REST_API extends WP_UnitTestCase {
 		for ( $i = 0; $i < 5; $i++ ) {
 			$id = self::factory()->post->create( [ 'post_status' => 'publish' ] );
 			wp_set_object_terms( $id, $cat_id, 'category' );
-			update_post_meta( $id, 'mai_analytics_views', 100 - $i );
+			update_post_meta( $id, 'mai_views', 100 - $i );
 		}
 
 		// Extra post NOT in category.
 		$extra = self::factory()->post->create( [ 'post_status' => 'publish' ] );
-		update_post_meta( $extra, 'mai_analytics_views', 999 );
+		update_post_meta( $extra, 'mai_views', 999 );
 
-		$request = new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/top/posts' );
+		$request = new WP_REST_Request( 'GET', '/mai-views/v1/admin/top/posts' );
 		$request->set_param( 'taxonomy', 'category' );
 		$request->set_param( 'term_id', $cat_id );
 		$request->set_param( 'per_page', 2 );
@@ -410,13 +410,13 @@ class Test_Admin_REST_API extends WP_UnitTestCase {
 
 		$id1 = self::factory()->post->create( [ 'post_status' => 'publish' ] );
 		$id2 = self::factory()->post->create( [ 'post_status' => 'publish' ] );
-		update_post_meta( $id1, 'mai_analytics_views', 500 );
-		update_post_meta( $id1, 'mai_analytics_trending', 5 );
-		update_post_meta( $id2, 'mai_analytics_views', 100 );
-		update_post_meta( $id2, 'mai_analytics_trending', 50 );
+		update_post_meta( $id1, 'mai_views', 500 );
+		update_post_meta( $id1, 'mai_trending', 5 );
+		update_post_meta( $id2, 'mai_views', 100 );
+		update_post_meta( $id2, 'mai_trending', 50 );
 
 		// Order by views: id1 first.
-		$request = new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/top/posts' );
+		$request = new WP_REST_Request( 'GET', '/mai-views/v1/admin/top/posts' );
 		$request->set_param( 'orderby', 'views' );
 		$data = $this->server->dispatch( $request )->get_data();
 		$this->assertEquals( $id1, $data['items'][0]['id'] );
@@ -442,12 +442,12 @@ class Test_Admin_REST_API extends WP_UnitTestCase {
 		$id2 = self::factory()->post->create( [ 'post_status' => 'publish', 'post_author' => $user2 ] );
 		$id3 = self::factory()->post->create( [ 'post_status' => 'publish', 'post_author' => $user3 ] );
 
-		update_post_meta( $id1, 'mai_analytics_views', 50 );
-		update_post_meta( $id2, 'mai_analytics_views', 40 );
-		update_post_meta( $id3, 'mai_analytics_views', 30 );
+		update_post_meta( $id1, 'mai_views', 50 );
+		update_post_meta( $id2, 'mai_views', 40 );
+		update_post_meta( $id3, 'mai_views', 30 );
 
 		// Filter by users 1 and 2 — should exclude user 3.
-		$request = new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/top/posts' );
+		$request = new WP_REST_Request( 'GET', '/mai-views/v1/admin/top/posts' );
 		$request->set_param( 'author', $user1 . ',' . $user2 );
 		$data = $this->server->dispatch( $request )->get_data();
 
@@ -473,12 +473,12 @@ class Test_Admin_REST_API extends WP_UnitTestCase {
 		wp_set_object_terms( $id2, $cat2, 'category' );
 		wp_set_object_terms( $id3, $cat3, 'category' );
 
-		update_post_meta( $id1, 'mai_analytics_views', 50 );
-		update_post_meta( $id2, 'mai_analytics_views', 40 );
-		update_post_meta( $id3, 'mai_analytics_views', 30 );
+		update_post_meta( $id1, 'mai_views', 50 );
+		update_post_meta( $id2, 'mai_views', 40 );
+		update_post_meta( $id3, 'mai_views', 30 );
 
 		// Filter by terms 1 and 2 — should exclude term 3.
-		$request = new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/top/posts' );
+		$request = new WP_REST_Request( 'GET', '/mai-views/v1/admin/top/posts' );
 		$request->set_param( 'taxonomy', 'category' );
 		$request->set_param( 'term_id', $cat1 . ',' . $cat2 );
 		$data = $this->server->dispatch( $request )->get_data();
@@ -495,13 +495,13 @@ class Test_Admin_REST_API extends WP_UnitTestCase {
 
 		$id1 = self::factory()->post->create( [ 'post_status' => 'publish' ] );
 		$id2 = self::factory()->post->create( [ 'post_status' => 'publish' ] );
-		update_post_meta( $id1, 'mai_analytics_trending', 10 );
-		update_post_meta( $id2, 'mai_analytics_trending', 0 );
+		update_post_meta( $id1, 'mai_trending', 10 );
+		update_post_meta( $id2, 'mai_trending', 0 );
 
 		$term_id = self::factory()->category->create();
-		update_term_meta( $term_id, 'mai_analytics_trending', 5 );
+		update_term_meta( $term_id, 'mai_trending', 5 );
 
-		$request = new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/summary' );
+		$request = new WP_REST_Request( 'GET', '/mai-views/v1/admin/summary' );
 		$data    = $this->server->dispatch( $request )->get_data();
 
 		// Should count objects with trending > 0 from meta (post + term = 2).

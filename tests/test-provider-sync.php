@@ -1,37 +1,37 @@
 <?php
 
-use Mai\Analytics\Database;
-use Mai\Analytics\ProviderSync;
-use Mai\Analytics\Settings;
-use Mai\Analytics\Sync;
+use Mai\Views\Database;
+use Mai\Views\ProviderSync;
+use Mai\Views\Settings;
+use Mai\Views\Sync;
 
 class Test_Provider_Sync extends WP_UnitTestCase {
 
 	public function setUp(): void {
 		parent::setUp();
 		Database::create_table();
-		delete_option( 'mai_analytics_provider_last_sync' );
-		delete_option( 'mai_analytics_settings' );
-		delete_option( 'mai_analytics_post_type_views' );
-		delete_option( 'mai_analytics_post_type_views_web' );
-		delete_option( 'mai_analytics_post_type_views_app' );
-		delete_option( 'mai_analytics_post_type_trending' );
+		delete_option( 'mai_views_provider_last_sync' );
+		delete_option( 'mai_views_settings' );
+		delete_option( 'mai_views_post_type_views' );
+		delete_option( 'mai_views_post_type_views_web' );
+		delete_option( 'mai_views_post_type_views_app' );
+		delete_option( 'mai_views_post_type_trending' );
 
 		// Remove any previously registered provider filters.
-		remove_all_filters( 'mai_analytics_providers' );
+		remove_all_filters( 'mai_views_providers' );
 	}
 
 	public function tearDown(): void {
 		global $wpdb;
 		$wpdb->query( 'TRUNCATE TABLE ' . Database::get_table_name() );
-		delete_transient( 'mai_analytics_provider_syncing' );
-		remove_all_filters( 'mai_analytics_providers' );
-		delete_option( 'mai_analytics_settings' );
-		delete_option( 'mai_analytics_provider_last_sync' );
-		delete_option( 'mai_analytics_post_type_views' );
-		delete_option( 'mai_analytics_post_type_views_web' );
-		delete_option( 'mai_analytics_post_type_views_app' );
-		delete_option( 'mai_analytics_post_type_trending' );
+		delete_transient( 'mai_views_provider_syncing' );
+		remove_all_filters( 'mai_views_providers' );
+		delete_option( 'mai_views_settings' );
+		delete_option( 'mai_views_provider_last_sync' );
+		delete_option( 'mai_views_post_type_views' );
+		delete_option( 'mai_views_post_type_views_web' );
+		delete_option( 'mai_views_post_type_views_app' );
+		delete_option( 'mai_views_post_type_trending' );
 		parent::tearDown();
 	}
 
@@ -47,8 +47,8 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 		$mock_views = $views_per_path;
 		$mock_avail = $available;
 
-		add_filter( 'mai_analytics_providers', function () use ( $mock_views, $mock_avail ) {
-			return [ new class( $mock_views, $mock_avail ) implements \Mai\Analytics\WebViewProvider {
+		add_filter( 'mai_views_providers', function () use ( $mock_views, $mock_avail ) {
+			return [ new class( $mock_views, $mock_avail ) implements \Mai\Views\WebViewProvider {
 				private int $views;
 				private bool $avail;
 
@@ -73,7 +73,7 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 			} ];
 		} );
 
-		update_option( 'mai_analytics_settings', [
+		update_option( 'mai_views_settings', [
 			'data_source' => 'test_provider',
 			'sync_user'   => 1,
 		] );
@@ -93,8 +93,8 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 		ProviderSync::sync();
 
 		// Both posts should have received web views from the provider.
-		$this->assertGreaterThan( 0, (int) get_post_meta( $post_a, 'mai_analytics_views_web', true ) );
-		$this->assertGreaterThan( 0, (int) get_post_meta( $post_b, 'mai_analytics_views_web', true ) );
+		$this->assertGreaterThan( 0, (int) get_post_meta( $post_a, 'mai_views_web', true ) );
+		$this->assertGreaterThan( 0, (int) get_post_meta( $post_b, 'mai_views_web', true ) );
 	}
 
 	public function test_sync_replaces_web_meta_from_provider(): void {
@@ -103,7 +103,7 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 		$post_id = self::factory()->post->create( [ 'post_status' => 'publish' ] );
 
 		// Pre-set a web meta value that the provider should replace.
-		update_post_meta( $post_id, 'mai_analytics_views_web', 10 );
+		update_post_meta( $post_id, 'mai_views_web', 10 );
 
 		// Insert a buffer row to trigger the object being picked up.
 		Database::insert_view( $post_id, 'post', 'web' );
@@ -111,7 +111,7 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 		ProviderSync::sync();
 
 		// Provider returns 250, so web meta should be replaced (not incremented).
-		$this->assertEquals( 250, (int) get_post_meta( $post_id, 'mai_analytics_views_web', true ) );
+		$this->assertEquals( 250, (int) get_post_meta( $post_id, 'mai_views_web', true ) );
 	}
 
 	public function test_sync_increments_app_meta_from_buffer(): void {
@@ -120,7 +120,7 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 		$post_id = self::factory()->post->create( [ 'post_status' => 'publish' ] );
 
 		// Pre-set existing app views.
-		update_post_meta( $post_id, 'mai_analytics_views_app', 5 );
+		update_post_meta( $post_id, 'mai_views_app', 5 );
 
 		// Insert app buffer rows since last sync.
 		Database::insert_view( $post_id, 'post', 'app' );
@@ -133,7 +133,7 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 		ProviderSync::sync();
 
 		// App meta should be incremented: 5 + 3 = 8.
-		$this->assertEquals( 8, (int) get_post_meta( $post_id, 'mai_analytics_views_app', true ) );
+		$this->assertEquals( 8, (int) get_post_meta( $post_id, 'mai_views_app', true ) );
 	}
 
 	public function test_sync_computes_total(): void {
@@ -150,9 +150,9 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 
 		ProviderSync::sync();
 
-		$web   = (int) get_post_meta( $post_id, 'mai_analytics_views_web', true );
-		$app   = (int) get_post_meta( $post_id, 'mai_analytics_views_app', true );
-		$total = (int) get_post_meta( $post_id, 'mai_analytics_views', true );
+		$web   = (int) get_post_meta( $post_id, 'mai_views_web', true );
+		$app   = (int) get_post_meta( $post_id, 'mai_views_app', true );
+		$total = (int) get_post_meta( $post_id, 'mai_views', true );
 
 		// Total should equal web + app.
 		$this->assertEquals( $web + $app, $total );
@@ -175,7 +175,7 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 
 		ProviderSync::sync();
 
-		$trending = (int) get_post_meta( $post_id, 'mai_analytics_trending', true );
+		$trending = (int) get_post_meta( $post_id, 'mai_trending', true );
 
 		// Trending should be web trending (50) + app trending (3 buffer rows in window).
 		$this->assertEquals( 53, $trending );
@@ -185,7 +185,7 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 		$this->register_mock_provider( 100 );
 
 		// Set the concurrency lock.
-		set_transient( 'mai_analytics_provider_syncing', 1, 60 );
+		set_transient( 'mai_views_provider_syncing', 1, 60 );
 
 		$post_id = self::factory()->post->create( [ 'post_status' => 'publish' ] );
 		Database::insert_view( $post_id, 'post', 'web' );
@@ -193,7 +193,7 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 		ProviderSync::sync();
 
 		// Views should NOT be synced because the lock was held.
-		$this->assertEquals( 0, (int) get_post_meta( $post_id, 'mai_analytics_views_web', true ) );
+		$this->assertEquals( 0, (int) get_post_meta( $post_id, 'mai_views_web', true ) );
 	}
 
 	public function test_sync_bails_when_provider_unavailable(): void {
@@ -205,7 +205,7 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 		ProviderSync::sync();
 
 		// Views should NOT be synced because the provider is unavailable.
-		$this->assertEquals( 0, (int) get_post_meta( $post_id, 'mai_analytics_views_web', true ) );
+		$this->assertEquals( 0, (int) get_post_meta( $post_id, 'mai_views_web', true ) );
 	}
 
 	public function test_warm_chunks_objects(): void {
@@ -236,8 +236,8 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 
 		// Verify meta was written for all posts.
 		foreach ( $post_ids as $pid ) {
-			$this->assertEquals( 75, (int) get_post_meta( $pid, 'mai_analytics_views_web', true ) );
-			$this->assertEquals( 75, (int) get_post_meta( $pid, 'mai_analytics_views', true ) );
+			$this->assertEquals( 75, (int) get_post_meta( $pid, 'mai_views_web', true ) );
+			$this->assertEquals( 75, (int) get_post_meta( $pid, 'mai_views', true ) );
 		}
 	}
 }

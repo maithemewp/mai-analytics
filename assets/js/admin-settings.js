@@ -1,5 +1,5 @@
 /**
- * Mai Analytics Settings Page JS.
+ * Mai Views Settings Page JS.
  *
  * Handles Warm Stats and Sync Now buttons.
  * Provider field visibility is handled by CSS :has().
@@ -8,8 +8,8 @@
 	'use strict';
 
 	document.addEventListener('DOMContentLoaded', function () {
-		bindButton('mai-analytics-sync-now', 'sync-now', 'Syncing...');
-		bindButton('mai-analytics-warm', 'warm', 'Warming stats...');
+		bindButton('mai-views-sync-now', 'sync-now', 'Syncing...');
+		bindButton('mai-views-warm', 'warm', 'Warming stats...');
 	});
 
 	function bindButton(btnId, endpoint, loadingText) {
@@ -19,16 +19,16 @@
 			return;
 		}
 
-		var statusEl = btn.parentNode.querySelector('.mai-analytics-btn-status');
+		var statusEl = btn.parentNode.querySelector('.mai-views-btn-status');
 
 		btn.addEventListener('click', function () {
 			btn.disabled = true;
 			showStatus(statusEl, loadingText, '#666');
 
-			fetch(maiAnalyticsSettings.restBase + endpoint, {
+			fetch(maiViewsSettings.restBase + endpoint, {
 				method: 'POST',
 				headers: {
-					'X-WP-Nonce': maiAnalyticsSettings.nonce,
+					'X-WP-Nonce': maiViewsSettings.nonce,
 					'Content-Type': 'application/json',
 				},
 			})

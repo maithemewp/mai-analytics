@@ -1,6 +1,6 @@
 <?php
 
-namespace Mai\Analytics;
+namespace Mai\Views;
 
 class Tracker {
 
@@ -17,6 +17,10 @@ class Tracker {
 	 * @return void
 	 */
 	public function output_beacon(): void {
+		if ( ! self::is_tracking_enabled() ) {
+			return;
+		}
+
 		if ( current_user_can( 'edit_posts' ) ) {
 			return;
 		}
@@ -31,6 +35,36 @@ class Tracker {
 			"<script>if('sendBeacon' in navigator){navigator.sendBeacon(%s);}</script>\n",
 			wp_json_encode( $url )
 		);
+	}
+
+	/**
+	 * Checks whether beacon tracking should be active.
+	 *
+	 * Disabled on non-production environments to prevent staging/dev buffer pollution.
+	 * Override with MAI_VIEWS_ENABLE_TRACKING constant or mai_views_tracking_enabled filter.
+	 *
+	 * @return bool True if tracking is enabled.
+	 */
+	public static function is_tracking_enabled(): bool {
+		// Explicit override: always enable if constant is set.
+		if ( defined( 'MAI_VIEWS_ENABLE_TRACKING' ) && MAI_VIEWS_ENABLE_TRACKING ) {
+			return true;
+		}
+
+		// Disabled via settings.
+		if ( 'disabled' === Settings::get( 'data_source' ) ) {
+			return false;
+		}
+
+		// Default: only track on production.
+		$enabled = 'production' === wp_get_environment_type();
+
+		/**
+		 * Filters whether beacon tracking is enabled.
+		 *
+		 * @param bool $enabled Whether tracking is active.
+		 */
+		return (bool) apply_filters( 'mai_views_tracking_enabled', $enabled );
 	}
 
 	/**
@@ -51,12 +85,12 @@ class Tracker {
 				return false;
 			}
 
-			return rest_url( 'mai-analytics/v1/view/post/' . $post->ID );
+			return rest_url( 'mai-views/v1/view/post/' . $post->ID );
 		}
 
 		// Blog page (post type archive for 'post').
 		if ( is_home() ) {
-			return rest_url( 'mai-analytics/v1/view/post_type/post' );
+			return rest_url( 'mai-views/v1/view/post_type/post' );
 		}
 
 		// Custom post type archives.
@@ -64,7 +98,7 @@ class Tracker {
 			$post_type_obj = get_queried_object();
 
 			if ( $post_type_obj && isset( $post_type_obj->name ) && $post_type_obj->public ) {
-				return rest_url( 'mai-analytics/v1/view/post_type/' . $post_type_obj->name );
+				return rest_url( 'mai-views/v1/view/post_type/' . $post_type_obj->name );
 			}
 
 			return false;
@@ -84,7 +118,7 @@ class Tracker {
 				return false;
 			}
 
-			return rest_url( 'mai-analytics/v1/view/term/' . $term->term_id );
+			return rest_url( 'mai-views/v1/view/term/' . $term->term_id );
 		}
 
 		// Author archives.
@@ -95,7 +129,7 @@ class Tracker {
 				return false;
 			}
 
-			return rest_url( 'mai-analytics/v1/view/user/' . $author->ID );
+			return rest_url( 'mai-views/v1/view/user/' . $author->ID );
 		}
 
 		return false;

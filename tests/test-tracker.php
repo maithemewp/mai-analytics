@@ -1,6 +1,6 @@
 <?php
 
-use Mai\Analytics\Tracker;
+use Mai\Views\Tracker;
 
 class Test_Tracker extends WP_UnitTestCase {
 

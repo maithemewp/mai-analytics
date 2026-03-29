@@ -1,13 +1,13 @@
 <?php
 
-namespace Mai\Analytics;
+namespace Mai\Views;
 
 use WP_REST_Request;
 use WP_REST_Response;
 
 class AdminRestApi {
 
-	private const NAMESPACE = 'mai-analytics/v1';
+	private const NAMESPACE = 'mai-views/v1';
 
 	/**
 	 * Registers admin REST routes on rest_api_init.
@@ -180,31 +180,31 @@ class AdminRestApi {
 		global $wpdb;
 
 		$total_views = 0;
-		$total_views += (int) $wpdb->get_var( "SELECT COALESCE(SUM(meta_value), 0) FROM $wpdb->postmeta WHERE meta_key = 'mai_analytics_views'" );
-		$total_views += (int) $wpdb->get_var( "SELECT COALESCE(SUM(meta_value), 0) FROM $wpdb->termmeta WHERE meta_key = 'mai_analytics_views'" );
-		$total_views += (int) $wpdb->get_var( "SELECT COALESCE(SUM(meta_value), 0) FROM $wpdb->usermeta WHERE meta_key = 'mai_analytics_views'" );
+		$total_views += (int) $wpdb->get_var( "SELECT COALESCE(SUM(meta_value), 0) FROM $wpdb->postmeta WHERE meta_key = 'mai_views'" );
+		$total_views += (int) $wpdb->get_var( "SELECT COALESCE(SUM(meta_value), 0) FROM $wpdb->termmeta WHERE meta_key = 'mai_views'" );
+		$total_views += (int) $wpdb->get_var( "SELECT COALESCE(SUM(meta_value), 0) FROM $wpdb->usermeta WHERE meta_key = 'mai_views'" );
 
-		$pt_views = get_option( 'mai_analytics_post_type_views', [] );
+		$pt_views = get_option( 'mai_views_post_type_views', [] );
 
 		if ( is_array( $pt_views ) ) {
 			$total_views += array_sum( $pt_views );
 		}
 
 		$trending_count = 0;
-		$trending_count += (int) $wpdb->get_var( "SELECT COUNT(*) FROM $wpdb->postmeta WHERE meta_key = 'mai_analytics_trending' AND CAST(meta_value AS UNSIGNED) > 0" );
-		$trending_count += (int) $wpdb->get_var( "SELECT COUNT(*) FROM $wpdb->termmeta WHERE meta_key = 'mai_analytics_trending' AND CAST(meta_value AS UNSIGNED) > 0" );
-		$trending_count += (int) $wpdb->get_var( "SELECT COUNT(*) FROM $wpdb->usermeta WHERE meta_key = 'mai_analytics_trending' AND CAST(meta_value AS UNSIGNED) > 0" );
+		$trending_count += (int) $wpdb->get_var( "SELECT COUNT(*) FROM $wpdb->postmeta WHERE meta_key = 'mai_trending' AND CAST(meta_value AS UNSIGNED) > 0" );
+		$trending_count += (int) $wpdb->get_var( "SELECT COUNT(*) FROM $wpdb->termmeta WHERE meta_key = 'mai_trending' AND CAST(meta_value AS UNSIGNED) > 0" );
+		$trending_count += (int) $wpdb->get_var( "SELECT COUNT(*) FROM $wpdb->usermeta WHERE meta_key = 'mai_trending' AND CAST(meta_value AS UNSIGNED) > 0" );
 
-		$pt_trending = get_option( 'mai_analytics_post_type_trending', [] );
+		$pt_trending = get_option( 'mai_views_post_type_trending', [] );
 
 		if ( is_array( $pt_trending ) ) {
 			$trending_count += count( array_filter( $pt_trending ) );
 		}
 
 		$trending_views = 0;
-		$trending_views += (int) $wpdb->get_var( "SELECT COALESCE(SUM(meta_value), 0) FROM $wpdb->postmeta WHERE meta_key = 'mai_analytics_trending'" );
-		$trending_views += (int) $wpdb->get_var( "SELECT COALESCE(SUM(meta_value), 0) FROM $wpdb->termmeta WHERE meta_key = 'mai_analytics_trending'" );
-		$trending_views += (int) $wpdb->get_var( "SELECT COALESCE(SUM(meta_value), 0) FROM $wpdb->usermeta WHERE meta_key = 'mai_analytics_trending'" );
+		$trending_views += (int) $wpdb->get_var( "SELECT COALESCE(SUM(meta_value), 0) FROM $wpdb->postmeta WHERE meta_key = 'mai_trending'" );
+		$trending_views += (int) $wpdb->get_var( "SELECT COALESCE(SUM(meta_value), 0) FROM $wpdb->termmeta WHERE meta_key = 'mai_trending'" );
+		$trending_views += (int) $wpdb->get_var( "SELECT COALESCE(SUM(meta_value), 0) FROM $wpdb->usermeta WHERE meta_key = 'mai_trending'" );
 
 		if ( is_array( $pt_trending ) ) {
 			$trending_views += array_sum( $pt_trending );
@@ -213,8 +213,8 @@ class AdminRestApi {
 		$data_source   = Settings::get( 'data_source' );
 		$is_external   = 'self_hosted' !== $data_source;
 		$last_sync     = $is_external
-			? get_option( 'mai_analytics_provider_last_sync', 0 )
-			: get_option( 'mai_analytics_synced', 0 );
+			? get_option( 'mai_views_provider_last_sync', 0 )
+			: get_option( 'mai_views_synced', 0 );
 
 		return new WP_REST_Response( [
 			'total_views'    => $total_views,
@@ -245,8 +245,8 @@ class AdminRestApi {
 		$page      = (int) $request->get_param( 'page' );
 		$per_page  = (int) $request->get_param( 'per_page' );
 		$offset    = ( $page - 1 ) * $per_page;
-		$meta_key  = 'trending' === $orderby ? 'mai_analytics_trending' : 'mai_analytics_views';
-		$other_key = 'trending' === $orderby ? 'mai_analytics_views' : 'mai_analytics_trending';
+		$meta_key  = 'trending' === $orderby ? 'mai_trending' : 'mai_views';
+		$other_key = 'trending' === $orderby ? 'mai_views' : 'mai_trending';
 
 		$public_types = get_post_types( [ 'public' => true ] );
 		$type_list    = implode( "','", array_map( 'esc_sql', $public_types ) );
@@ -362,8 +362,8 @@ class AdminRestApi {
 		$page      = (int) $request->get_param( 'page' );
 		$per_page  = (int) $request->get_param( 'per_page' );
 		$offset    = ( $page - 1 ) * $per_page;
-		$meta_key  = 'trending' === $orderby ? 'mai_analytics_trending' : 'mai_analytics_views';
-		$other_key = 'trending' === $orderby ? 'mai_analytics_views' : 'mai_analytics_trending';
+		$meta_key  = 'trending' === $orderby ? 'mai_trending' : 'mai_views';
+		$other_key = 'trending' === $orderby ? 'mai_views' : 'mai_trending';
 
 		$public_taxonomies = get_taxonomies( [ 'public' => true ] );
 		$tax_list          = implode( "','", array_map( 'esc_sql', $public_taxonomies ) );
@@ -455,8 +455,8 @@ class AdminRestApi {
 		$page      = (int) $request->get_param( 'page' );
 		$per_page  = (int) $request->get_param( 'per_page' );
 		$offset    = ( $page - 1 ) * $per_page;
-		$meta_key  = 'trending' === $orderby ? 'mai_analytics_trending' : 'mai_analytics_views';
-		$other_key = 'trending' === $orderby ? 'mai_analytics_views' : 'mai_analytics_trending';
+		$meta_key  = 'trending' === $orderby ? 'mai_trending' : 'mai_views';
+		$other_key = 'trending' === $orderby ? 'mai_views' : 'mai_trending';
 
 		$wheres = [ 'CAST(um.meta_value AS UNSIGNED) > 0' ];
 
@@ -531,10 +531,10 @@ class AdminRestApi {
 	public function get_top_archives( WP_REST_Request $request ): WP_REST_Response {
 		$orderby   = $request->get_param( 'orderby' );
 		$order     = $request->get_param( 'order' );
-		$views     = get_option( 'mai_analytics_post_type_views', [] );
-		$trending  = get_option( 'mai_analytics_post_type_trending', [] );
-		$views_web = get_option( 'mai_analytics_post_type_views_web', [] );
-		$views_app = get_option( 'mai_analytics_post_type_views_app', [] );
+		$views     = get_option( 'mai_views_post_type_views', [] );
+		$trending  = get_option( 'mai_views_post_type_trending', [] );
+		$views_web = get_option( 'mai_views_post_type_views_web', [] );
+		$views_app = get_option( 'mai_views_post_type_views_app', [] );
 
 		// Build items from all known post types with views.
 		$all_keys = array_unique( array_merge( array_keys( $views ), array_keys( $trending ) ) );
@@ -621,7 +621,7 @@ class AdminRestApi {
 		$has_search = strlen( $search ) >= 2;
 
 		if ( 'author' === $type ) {
-			$where = "um.meta_key = 'mai_analytics_views' AND CAST(um.meta_value AS UNSIGNED) > 0";
+			$where = "um.meta_key = 'mai_views' AND CAST(um.meta_value AS UNSIGNED) > 0";
 
 			if ( $has_search ) {
 				$where .= $wpdb->prepare( ' AND u.display_name LIKE %s', '%' . $wpdb->esc_like( $search ) . '%' );
@@ -689,38 +689,38 @@ class AdminRestApi {
 		if ( ! $provider || ! $provider->is_available() ) {
 			$reason = ( $provider && method_exists( $provider, 'get_unavailable_reason' ) )
 				? $provider->get_unavailable_reason()
-				: __( 'No provider configured.', 'mai-analytics' );
+				: __( 'No provider configured.', 'mai-views' );
 
 			return new WP_REST_Response( [ 'message' => $reason ], 500 );
 		}
 
 		// Quick health check: try a small provider query to verify auth works.
 		$test = $provider->get_views( [ '/' ], gmdate( 'Y-m-d' ), gmdate( 'Y-m-d' ) );
-		$error = get_transient( 'mai_analytics_provider_error' );
+		$error = get_transient( 'mai_views_provider_error' );
 
 		if ( $error ) {
 			return new WP_REST_Response( [ 'message' => $error ], 500 );
 		}
 
-		$last_sync  = get_option( 'mai_analytics_provider_last_sync', 0 );
+		$last_sync  = get_option( 'mai_views_provider_last_sync', 0 );
 		$since      = $last_sync ? gmdate( 'Y-m-d H:i:s', $last_sync ) : '1970-01-01 00:00:00';
 		$queue_size = count( Database::get_distinct_objects_since( $since ) );
 
 		if ( 0 === $queue_size ) {
-			return new WP_REST_Response( [ 'message' => __( 'Provider connected. No pages in the queue — try "Warm Stats" to fetch all stats.', 'mai-analytics' ) ] );
+			return new WP_REST_Response( [ 'message' => __( 'Provider connected. No pages in the queue — try "Warm Stats" to fetch all stats.', 'mai-views' ) ] );
 		}
 
-		delete_transient( 'mai_analytics_provider_error' );
+		delete_transient( 'mai_views_provider_error' );
 
 		ProviderSync::sync();
 
-		$error = get_transient( 'mai_analytics_provider_error' );
+		$error = get_transient( 'mai_views_provider_error' );
 
 		if ( $error ) {
 			return new WP_REST_Response( [ 'message' => $error ], 500 );
 		}
 
-		return new WP_REST_Response( [ 'message' => sprintf( __( 'Sync complete. Processed %d objects.', 'mai-analytics' ), $queue_size ) ] );
+		return new WP_REST_Response( [ 'message' => sprintf( __( 'Sync complete. Processed %d objects.', 'mai-views' ), $queue_size ) ] );
 	}
 
 	/**
@@ -735,7 +735,7 @@ class AdminRestApi {
 			return new WP_REST_Response( [ 'message' => 'Warm is only available in provider mode.' ], 400 );
 		}
 
-		delete_transient( 'mai_analytics_provider_error' );
+		delete_transient( 'mai_views_provider_error' );
 
 		$total_updated = 0;
 
@@ -743,7 +743,7 @@ class AdminRestApi {
 			$total_updated += $progress['updated'] ?? 0;
 		}
 
-		$error = get_transient( 'mai_analytics_provider_error' );
+		$error = get_transient( 'mai_views_provider_error' );
 
 		if ( $error ) {
 			return new WP_REST_Response( [ 'message' => $error ], 500 );
@@ -790,7 +790,7 @@ class AdminRestApi {
 				"SELECT $id_column as object_id, meta_key, meta_value
 				 FROM $meta_table
 				 WHERE $id_column IN ($placeholders)
-				   AND meta_key IN ('mai_analytics_views_web', 'mai_analytics_views_app')",
+				   AND meta_key IN ('mai_views_web', 'mai_views_app')",
 				$ids
 			)
 		);
@@ -798,7 +798,7 @@ class AdminRestApi {
 		$map = [];
 
 		foreach ( $rows as $row ) {
-			$source = 'mai_analytics_views_web' === $row->meta_key ? 'web' : 'app';
+			$source = 'mai_views_web' === $row->meta_key ? 'web' : 'app';
 			$map[ (int) $row->object_id ][ $source ] = (int) $row->meta_value;
 		}
 

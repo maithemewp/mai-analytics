@@ -1,21 +1,21 @@
 <?php
 
-use Mai\Analytics\Database;
-use Mai\Analytics\Sync;
+use Mai\Views\Database;
+use Mai\Views\Sync;
 
 class Test_Sync extends WP_UnitTestCase {
 
 	public function setUp(): void {
 		parent::setUp();
 		Database::create_table();
-		delete_option( 'mai_analytics_synced' );
+		delete_option( 'mai_views_synced' );
 	}
 
 	public function tearDown(): void {
 		global $wpdb;
 		$wpdb->query( 'TRUNCATE TABLE ' . Database::get_table_name() );
-		delete_transient( 'mai_analytics_sync_lock' );
-		delete_transient( 'mai_analytics_syncing' );
+		delete_transient( 'mai_views_sync_lock' );
+		delete_transient( 'mai_views_syncing' );
 		parent::tearDown();
 	}
 
@@ -26,17 +26,17 @@ class Test_Sync extends WP_UnitTestCase {
 
 		Sync::sync();
 
-		$this->assertEquals( 3, (int) get_post_meta( $post_id, 'mai_analytics_views', true ) );
+		$this->assertEquals( 3, (int) get_post_meta( $post_id, 'mai_views', true ) );
 	}
 
 	public function test_sync_increments_existing_views(): void {
 		$post_id = self::factory()->post->create();
-		update_post_meta( $post_id, 'mai_analytics_views', 10 );
+		update_post_meta( $post_id, 'mai_views', 10 );
 
 		Database::insert_view( $post_id, 'post' );
 		Sync::sync();
 
-		$this->assertEquals( 11, (int) get_post_meta( $post_id, 'mai_analytics_views', true ) );
+		$this->assertEquals( 11, (int) get_post_meta( $post_id, 'mai_views', true ) );
 	}
 
 	public function test_sync_calculates_trending(): void {
@@ -46,7 +46,7 @@ class Test_Sync extends WP_UnitTestCase {
 
 		Sync::sync();
 
-		$this->assertEquals( 5, (int) get_post_meta( $post_id, 'mai_analytics_trending', true ) );
+		$this->assertEquals( 5, (int) get_post_meta( $post_id, 'mai_trending', true ) );
 	}
 
 	public function test_sync_updates_term_meta(): void {
@@ -56,8 +56,8 @@ class Test_Sync extends WP_UnitTestCase {
 		Database::insert_view( $term_id, 'term' );
 		Sync::sync();
 
-		$this->assertEquals( 2, (int) get_term_meta( $term_id, 'mai_analytics_views', true ) );
-		$this->assertEquals( 2, (int) get_term_meta( $term_id, 'mai_analytics_trending', true ) );
+		$this->assertEquals( 2, (int) get_term_meta( $term_id, 'mai_views', true ) );
+		$this->assertEquals( 2, (int) get_term_meta( $term_id, 'mai_trending', true ) );
 	}
 
 	public function test_sync_updates_user_meta(): void {
@@ -66,7 +66,7 @@ class Test_Sync extends WP_UnitTestCase {
 		Database::insert_view( $user_id, 'user' );
 		Sync::sync();
 
-		$this->assertEquals( 1, (int) get_user_meta( $user_id, 'mai_analytics_views', true ) );
+		$this->assertEquals( 1, (int) get_user_meta( $user_id, 'mai_views', true ) );
 	}
 
 	public function test_sync_prunes_old_rows(): void {
@@ -94,19 +94,19 @@ class Test_Sync extends WP_UnitTestCase {
 		$before = time();
 		Sync::sync();
 
-		$synced = (int) get_option( 'mai_analytics_synced' );
+		$synced = (int) get_option( 'mai_views_synced' );
 		$this->assertGreaterThanOrEqual( $before, $synced );
 	}
 
 	public function test_concurrent_sync_blocked(): void {
-		set_transient( 'mai_analytics_syncing', 1, 60 );
+		set_transient( 'mai_views_syncing', 1, 60 );
 
 		$post_id = self::factory()->post->create();
 		Database::insert_view( $post_id, 'post' );
 		Sync::sync();
 
 		// Views should NOT be synced because the lock was held.
-		$this->assertEquals( 0, (int) get_post_meta( $post_id, 'mai_analytics_views', true ) );
+		$this->assertEquals( 0, (int) get_post_meta( $post_id, 'mai_views', true ) );
 	}
 
 	public function test_sync_splits_views_by_source(): void {
@@ -121,9 +121,9 @@ class Test_Sync extends WP_UnitTestCase {
 
 		Sync::sync();
 
-		$web   = (int) get_post_meta( $post_id, 'mai_analytics_views_web', true );
-		$app   = (int) get_post_meta( $post_id, 'mai_analytics_views_app', true );
-		$total = (int) get_post_meta( $post_id, 'mai_analytics_views', true );
+		$web   = (int) get_post_meta( $post_id, 'mai_views_web', true );
+		$app   = (int) get_post_meta( $post_id, 'mai_views_app', true );
+		$total = (int) get_post_meta( $post_id, 'mai_views', true );
 
 		$this->assertEquals( 3, $web );
 		$this->assertEquals( 2, $app );
@@ -134,9 +134,9 @@ class Test_Sync extends WP_UnitTestCase {
 		$post_id = self::factory()->post->create();
 
 		// Pre-set some existing meta from a previous sync.
-		update_post_meta( $post_id, 'mai_analytics_views_web', 10 );
-		update_post_meta( $post_id, 'mai_analytics_views_app', 5 );
-		update_post_meta( $post_id, 'mai_analytics_views', 15 );
+		update_post_meta( $post_id, 'mai_views_web', 10 );
+		update_post_meta( $post_id, 'mai_views_app', 5 );
+		update_post_meta( $post_id, 'mai_views', 15 );
 
 		// Insert new views of each source.
 		Database::insert_view( $post_id, 'post', 'web' );
@@ -145,9 +145,9 @@ class Test_Sync extends WP_UnitTestCase {
 
 		Sync::sync();
 
-		$web   = (int) get_post_meta( $post_id, 'mai_analytics_views_web', true );
-		$app   = (int) get_post_meta( $post_id, 'mai_analytics_views_app', true );
-		$total = (int) get_post_meta( $post_id, 'mai_analytics_views', true );
+		$web   = (int) get_post_meta( $post_id, 'mai_views_web', true );
+		$app   = (int) get_post_meta( $post_id, 'mai_views_app', true );
+		$total = (int) get_post_meta( $post_id, 'mai_views', true );
 
 		// Web: 10 + 1 = 11, App: 5 + 2 = 7, Total: 11 + 7 = 18.
 		$this->assertEquals( 11, $web );
@@ -183,7 +183,7 @@ class Test_Sync extends WP_UnitTestCase {
 
 		Sync::sync();
 
-		$trending = (int) get_post_meta( $post_id, 'mai_analytics_trending', true );
+		$trending = (int) get_post_meta( $post_id, 'mai_trending', true );
 
 		// Only the 2-day-old and the current view should count (2 within the 7-day window).
 		// The 10-day-old view is outside the window.

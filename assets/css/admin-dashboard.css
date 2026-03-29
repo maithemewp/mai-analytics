@@ -1,18 +1,18 @@
-/* Mai Analytics Dashboard */
+/* Mai Views Dashboard */
 
-.mai-analytics-wrap {
+.mai-views-wrap {
 	max-width: 1200px;
 }
 
 /* Summary Cards */
-.mai-analytics-cards {
+.mai-views-cards {
 	display: grid;
 	grid-template-columns: repeat(4, 1fr);
 	gap: 16px;
 	margin: 20px 0;
 }
 
-.mai-analytics-card {
+.mai-views-card {
 	background: #fff;
 	border: 1px solid #c3c4c7;
 	border-radius: 4px;
@@ -20,7 +20,7 @@
 	text-align: center;
 }
 
-.mai-analytics-card__value {
+.mai-views-card__value {
 	display: block;
 	font-size: 32px;
 	font-weight: 600;
@@ -28,14 +28,14 @@
 	color: #1d2327;
 }
 
-.mai-analytics-card__label {
+.mai-views-card__label {
 	display: block;
 	margin-top: 4px;
 	font-size: 13px;
 	color: #646970;
 }
 
-.mai-analytics-card__time {
+.mai-views-card__time {
 	display: block;
 	font-size: 14px;
 	font-weight: 400;
@@ -44,7 +44,7 @@
 }
 
 /* Chart Section */
-.mai-analytics-chart-section {
+.mai-views-chart-section {
 	background: #fff;
 	border: 1px solid #c3c4c7;
 	border-radius: 4px;
@@ -52,22 +52,22 @@
 	margin-bottom: 20px;
 }
 
-.mai-analytics-chart-wrap {
+.mai-views-chart-wrap {
 	position: relative;
 	max-height: 400px;
 }
 
 /* Tabs */
-.mai-analytics-tabs {
+.mai-views-tabs {
 	margin-top: 0;
 }
 
-.mai-analytics-tabs .nav-tab {
+.mai-views-tabs .nav-tab {
 	cursor: pointer;
 }
 
 /* Filters */
-.mai-analytics-filters {
+.mai-views-filters {
 	display: flex;
 	gap: 8px;
 	padding: 12px 0;
@@ -75,12 +75,18 @@
 	align-items: center;
 }
 
-.mai-analytics-filters select {
+.mai-views-filters select {
 	max-width: 200px;
+	padding: 4px 8px;
+	border: 1px solid #8c8f94;
+	border-radius: 3px;
+	font-size: 13px;
+	height: 30px;
+	background: #fff;
 }
 
 /* Table Controls */
-.mai-analytics-table-controls {
+.mai-views-table-controls {
 	display: flex;
 	justify-content: space-between;
 	align-items: center;
@@ -90,13 +96,13 @@
 
 
 /* Tom Select — flexible sizing and height matching */
-.mai-analytics-filters .ts-wrapper {
+.mai-views-filters .ts-wrapper {
 	min-width: 180px;
 	max-width: 400px;
 	flex: 1 1 auto;
 }
 
-.mai-analytics-filters .ts-wrapper .ts-control {
+.mai-views-filters .ts-wrapper .ts-control {
 	min-height: 30px;
 	padding: 2px 8px;
 	border-color: #8c8f94;
@@ -104,17 +110,24 @@
 
 /* Spinners */
 
-.mai-analytics-search-wrap {
+.mai-views-search-wrap {
 	position: relative;
 	flex: 1 1 auto;
 }
 
-.mai-analytics-search-wrap input {
+.mai-views-search-wrap input {
 	width: 100%;
 	box-sizing: border-box;
+	padding: 4px 8px;
+	border: 1px solid #8c8f94;
+	border-radius: 3px;
+	font-size: 13px;
+	line-height: 1.6;
+	height: 30px;
+	background: #fff;
 }
 
-.mai-analytics-search-spinner {
+.mai-views-search-spinner {
 	position: absolute;
 	right: 10px;
 	top: 50%;
@@ -126,7 +139,7 @@
 }
 
 /* Active Filters */
-.mai-analytics-active-filters {
+.mai-views-active-filters {
 	display: flex;
 	align-items: center;
 	gap: 6px;
@@ -135,12 +148,12 @@
 	flex-wrap: wrap;
 }
 
-.mai-analytics-active-filters__label {
+.mai-views-active-filters__label {
 	color: #646970;
 	font-weight: 600;
 }
 
-.mai-analytics-active-filters__tag {
+.mai-views-active-filters__tag {
 	display: inline-block;
 	background: #f0f0f1;
 	border: 1px solid #c3c4c7;
@@ -151,84 +164,84 @@
 }
 
 /* Table */
-.mai-analytics-table-wrap {
+.mai-views-table-wrap {
 	margin-bottom: 16px;
 }
 
-.mai-analytics-table .column-views,
-.mai-analytics-table .column-trending,
-.mai-analytics-table .column-web,
-.mai-analytics-table .column-app {
+.mai-views-table .column-views,
+.mai-views-table .column-trending,
+.mai-views-table .column-web,
+.mai-views-table .column-app {
 	width: 90px;
 	text-align: right;
 }
 
-.mai-analytics-table .column-title,
-.mai-analytics-table .column-name {
+.mai-views-table .column-title,
+.mai-views-table .column-name {
 	width: auto;
 }
 
-.mai-analytics-table .column-type,
-.mai-analytics-table .column-taxonomy,
-.mai-analytics-table .column-post-type {
+.mai-views-table .column-type,
+.mai-views-table .column-taxonomy,
+.mai-views-table .column-post-type {
 	width: 120px;
 }
 
-.mai-analytics-table td {
+.mai-views-table td {
 	vertical-align: middle;
 }
 
-.mai-analytics-table a {
+.mai-views-table a {
 	font-weight: 600;
 }
 
-.mai-analytics-table .sortable {
+.mai-views-table .sortable {
 	cursor: pointer;
 	user-select: none;
 }
 
-.mai-analytics-table .sortable:hover {
+.mai-views-table .sortable:hover {
 	color: #2271b1;
 }
 
-.mai-analytics-table .sorted {
+.mai-views-table .sorted {
 	color: #2271b1;
 	font-weight: 600;
 }
 
-.mai-analytics-caret {
+.mai-views-caret {
 	font-size: 10px;
 	opacity: 0.4;
 }
 
-.mai-analytics-table .sorted .mai-analytics-caret {
+.mai-views-table .sorted .mai-views-caret {
 	opacity: 1;
 }
 
 /* Pagination */
-.mai-analytics-pagination {
+.mai-views-pagination {
 	display: flex;
 	justify-content: space-between;
 	align-items: center;
 	padding: 8px 0;
 }
 
-.mai-analytics-pagination__info {
+.mai-views-pagination__info {
 	color: #646970;
 	font-size: 13px;
 }
 
-.mai-analytics-pagination__buttons {
+.mai-views-pagination__buttons {
 	display: flex;
 	gap: 4px;
 }
 
-.mai-analytics-pagination__buttons .button {
+.mai-views-pagination__buttons .button {
 	min-width: 32px;
 	text-align: center;
 }
 
-.mai-analytics-pagination__buttons .button.current {
+.mai-views-pagination__buttons .button.current {
 	background: #2271b1;
 	border-color: #2271b1;
 	color: #fff;
@@ -236,7 +249,7 @@
 }
 
 /* Loading State */
-.mai-analytics-loading {
+.mai-views-loading {
 	padding: 40px;
 	text-align: center;
 	color: #646970;
@@ -244,7 +257,7 @@
 }
 
 /* Empty State */
-.mai-analytics-empty {
+.mai-views-empty {
 	padding: 40px;
 	text-align: center;
 	color: #646970;
@@ -255,28 +268,28 @@
 
 /* Responsive */
 @media screen and (max-width: 782px) {
-	.mai-analytics-cards {
+	.mai-views-cards {
 		grid-template-columns: repeat(2, 1fr);
 	}
 
-	.mai-analytics-filters {
+	.mai-views-filters {
 		flex-direction: column;
 		align-items: stretch;
 	}
 
-	.mai-analytics-filters select,
-	.mai-analytics-filters .ts-wrapper {
+	.mai-views-filters select,
+	.mai-views-filters .ts-wrapper {
 		width: 100%;
 		max-width: none;
 		flex: 1 1 100%;
 	}
 
-	.mai-analytics-table-controls {
+	.mai-views-table-controls {
 		flex-direction: column;
 		align-items: stretch;
 	}
 
-	.mai-analytics-table-controls input[type="text"] {
+	.mai-views-table-controls input[type="text"] {
 		max-width: none;
 	}
 }
