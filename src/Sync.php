@@ -18,12 +18,15 @@ class Sync {
 			return;
 		}
 
-		set_transient( 'mai_views_syncing', 1, MINUTE_IN_SECONDS );
+		set_transient( 'mai_views_syncing', 1, 5 * MINUTE_IN_SECONDS );
+
+		// Mark sync as started so other triggers don't re-fire while we're working.
+		$last_sync = get_option( 'mai_views_synced', 0 );
+		update_option( 'mai_views_synced', time(), false );
 
 		global $wpdb;
 
 		$table          = Database::get_table_name();
-		$last_sync      = get_option( 'mai_views_synced', 0 );
 		$last_sync_date = $last_sync ? gmdate( 'Y-m-d H:i:s', $last_sync ) : '1970-01-01 00:00:00';
 		$trending_days  = Settings::get( 'trending_window' );
 		$retention_days = Settings::get( 'retention' );

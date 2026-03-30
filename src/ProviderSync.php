@@ -41,6 +41,9 @@ class ProviderSync {
 
 		set_transient( 'mai_views_provider_syncing', 1, 15 * MINUTE_IN_SECONDS );
 
+		// Mark sync as started so fallback triggers don't re-fire while we're working.
+		update_option( 'mai_views_provider_last_sync', time(), false );
+
 		$provider = self::get_provider();
 
 		if ( ! $provider || ! $provider->is_available() ) {
