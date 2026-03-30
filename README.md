@@ -33,7 +33,7 @@ A constant guard (`MAI_VIEWS_VERSION`) prevents double-loading if both standalon
 
 ## Settings
 
-Navigate to **Mai Theme > Mai Views > Settings** (or **Settings > Mai Views** if not using Mai Theme) to configure:
+Navigate to **Settings > Mai Views** (or **Mai Theme > Mai Views** when using Mai Theme) to configure:
 
 - **Disabled** — No tracking or syncing. Dashboard shows existing data.
 - **Self-Hosted** — Built-in beacon tracking with buffer table aggregation.
