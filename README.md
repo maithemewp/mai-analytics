@@ -83,16 +83,101 @@ mai_views_get_short_number( 2500 ); // "2K+"
 
 ## WP-CLI
 
+### `wp mai-views health`
+
+Run 33 health checks: plugin state, database, meta keys, cron, settings, provider connectivity, REST endpoint tests (GET and POST), and Mai Publisher coexistence.
+
 ```
-wp mai-views health          # Run health checks (33 checks + endpoint tests)
-wp mai-views stats           # Show current stats summary
-wp mai-views sync            # Force buffer-to-meta sync
-wp mai-views provider-sync   # Force external provider sync
-wp mai-views warm            # Bulk-fetch all objects from provider
-wp mai-views migrate         # Migrate settings from Mai Publisher
-wp mai-views seed            # Generate test data
-wp mai-views prune           # Remove old buffer rows
-wp mai-views reset           # Wipe all Mai Views data
+wp mai-views health          # Full health check
+wp mai-views health --fix    # Attempt to auto-fix issues (re-create table, reschedule cron)
+```
+
+### `wp mai-views stats`
+
+Show current stats summary: data source, buffer row count, total lifetime views, last sync times.
+
+```
+wp mai-views stats           # All object types
+wp mai-views stats --type=post   # Posts only
+wp mai-views stats --type=term   # Terms only
+wp mai-views stats --type=user   # Users only
+```
+
+### `wp mai-views sync`
+
+Force a buffer-to-meta sync immediately (self-hosted mode). Aggregates buffer rows into meta, recalculates trending, prunes old rows.
+
+```
+wp mai-views sync
+wp mai-views sync --verbose  # Show buffer row counts before/after
+```
+
+### `wp mai-views provider-sync`
+
+Force an external provider sync immediately (Site Kit, Matomo, or Jetpack). Fetches view counts from the provider and writes to meta. Only available when an external data source is configured.
+
+```
+wp mai-views provider-sync
+```
+
+### `wp mai-views warm`
+
+Bulk-fetch stats from the active provider for all objects (or a filtered subset). Unlike provider-sync which only fetches objects in the buffer, warm fetches everything — useful after switching providers or on staging sites that need production data.
+
+```
+wp mai-views warm                                    # All objects
+wp mai-views warm --type=post                        # Posts only
+wp mai-views warm --type=post --post_type=portfolio  # Specific post type
+wp mai-views warm --type=term --taxonomy=category    # Specific taxonomy
+wp mai-views warm --type=post --ids=1,2,3            # Specific IDs
+wp mai-views warm --verbose                          # Show per-batch progress
+```
+
+### `wp mai-views migrate`
+
+Migrate settings from Mai Publisher (views_api, Matomo credentials, trending_days, views_interval) and/or old Mai Analytics options/meta keys.
+
+```
+wp mai-views migrate         # Run migration (skips if already done)
+wp mai-views migrate --force # Clear migration flags and re-run
+```
+
+### `wp mai-views seed`
+
+Generate fake view data in the buffer table for testing. Picks random published posts and inserts view rows spread across a time range, then runs a sync.
+
+```
+wp mai-views seed                                    # 50 posts, up to 200 views each, 30 days
+wp mai-views seed --posts=100 --views=500 --days=14  # Custom parameters
+wp mai-views seed --include-terms --include-authors   # Also seed terms and authors
+```
+
+### `wp mai-views prune`
+
+Manually prune old buffer rows. By default uses the retention setting (14 days). Useful for cleanup after testing.
+
+```
+wp mai-views prune                    # Prune using retention setting
+wp mai-views prune --older-than=48h   # Prune rows older than 48 hours
+wp mai-views prune --older-than=7d    # Prune rows older than 7 days
+wp mai-views prune --dry-run          # Show what would be pruned
+```
+
+### `wp mai-views reset`
+
+Delete ALL Mai Views data: truncate buffer table, delete all view/trending meta from posts/terms/users, clear all options and transients. Requires confirmation.
+
+```
+wp mai-views reset           # Prompts for confirmation
+wp mai-views reset --yes     # Skip confirmation
+```
+
+### `wp mai-views update-bots`
+
+Fetch the latest bot user-agent patterns from Matomo's device-detector repository. Same script that runs on `composer update`.
+
+```
+wp mai-views update-bots
 ```
 
 ## Filters
@@ -126,6 +211,26 @@ Logged-in users with `edit_posts` capability are excluded. Bots are filtered by 
 Append-only. No UPDATEs, no DELETEs during normal traffic. MySQL handles append-only INSERTs extremely well — no row locking contention.
 
 At 2M views/month with 14-day retention: ~940K rows, ~75MB. Trivial for MySQL.
+
+### Why buffer rows are kept after sync
+
+**Self-hosted mode:** Total views (`mai_views`) are an incrementing counter — each sync aggregates new rows into meta. But trending views (`mai_trending`) are recalculated every sync by counting raw rows in the sliding window:
+
+```sql
+SELECT object_id, COUNT(*) FROM wp_mai_views_buffer
+WHERE viewed_at > NOW() - INTERVAL 7 DAY
+GROUP BY object_id, object_type
+```
+
+If rows were deleted after aggregating totals, the next sync would calculate trending as 0 for everything. The buffer IS the trending data. Rows are pruned only when they're older than the retention period (default 14 days), which must be >= the trending window (default 7 days).
+
+Row lifecycle in self-hosted mode:
+1. **Inserted** — contributes to next sync's total increment AND trending count
+2. **3 days old** — already aggregated into total, still counted for trending (within 7-day window)
+3. **8 days old** — outside trending window, kept until retention cutoff
+4. **15 days old** — pruned
+
+**Provider mode (Site Kit, Matomo, Jetpack):** The provider supplies both total AND trending web view counts from its own data. Web buffer rows are **deleted immediately** during provider sync — they were only used as signals to know which objects to fetch from the provider. Only app buffer rows are kept for trending (since providers don't track app traffic). The buffer is much smaller in provider mode.
 
 ### Syncing buffer to meta
 
