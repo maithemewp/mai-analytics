@@ -39,27 +39,30 @@ APP: Article screen opens
   -> POST to mai-views/v1/view/post/{id} with source=app
 
 SERVER (REST endpoint):
-  1. Bot filter check (user-agent)
-  2. INSERT INTO wp_mai_views_buffer (object_id, object_type, viewed_at, source)
-  3. Transient-gated shutdown sync trigger
-  4. Return { success: true }
+  1. Validate object exists and is public
+  2. Bot filter check — self-hosted only (providers have their own bot filtering)
+  3. INSERT INTO wp_mai_views_buffer (object_id, object_type, viewed_at, source)
+  4. Fallback sync check — if sync is 1+ hour stale, trigger via shutdown callback
+  5. Return { success: true }
 
-SHUTDOWN SYNC (after response sent):
-  5. Aggregate buffer rows -> increment mai_views, mai_views_web, mai_views_app meta
-  6. Recalculate mai_trending from buffer rows in trending window
-  7. Prune old buffer rows beyond retention
+CRON SYNC (every 15 min — primary sync mechanism):
+  6. Aggregate buffer rows -> increment mai_views, mai_views_web, mai_views_app meta
+  7. Recalculate mai_trending from buffer rows in trending window
+  8. Prune old buffer rows beyond retention
 
-CRON BACKUP (every 15 min):
-  If last sync > 10 min ago -> sync (safety net)
+SYNC RELIABILITY (three fallback layers):
+  - WP-Cron: every 15 min (primary)
+  - admin_init: if sync is 30+ min stale, force on next dashboard visit
+  - Beacon POST: if sync is 1+ hour stale, run in shutdown callback
 ```
 
 ### Provider Mode (Site Kit / Matomo / Jetpack)
 
 ```
-WEB: Beacon fires same as self-hosted
+WEB: Beacon fires same as self-hosted (no bot filter — provider has its own)
   -> REST endpoint deduplicates: only INSERT if object not already in buffer since last provider sync
 
-PROVIDER SYNC (cron, every 15 min):
+PROVIDER SYNC (cron, every 15 min — same fallback layers as self-hosted):
   1. Get distinct objects from buffer since last sync
   2. Resolve object URLs to paths
   3. Batch-fetch pageview counts from provider API (all-time + trending window)

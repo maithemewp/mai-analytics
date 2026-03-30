@@ -138,13 +138,6 @@ class RestApi {
 			return new WP_REST_Response( [ 'success' => false ], 400 );
 		}
 
-		// Bot filtering.
-		if ( Settings::get( 'exclude_bots' ) ) {
-			if ( BotFilter::is_bot( $request->get_header( 'user_agent' ) ) ) {
-				return new WP_REST_Response( [ 'success' => false ], 403 );
-			}
-		}
-
 		// Validate the object exists and is public.
 		if ( ! $this->validate_object( $id, $type ) ) {
 			return new WP_REST_Response( [ 'success' => false ], 404 );
@@ -152,6 +145,14 @@ class RestApi {
 
 		$source      = $request->get_param( 'source' ) ?: 'web';
 		$data_source = Settings::get( 'data_source' );
+
+		// Bot filtering — only in self-hosted mode. In provider mode, the buffer row
+		// is just a signal that gets deleted; the provider has its own bot filtering.
+		if ( 'self_hosted' === $data_source && Settings::get( 'exclude_bots' ) ) {
+			if ( BotFilter::is_bot( $request->get_header( 'user_agent' ) ) ) {
+				return new WP_REST_Response( [ 'success' => false ], 403 );
+			}
+		}
 
 		// External provider mode + web visit: dedup check before INSERT.
 		if ( 'self_hosted' !== $data_source && 'web' === $source ) {
@@ -213,13 +214,6 @@ class RestApi {
 	public function record_post_type_view( WP_REST_Request $request ): WP_REST_Response {
 		$post_type = $request->get_param( 'post_type' );
 
-		// Bot filtering.
-		if ( Settings::get( 'exclude_bots' ) ) {
-			if ( BotFilter::is_bot( $request->get_header( 'user_agent' ) ) ) {
-				return new WP_REST_Response( [ 'success' => false ], 403 );
-			}
-		}
-
 		// Validate the post type exists and is public.
 		$post_type_obj = get_post_type_object( $post_type );
 
@@ -229,6 +223,13 @@ class RestApi {
 
 		$source      = $request->get_param( 'source' ) ?: 'web';
 		$data_source = Settings::get( 'data_source' );
+
+		// Bot filtering — only in self-hosted mode.
+		if ( 'self_hosted' === $data_source && Settings::get( 'exclude_bots' ) ) {
+			if ( BotFilter::is_bot( $request->get_header( 'user_agent' ) ) ) {
+				return new WP_REST_Response( [ 'success' => false ], 403 );
+			}
+		}
 
 		// External provider mode + web visit: dedup check before INSERT.
 		if ( 'self_hosted' !== $data_source && 'web' === $source ) {
