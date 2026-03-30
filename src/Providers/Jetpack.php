@@ -69,7 +69,11 @@ class Jetpack implements WebViewProvider {
 			return __( 'Jetpack Stats module is not active.', 'mai-views' );
 		}
 
-		return __( 'Jetpack Stats WPCOM_Stats class is not available.', 'mai-views' );
+		if ( ! class_exists( 'Automattic\Jetpack\Stats\WPCOM_Stats' ) ) {
+			return __( 'Jetpack Stats WPCOM_Stats class is not available.', 'mai-views' );
+		}
+
+		return '';
 	}
 
 	/**

@@ -227,13 +227,7 @@ class CLI {
 		}
 
 		// Test admin endpoints (need a privileged user).
-		$admin_id = (int) $wpdb->get_var(
-			"SELECT u.ID FROM $wpdb->users u
-			 INNER JOIN $wpdb->usermeta um ON u.ID = um.user_id
-			 WHERE um.meta_key = '{$wpdb->prefix}capabilities'
-			   AND um.meta_value LIKE '%administrator%'
-			 LIMIT 1"
-		);
+		$admin_id = Migration::get_first_admin_id();
 
 		if ( $admin_id ) {
 			wp_set_current_user( $admin_id );
@@ -877,14 +871,4 @@ class CLI {
 		return $num_views;
 	}
 
-	/**
-	 * Clears WordPress object caches between batches.
-	 *
-	 * @return void
-	 */
-	private function clear_caches(): void {
-		wp_cache_flush();
-		global $wpdb;
-		$wpdb->flush();
-	}
 }

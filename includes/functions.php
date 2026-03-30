@@ -55,7 +55,6 @@ function mai_views_get_views( $atts = [] ) {
 		'mai_views'
 	);
 
-	// Sanitize.
 	$atts = [
 		'object'             => sanitize_key( $atts['object'] ),
 		'id'                 => absint( $atts['id'] ),

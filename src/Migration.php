@@ -25,8 +25,7 @@ class Migration {
 	 * @return void
 	 */
 	private static function maybe_migrate_from_publisher(): void {
-		// Already migrated or manually configured.
-		if ( get_option( 'mai_views_settings' ) ) {
+		if ( get_option( 'mai_views_migrated_from_publisher' ) ) {
 			return;
 		}
 
@@ -39,13 +38,9 @@ class Migration {
 		$views_api = $publisher['views_api'] ?? 'disabled';
 
 		// Map Mai Publisher's views_api to Mai Views' data_source.
-		$source_map = [
-			'matomo'   => 'matomo',
-			'jetpack'  => 'jetpack',
-			'disabled' => 'disabled',
-		];
-
-		$data_source = $source_map[ $views_api ] ?? 'self_hosted';
+		$data_source = in_array( $views_api, [ 'matomo', 'jetpack', 'disabled' ], true )
+			? $views_api
+			: 'self_hosted';
 
 		$settings = [
 			'data_source'    => $data_source,
@@ -236,7 +231,7 @@ class Migration {
 	 *
 	 * @return int The admin user ID, or 0 if none found.
 	 */
-	private static function get_first_admin_id(): int {
+	public static function get_first_admin_id(): int {
 		$admins = get_users( [
 			'role'    => 'administrator',
 			'number'  => 1,

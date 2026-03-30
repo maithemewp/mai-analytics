@@ -68,6 +68,10 @@ class Database {
 	 * @return void
 	 */
 	private static function maybe_migrate_old_table(): void {
+		if ( get_option( 'mai_views_table_migrated' ) ) {
+			return;
+		}
+
 		global $wpdb;
 
 		$old_table = $wpdb->prefix . 'mai_analytics_views';
@@ -87,7 +91,6 @@ class Database {
 				// phpcs:ignore WordPress.DB.DirectDatabaseQuery
 				$wpdb->query( "DROP TABLE `$old_table`" );
 			} else {
-				// Only old exists — rename it.
 				// phpcs:ignore WordPress.DB.DirectDatabaseQuery
 				$wpdb->query(
 					$wpdb->prepare(
@@ -105,6 +108,8 @@ class Database {
 			update_option( self::DB_VERSION_OPTION, $old_version );
 			delete_option( 'mai_analytics_db_version' );
 		}
+
+		update_option( 'mai_views_table_migrated', true );
 	}
 
 	/**
