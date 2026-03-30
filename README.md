@@ -84,7 +84,7 @@ mai_views_get_short_number( 2500 ); // "2K+"
 ## WP-CLI
 
 ```
-wp mai-views doctor          # Run diagnostics (health checks + endpoint tests)
+wp mai-views health          # Run health checks (33 checks + endpoint tests)
 wp mai-views stats           # Show current stats summary
 wp mai-views sync            # Force buffer-to-meta sync
 wp mai-views provider-sync   # Force external provider sync

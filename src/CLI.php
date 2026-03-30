@@ -10,7 +10,7 @@ class CLI {
 	 * Registers all WP-CLI subcommands for Mai Views.
 	 */
 	public function __construct() {
-		WP_CLI::add_command( 'mai-views doctor',        [ $this, 'doctor' ] );
+		WP_CLI::add_command( 'mai-views health',         [ $this, 'health' ] );
 		WP_CLI::add_command( 'mai-views migrate',       [ $this, 'migrate' ] );
 		WP_CLI::add_command( 'mai-views sync',          [ $this, 'sync' ] );
 		WP_CLI::add_command( 'mai-views stats',         [ $this, 'stats' ] );
@@ -23,7 +23,7 @@ class CLI {
 	}
 
 	/**
-	 * Run diagnostics on the Mai Views installation.
+	 * Run health checks on the Mai Views installation.
 	 *
 	 * Checks plugin health, database state, REST endpoints, provider connectivity,
 	 * view recording, and Mai Publisher coexistence. Exits with error if any
@@ -36,15 +36,15 @@ class CLI {
 	 *
 	 * ## EXAMPLES
 	 *
-	 *     wp mai-views doctor
-	 *     wp mai-views doctor --fix
+	 *     wp mai-views health
+	 *     wp mai-views health --fix
 	 *
 	 * @param array $args       Positional arguments (unused).
 	 * @param array $assoc_args Associative arguments: --fix.
 	 *
 	 * @return void
 	 */
-	public function doctor( array $args, array $assoc_args ): void {
+	public function health( array $args, array $assoc_args ): void {
 		global $wpdb;
 
 		$fix    = \WP_CLI\Utils\get_flag_value( $assoc_args, 'fix', false );
