@@ -95,30 +95,9 @@ class Cron {
 		}
 
 		if ( 'self_hosted' === $data_source ) {
-			$last_sync = get_option( 'mai_views_synced', 0 );
-
-			if ( $last_sync && ( time() - $last_sync ) < 10 * MINUTE_IN_SECONDS ) {
-				return;
-			}
-
 			Sync::sync();
 		} else {
-			$this->maybe_provider_sync();
+			ProviderSync::sync();
 		}
-	}
-
-	/**
-	 * Runs the provider sync if enough time has passed since the last run.
-	 *
-	 * @return void
-	 */
-	public function maybe_provider_sync(): void {
-		$last_sync = (int) get_option( 'mai_views_provider_last_sync', 0 );
-
-		if ( $last_sync && ( time() - $last_sync ) < 10 * MINUTE_IN_SECONDS ) {
-			return;
-		}
-
-		ProviderSync::sync();
 	}
 }
