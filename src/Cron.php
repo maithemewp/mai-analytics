@@ -14,10 +14,6 @@ class Cron {
 
 		// Self-heal: re-schedule cron if deleted, force sync if stale.
 		add_action( 'admin_init', [ $this, 'ensure_healthy' ] );
-
-		// Frontend fallback: if nobody visits the admin and cron is failing,
-		// catch it on a regular page load (1-hour threshold, transient-gated).
-		add_action( 'wp_loaded', [ $this, 'maybe_frontend_sync' ] );
 	}
 
 	/**
@@ -46,25 +42,15 @@ class Cron {
 	}
 
 	/**
-	 * Lightweight frontend fallback for when cron and admin visits both fail.
+	 * Checks if sync is stale and triggers it in a shutdown callback.
 	 *
-	 * Gated by a 1-hour transient so it adds at most one get_option() call
-	 * per hour on the frontend. Only triggers if sync is 1+ hour stale.
+	 * Called from the REST view-recording endpoint as a fallback for when cron
+	 * is not firing. The beacon response is returned immediately; sync runs
+	 * after the response via shutdown. Only triggers when sync is 1+ hour stale.
 	 *
 	 * @return void
 	 */
-	public function maybe_frontend_sync(): void {
-		if ( is_admin() || wp_doing_cron() || wp_doing_ajax() ) {
-			return;
-		}
-
-		// Check at most once per hour on the frontend.
-		if ( get_transient( 'mai_views_frontend_check' ) ) {
-			return;
-		}
-
-		set_transient( 'mai_views_frontend_check', 1, HOUR_IN_SECONDS );
-
+	public function maybe_fallback_sync(): void {
 		if ( 'disabled' === Settings::get( 'data_source' ) ) {
 			return;
 		}
@@ -75,7 +61,6 @@ class Cron {
 			return;
 		}
 
-		// Sync in a shutdown callback so the visitor's response isn't delayed.
 		register_shutdown_function( [ $this, 'maybe_sync' ] );
 	}
 

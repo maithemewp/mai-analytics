@@ -160,12 +160,14 @@ class RestApi {
 			if ( ! Database::is_queued( $id, $type, $last_sync ) ) {
 				Database::insert_view( $id, $type, $source );
 			}
-
-			return new WP_REST_Response( [ 'success' => true ] );
+		} else {
+			// Self-hosted (any source) OR external + app → buffer INSERT (every view counted).
+			Database::insert_view( $id, $type, $source );
 		}
 
-		// Self-hosted (any source) OR external + app → buffer INSERT (every view counted).
-		Database::insert_view( $id, $type, $source );
+		// Fallback sync: if cron is failing, trigger sync after response.
+		( new Cron() )->maybe_fallback_sync();
+
 		return new WP_REST_Response( [ 'success' => true ] );
 	}
 
@@ -235,12 +237,14 @@ class RestApi {
 			if ( ! Database::is_queued( 0, 'post_type', $last_sync ) ) {
 				Database::insert_view( 0, 'post_type', $source, $post_type );
 			}
-
-			return new WP_REST_Response( [ 'success' => true ] );
+		} else {
+			// Self-hosted (any source) OR external + app → buffer INSERT.
+			Database::insert_view( 0, 'post_type', $source, $post_type );
 		}
 
-		// Self-hosted (any source) OR external + app → buffer INSERT.
-		Database::insert_view( 0, 'post_type', $source, $post_type );
+		// Fallback sync: if cron is failing, trigger sync after response.
+		( new Cron() )->maybe_fallback_sync();
+
 		return new WP_REST_Response( [ 'success' => true ] );
 	}
 
