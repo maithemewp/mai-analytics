@@ -11,31 +11,29 @@ defined( 'ABSPATH' ) || die;
  * @param array $atts {
  *     Shortcode attributes.
  *
- *     @type string $object             Object type: 'post' or 'term'. Default 'post' (or 'term' if $mai_term is set).
- *     @type int    $id                 The post/term ID. Default current.
- *     @type string $views              Empty for all-time, 'trending' for trending. Default ''.
- *     @type int    $min                Minimum views before displaying. Default 20.
- *     @type string $format             'short' for abbreviated (2K+) or '' for full (2,143). Default 'short'.
- *     @type string $style              Inline CSS for wrapper. Default 'display:inline-flex;align-items:center;'.
- *     @type string $before             HTML before the icon. Default ''.
- *     @type string $after              HTML after the count. Default ''.
- *     @type string $icon               Icon name for mai_get_icon(). Default 'heart'.
- *     @type string $icon_style         Icon style (solid, light, etc.). Default 'solid'.
- *     @type string $icon_size          Icon font-size. Default '0.85em'.
- *     @type string $icon_margin_top    Icon margin-top. Default '0'.
- *     @type string $icon_margin_right  Icon margin-right. Default '0.25em'.
- *     @type string $icon_margin_bottom Icon margin-bottom. Default '0'.
- *     @type string $icon_margin_left   Icon margin-left. Default '0'.
+ *     @type string     $object             Object type: 'post', 'term', 'user', or 'post_type'. Default auto-detected.
+ *     @type int|string $id                 The object ID (int for post/term/user, string slug for post_type). Default current.
+ *     @type string     $views              Empty for all-time, 'trending' for trending. Default ''.
+ *     @type int        $min                Minimum views before displaying. Default 20.
+ *     @type string     $format             'short' for abbreviated (2K+) or '' for full (2,143). Default 'short'.
+ *     @type string     $style              Inline CSS for wrapper. Default 'display:inline-flex;align-items:center;'.
+ *     @type string     $before             HTML before the icon. Default ''.
+ *     @type string     $after              HTML after the count. Default ''.
+ *     @type string     $icon               Icon name for mai_get_icon(). Default 'heart'.
+ *     @type string     $icon_style         Icon style (solid, light, etc.). Default 'solid'.
+ *     @type string     $icon_size          Icon font-size. Default '0.85em'.
+ *     @type string     $icon_margin_top    Icon margin-top. Default '0'.
+ *     @type string     $icon_margin_right  Icon margin-right. Default '0.25em'.
+ *     @type string     $icon_margin_bottom Icon margin-bottom. Default '0'.
+ *     @type string     $icon_margin_left   Icon margin-left. Default '0'.
  * }
  *
  * @return string The views HTML, or empty string if below minimum.
  */
 function mai_views_get_views( $atts = [] ) {
-	global $mai_term;
-
 	$atts = shortcode_atts(
 		[
-			'object'             => ! is_null( $mai_term ) ? 'term' : 'post',
+			'object'             => '',
 			'id'                 => '',
 			'views'              => '',
 			'min'                => 20,
@@ -118,12 +116,15 @@ function mai_views_get_views( $atts = [] ) {
 }
 
 /**
- * Gets the view count for a post or term.
+ * Gets the view count for a post, term, user, or post type archive.
+ *
+ * Auto-detects the current context when no arguments are provided:
+ * singular pages, term/author archives, blog page, and CPT archives.
  *
  * @param array $args {
- *     @type string $object Object type: 'post' or 'term'. Default 'post'.
- *     @type int    $id     The post/term ID. Default current.
- *     @type string $views  Empty for all-time, 'trending' for trending. Default ''.
+ *     @type string     $object Object type: 'post', 'term', 'user', or 'post_type'. Default auto-detected.
+ *     @type int|string $id     The object ID (int for post/term/user, string slug for post_type). Default current.
+ *     @type string     $views  Empty for all-time, 'trending' for trending. Default ''.
  * }
  *
  * @return int The view count.
@@ -132,26 +133,110 @@ function mai_views_get_count( $args = [] ) {
 	global $mai_term;
 
 	$args = wp_parse_args( $args, [
-		'object' => ! is_null( $mai_term ) ? 'term' : 'post',
+		'object' => '',
 		'id'     => '',
 		'views'  => '',
 	] );
 
-	$args['object'] = sanitize_key( $args['object'] );
-	$args['views']  = sanitize_key( $args['views'] );
+	$args['views'] = sanitize_key( $args['views'] );
 
+	// Auto-detect object type and ID when not explicitly provided.
+	if ( ! $args['object'] && ! $args['id'] ) {
+		$detected       = mai_views_detect_context();
+		$args['object'] = $detected['object'];
+		$args['id']     = $detected['id'];
+	}
+
+	$args['object'] = sanitize_key( $args['object'] );
+
+	// Fallback for legacy callers passing only 'object' without 'id'.
 	if ( ! $args['id'] ) {
-		$args['id'] = ( 'term' === $args['object'] && ! is_null( $mai_term ) ) ? $mai_term->term_id : get_the_ID();
+		if ( 'term' === $args['object'] && ! is_null( $mai_term ) ) {
+			$args['id'] = $mai_term->term_id;
+		} elseif ( 'post' === $args['object'] ) {
+			$args['id'] = get_the_ID();
+		}
 	}
 
 	if ( ! $args['id'] ) {
 		return 0;
 	}
 
-	$key   = 'trending' === $args['views'] ? 'mai_trending' : 'mai_views';
-	$count = 'term' === $args['object'] ? get_term_meta( $args['id'], $key, true ) : get_post_meta( $args['id'], $key, true );
+	// Post type archives store counts in options, not meta.
+	if ( 'post_type' === $args['object'] ) {
+		$option = 'trending' === $args['views'] ? 'mai_views_post_type_trending' : 'mai_views_post_type_views';
+		$values = get_option( $option, [] );
+		return absint( $values[ $args['id'] ] ?? 0 );
+	}
+
+	$key = 'trending' === $args['views'] ? 'mai_trending' : 'mai_views';
+
+	$count = match ( $args['object'] ) {
+		'term' => get_term_meta( $args['id'], $key, true ),
+		'user' => get_user_meta( $args['id'], $key, true ),
+		default => get_post_meta( $args['id'], $key, true ),
+	};
 
 	return absint( $count );
+}
+
+/**
+ * Detects the current page context for view count lookups.
+ *
+ * Returns the object type and ID based on WordPress conditional tags.
+ * Used by mai_views_get_count() when no explicit args are provided.
+ *
+ * @return array { object: string, id: int|string }
+ */
+function mai_views_detect_context() {
+	global $mai_term;
+
+	// Term grid loop context (Mai Theme global).
+	if ( ! is_null( $mai_term ) ) {
+		return [ 'object' => 'term', 'id' => $mai_term->term_id ];
+	}
+
+	// Inside a post loop — use the post's ID.
+	if ( in_the_loop() ) {
+		return [ 'object' => 'post', 'id' => get_the_ID() ];
+	}
+
+	// Singular post/page.
+	if ( is_singular() ) {
+		return [ 'object' => 'post', 'id' => get_the_ID() ];
+	}
+
+	// Blog page (posts archive).
+	if ( is_home() ) {
+		return [ 'object' => 'post_type', 'id' => 'post' ];
+	}
+
+	// CPT archive.
+	if ( is_post_type_archive() ) {
+		$obj = get_queried_object();
+		if ( $obj && isset( $obj->name ) ) {
+			return [ 'object' => 'post_type', 'id' => $obj->name ];
+		}
+	}
+
+	// Taxonomy archive.
+	if ( is_category() || is_tag() || is_tax() ) {
+		$term = get_queried_object();
+		if ( $term && isset( $term->term_id ) ) {
+			return [ 'object' => 'term', 'id' => $term->term_id ];
+		}
+	}
+
+	// Author archive.
+	if ( is_author() ) {
+		$author = get_queried_object();
+		if ( $author && isset( $author->ID ) ) {
+			return [ 'object' => 'user', 'id' => $author->ID ];
+		}
+	}
+
+	// Fallback.
+	return [ 'object' => 'post', 'id' => get_the_ID() ];
 }
 
 /**
