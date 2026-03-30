@@ -105,19 +105,11 @@ wp mai-views stats --type=user   # Users only
 
 ### `wp mai-views sync`
 
-Force a buffer-to-meta sync immediately (self-hosted mode). Aggregates buffer rows into meta, recalculates trending, prunes old rows.
+Force a sync immediately. Automatically routes based on the data source setting — runs buffer-to-meta aggregation in self-hosted mode, or fetches from the external provider in Site Kit/Matomo/Jetpack mode.
 
 ```
 wp mai-views sync
-wp mai-views sync --verbose  # Show buffer row counts before/after
-```
-
-### `wp mai-views provider-sync`
-
-Force an external provider sync immediately (Site Kit, Matomo, or Jetpack). Fetches view counts from the provider and writes to meta. Only available when an external data source is configured.
-
-```
-wp mai-views provider-sync
+wp mai-views sync --verbose  # Show data source and buffer row counts
 ```
 
 ### `wp mai-views warm`

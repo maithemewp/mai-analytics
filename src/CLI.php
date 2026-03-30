@@ -18,7 +18,6 @@ class CLI {
 		WP_CLI::add_command( 'mai-views seed',          [ $this, 'seed' ] );
 		WP_CLI::add_command( 'mai-views reset',         [ $this, 'reset' ] );
 		WP_CLI::add_command( 'mai-views update-bots',   [ $this, 'update_bots' ] );
-		WP_CLI::add_command( 'mai-views provider-sync', [ $this, 'provider_sync' ] );
 		WP_CLI::add_command( 'mai-views warm',          [ $this, 'warm' ] );
 	}
 
@@ -373,7 +372,7 @@ class CLI {
 	}
 
 	/**
-	 * Force a manual sync of the buffer table to meta.
+	 * Force a manual sync. Routes to buffer sync or provider sync based on data source.
 	 *
 	 * ## OPTIONS
 	 *
@@ -393,24 +392,36 @@ class CLI {
 	public function sync( array $args, array $assoc_args ): void {
 		global $wpdb;
 
+		$data_source = Settings::get( 'data_source' );
+
+		if ( 'disabled' === $data_source ) {
+			WP_CLI::error( 'View tracking is disabled. Change the data source in settings first.' );
+		}
+
 		$verbose = \WP_CLI\Utils\get_flag_value( $assoc_args, 'verbose', false );
 		$table   = Database::get_table_name();
 
 		if ( $verbose ) {
 			$count = (int) $wpdb->get_var( "SELECT COUNT(*) FROM $table" );
+			WP_CLI::log( sprintf( 'Data source: %s', $data_source ) );
 			WP_CLI::log( sprintf( 'Buffer table rows before sync: %s', number_format( $count ) ) );
 		}
 
-		Sync::sync();
+		if ( 'self_hosted' === $data_source ) {
+			WP_CLI::log( 'Running buffer sync...' );
+			Sync::sync();
+		} else {
+			WP_CLI::log( sprintf( 'Running provider sync (%s)...', $data_source ) );
+			ProviderSync::sync();
+		}
 
 		if ( $verbose ) {
 			$count = (int) $wpdb->get_var( "SELECT COUNT(*) FROM $table" );
-			$last  = get_option( 'mai_views_synced', 0 );
 			WP_CLI::log( sprintf( 'Buffer table rows after sync:  %s', number_format( $count ) ) );
-			WP_CLI::log( sprintf( 'Last sync: %s', $last ? wp_date( 'Y-m-d H:i:s', $last ) : 'never' ) );
 		}
 
-		WP_CLI::success( 'Sync complete.' );
+		$last_sync = get_option( 'mai_views_synced', 0 );
+		WP_CLI::success( sprintf( 'Sync complete. Last sync: %s', $last_sync ? wp_date( 'Y-m-d H:i:s', $last_sync ) : 'never' ) );
 	}
 
 	/**
@@ -697,40 +708,6 @@ class CLI {
 		WP_CLI::log( 'Options and transients cleared.' );
 
 		WP_CLI::success( 'All Mai Views data has been reset.' );
-	}
-
-	/**
-	 * Process the current provider sync queue immediately.
-	 *
-	 * ## OPTIONS
-	 *
-	 * [--verbose]
-	 * : Show detailed output.
-	 *
-	 * ## EXAMPLES
-	 *
-	 *     wp mai-views provider-sync
-	 *
-	 * @param array $args       Positional arguments (unused).
-	 * @param array $assoc_args Associative arguments: --verbose.
-	 *
-	 * @return void
-	 */
-	public function provider_sync( array $args, array $assoc_args ): void {
-		if ( 'self_hosted' === Settings::get( 'data_source' ) ) {
-			WP_CLI::error( 'Provider sync is only available when an external data source is configured.' );
-		}
-
-		WP_CLI::log( 'Running provider sync...' );
-
-		ProviderSync::sync();
-
-		$last_sync = get_option( 'mai_views_provider_last_sync', 0 );
-
-		WP_CLI::success( sprintf(
-			'Provider sync complete. Last sync: %s',
-			$last_sync ? wp_date( 'Y-m-d H:i:s', $last_sync ) : 'never'
-		) );
 	}
 
 	/**
