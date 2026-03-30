@@ -263,6 +263,20 @@ Both `Sync::sync()` and `ProviderSync::sync()` have transient-based concurrency 
 
 At 5K concurrent users all loading a page in the same second, that's 5K INSERTs — MySQL handles 10K+ simple INSERTs/sec easily. The visitors' browsers send the beacon after paint; the response is ~50 bytes of JSON.
 
+### Rate limiting and DDoS
+
+Mai Views does not implement application-level rate limiting. The beacon endpoint is intentionally lightweight (one INSERT, ~1ms) to minimize server load, and adding per-request checks would negate that.
+
+**In provider mode**, the dedup logic already prevents abuse — only one buffer row per object per sync cycle, regardless of how many times the endpoint is hit.
+
+**In self-hosted mode**, the bot filter blocks known user-agents, but a determined attacker could inflate counts by looping POST requests. This is an infrastructure concern:
+
+- **Cloudflare** (free tier) provides rate limiting, bot management, and DDoS protection
+- **nginx** `limit_req_zone` can cap requests per IP to the `/wp-json/` path
+- **Managed WordPress hosts** (WP Engine, Flywheel, Kinsta) include DDoS protection
+
+This is the standard approach — Google Analytics, Matomo, and Plausible all rely on infrastructure-level protection for their collection endpoints rather than application-level rate limiting.
+
 ## Environment Handling
 
 Beacon tracking is automatically disabled on non-production environments (`wp_get_environment_type() !== 'production'`) to prevent buffer pollution on staging/dev sites. Override with:
