@@ -5,22 +5,6 @@ namespace Mai\Views;
 class Sync {
 
 	/**
-	 * Checks the transient lock and schedules a sync on shutdown if expired.
-	 *
-	 * @return void
-	 */
-	public static function maybe_schedule_sync(): void {
-		if ( get_transient( 'mai_views_sync_lock' ) ) {
-			return;
-		}
-
-		$interval = Settings::get( 'sync_interval' );
-		set_transient( 'mai_views_sync_lock', 1, $interval * MINUTE_IN_SECONDS );
-
-		register_shutdown_function( [ self::class, 'sync' ] );
-	}
-
-	/**
 	 * Aggregates buffer table views into meta, recalculates trending, and prunes old rows.
 	 *
 	 * Views are split by source (web/app) into separate meta keys, with a computed total.
@@ -35,11 +19,6 @@ class Sync {
 		}
 
 		set_transient( 'mai_views_syncing', 1, MINUTE_IN_SECONDS );
-
-		// Finish the HTTP response before doing work (PHP-FPM only).
-		if ( function_exists( 'fastcgi_finish_request' ) ) {
-			fastcgi_finish_request();
-		}
 
 		global $wpdb;
 

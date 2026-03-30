@@ -12,19 +12,71 @@ class Cron {
 		add_action( 'mai_views_cron_sync', [ $this, 'maybe_sync' ] );
 		add_action( 'mai_views_provider_catchup', [ $this, 'maybe_provider_sync' ] );
 
-		// Self-heal: re-schedule if it got deleted, but only check on admin loads.
-		add_action( 'admin_init', [ $this, 'ensure_scheduled' ] );
+		// Self-heal: re-schedule cron if deleted, force sync if stale.
+		add_action( 'admin_init', [ $this, 'ensure_healthy' ] );
+
+		// Frontend fallback: if nobody visits the admin and cron is failing,
+		// catch it on a regular page load (1-hour threshold, transient-gated).
+		add_action( 'wp_loaded', [ $this, 'maybe_frontend_sync' ] );
 	}
 
 	/**
-	 * Verifies the cron event is scheduled. Runs only on admin pages.
+	 * Verifies cron is scheduled and sync is not stale. Runs only on admin pages.
+	 *
+	 * If cron is missing, re-schedules it. If sync hasn't run in 30+ minutes
+	 * (indicating cron is not firing), forces a sync directly.
 	 *
 	 * @return void
 	 */
-	public function ensure_scheduled(): void {
+	public function ensure_healthy(): void {
 		if ( ! wp_next_scheduled( 'mai_views_cron_sync' ) ) {
 			wp_schedule_event( time(), 'mai_views_15min', 'mai_views_cron_sync' );
 		}
+
+		if ( 'disabled' === Settings::get( 'data_source' ) ) {
+			return;
+		}
+
+		$last_sync = (int) get_option( 'mai_views_synced', 0 );
+
+		// If sync has never run or hasn't run in 30+ minutes, force it now.
+		if ( ! $last_sync || ( time() - $last_sync ) > 30 * MINUTE_IN_SECONDS ) {
+			$this->maybe_sync();
+		}
+	}
+
+	/**
+	 * Lightweight frontend fallback for when cron and admin visits both fail.
+	 *
+	 * Gated by a 1-hour transient so it adds at most one get_option() call
+	 * per hour on the frontend. Only triggers if sync is 1+ hour stale.
+	 *
+	 * @return void
+	 */
+	public function maybe_frontend_sync(): void {
+		if ( is_admin() || wp_doing_cron() || wp_doing_ajax() ) {
+			return;
+		}
+
+		// Check at most once per hour on the frontend.
+		if ( get_transient( 'mai_views_frontend_check' ) ) {
+			return;
+		}
+
+		set_transient( 'mai_views_frontend_check', 1, HOUR_IN_SECONDS );
+
+		if ( 'disabled' === Settings::get( 'data_source' ) ) {
+			return;
+		}
+
+		$last_sync = (int) get_option( 'mai_views_synced', 0 );
+
+		if ( $last_sync && ( time() - $last_sync ) < HOUR_IN_SECONDS ) {
+			return;
+		}
+
+		// Sync in a shutdown callback so the visitor's response isn't delayed.
+		register_shutdown_function( [ $this, 'maybe_sync' ] );
 	}
 
 	/**

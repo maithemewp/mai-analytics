@@ -166,8 +166,6 @@ class RestApi {
 
 		// Self-hosted (any source) OR external + app → buffer INSERT (every view counted).
 		Database::insert_view( $id, $type, $source );
-		Sync::maybe_schedule_sync();
-
 		return new WP_REST_Response( [ 'success' => true ] );
 	}
 
@@ -243,8 +241,6 @@ class RestApi {
 
 		// Self-hosted (any source) OR external + app → buffer INSERT.
 		Database::insert_view( 0, 'post_type', $source, $post_type );
-		Sync::maybe_schedule_sync();
-
 		return new WP_REST_Response( [ 'success' => true ] );
 	}
 
