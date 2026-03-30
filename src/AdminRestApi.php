@@ -167,6 +167,12 @@ class AdminRestApi {
 			'callback'            => [ $this, 'warm' ],
 			'permission_callback' => $admin_permission,
 		] );
+
+		register_rest_route( self::NAMESPACE, '/admin/health', [
+			'methods'             => 'POST',
+			'callback'            => [ $this, 'run_health_check' ],
+			'permission_callback' => $admin_permission,
+		] );
 	}
 
 	/**
@@ -803,5 +809,16 @@ class AdminRestApi {
 		}
 
 		return $map;
+	}
+
+	/**
+	 * Runs health checks and returns structured results.
+	 *
+	 * @param WP_REST_Request $request The incoming request.
+	 *
+	 * @return WP_REST_Response Health check results.
+	 */
+	public function run_health_check( WP_REST_Request $request ): WP_REST_Response {
+		return new WP_REST_Response( Health::run() );
 	}
 }

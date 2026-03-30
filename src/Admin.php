@@ -107,11 +107,13 @@ class Admin {
 				:has(#mai-views-data-source option[value="matomo"]:checked) .mai-views-provider-matomo { display: table-row; }
 			' );
 
+			$settings_js = MAI_VIEWS_PLUGIN_DIR . 'assets/js/admin-settings.js';
+
 			wp_enqueue_script(
 				'mai-views-admin-settings',
 				MAI_VIEWS_PLUGIN_URL . 'assets/js/admin-settings.js',
 				[],
-				MAI_VIEWS_VERSION,
+				MAI_VIEWS_VERSION . '.' . filemtime( $settings_js ),
 				true
 			);
 
@@ -305,6 +307,16 @@ class Admin {
 			</tr>
 		</table>
 		<?php endif; ?>
+
+		<hr>
+		<h2><?php esc_html_e( 'Health Check', 'mai-views' ); ?></h2>
+		<p class="description" style="margin-bottom:12px;">
+			<?php esc_html_e( 'Run diagnostics to verify plugin health, database state, cron, provider connectivity, and REST endpoints.', 'mai-views' ); ?>
+		</p>
+		<button type="button" class="button" id="mai-views-health-check">
+			<?php esc_html_e( 'Run Health Check', 'mai-views' ); ?>
+		</button>
+		<div id="mai-views-health-results" style="display:none; margin-top:16px; background:#fff; border:1px solid #c3c4c7; border-radius:4px; padding:16px;"></div>
 		<?php
 	}
 }

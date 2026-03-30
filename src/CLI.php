@@ -44,269 +44,51 @@ class CLI {
 	 * @return void
 	 */
 	public function health( array $args, array $assoc_args ): void {
-		global $wpdb;
+		$fix     = \WP_CLI\Utils\get_flag_value( $assoc_args, 'fix', false );
+		$results = Health::run();
 
-		$fix    = \WP_CLI\Utils\get_flag_value( $assoc_args, 'fix', false );
-		$pass   = 0;
-		$fail   = 0;
-		$warn   = 0;
-		$table  = Database::get_table_name();
+		$current_section = '';
 
-		$check = function( string $label, bool $ok, string $detail = '', bool $critical = true ) use ( &$pass, &$fail, &$warn ) {
-			if ( $ok ) {
-				WP_CLI::log( WP_CLI::colorize( "  %G\u{2713}%n {$label}" . ( $detail ? " — {$detail}" : '' ) ) );
-				$pass++;
-			} elseif ( $critical ) {
-				WP_CLI::log( WP_CLI::colorize( "  %R\u{2717}%n {$label}" . ( $detail ? " — {$detail}" : '' ) ) );
-				$fail++;
-			} else {
-				WP_CLI::log( WP_CLI::colorize( "  %Y!%n {$label}" . ( $detail ? " — {$detail}" : '' ) ) );
-				$warn++;
+		foreach ( $results['checks'] as $c ) {
+			if ( $c['section'] !== $current_section ) {
+				$current_section = $c['section'];
+				WP_CLI::log( '' );
+				WP_CLI::log( WP_CLI::colorize( "%B=== {$current_section} ===%n" ) );
 			}
-		};
 
-		// ── Core ──
-		WP_CLI::log( '' );
-		WP_CLI::log( WP_CLI::colorize( '%B=== Core ===%n' ) );
+			$detail = $c['detail'] ? " — {$c['detail']}" : '';
 
-		$check( 'Plugin loaded', defined( 'MAI_VIEWS_VERSION' ), 'v' . MAI_VIEWS_VERSION );
-		$check( 'Constants defined', defined( 'MAI_VIEWS_PLUGIN_DIR' ) && defined( 'MAI_VIEWS_PLUGIN_FILE' ) );
-		$check( 'Autoloader', class_exists( Plugin::class ) && class_exists( Sync::class ) );
+			$line = match ( $c['status'] ) {
+				'pass' => WP_CLI::colorize( "  %G\u{2713}%n {$c['label']}{$detail}" ),
+				'fail' => WP_CLI::colorize( "  %R\u{2717}%n {$c['label']}{$detail}" ),
+				'warn' => WP_CLI::colorize( "  %Y!%n {$c['label']}{$detail}" ),
+			};
 
-		$env = wp_get_environment_type();
-		$tracking = Tracker::is_tracking_enabled();
-		$check( 'Environment', true, $env );
-		$check( 'Beacon tracking', $tracking, $tracking ? 'enabled' : "disabled (environment={$env}, set MAI_VIEWS_ENABLE_TRACKING to override)", false );
-
-		// ── Database ──
-		WP_CLI::log( '' );
-		WP_CLI::log( WP_CLI::colorize( '%B=== Database ===%n' ) );
-
-		$table_exists = (bool) $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) );
-		$check( 'Buffer table exists', $table_exists, $table );
-
-		if ( ! $table_exists && $fix ) {
-			Database::create_table();
-			$table_exists = (bool) $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) );
-			WP_CLI::log( WP_CLI::colorize( "    %C\u{2192} Fixed: created table%n" ) );
+			WP_CLI::log( $line );
 		}
 
-		$db_version = get_option( Database::DB_VERSION_OPTION, '0' );
-		$check( 'DB version current', version_compare( $db_version, MAI_VIEWS_DB_VERSION, '>=' ), "stored={$db_version} required=" . MAI_VIEWS_DB_VERSION );
+		// Auto-fix: recreate table and reschedule cron if missing.
+		if ( $fix ) {
+			$table_failed = array_filter( $results['checks'], fn( $c ) => 'Buffer table exists' === $c['label'] && 'fail' === $c['status'] );
+			$cron_failed  = array_filter( $results['checks'], fn( $c ) => 'Cron scheduled' === $c['label'] && 'fail' === $c['status'] );
 
-		$buffer_rows = $table_exists ? (int) $wpdb->get_var( "SELECT COUNT(*) FROM $table" ) : 0;
-		WP_CLI::log( WP_CLI::colorize( "  %w  Buffer rows: " . number_format( $buffer_rows ) . "%n" ) );
-
-		$stale = (int) $wpdb->get_var( "SELECT COUNT(*) FROM $wpdb->postmeta WHERE meta_key LIKE 'mai_analytics_%'" );
-		$check( 'No stale mai_analytics_* meta', 0 === $stale, $stale ? "{$stale} rows (run: wp mai-views migrate --force)" : 'clean', false );
-
-		// ── Meta & Shortcode ──
-		WP_CLI::log( '' );
-		WP_CLI::log( WP_CLI::colorize( '%B=== Meta & Shortcode ===%n' ) );
-
-		$post_meta = get_registered_meta_keys( 'post' );
-		$expected_keys = [ 'mai_views', 'mai_views_web', 'mai_views_app', 'mai_trending' ];
-		$missing_keys  = array_filter( $expected_keys, fn( $k ) => ! isset( $post_meta[ $k ] ) );
-		$check( 'Post meta keys registered', empty( $missing_keys ), empty( $missing_keys ) ? 'all 4' : 'missing: ' . implode( ', ', $missing_keys ) );
-
-		$term_meta = get_registered_meta_keys( 'term' );
-		$check( 'Term meta keys registered', isset( $term_meta['mai_views'] ) && isset( $term_meta['mai_trending'] ) );
-
-		$user_meta = get_registered_meta_keys( 'user' );
-		$check( 'User meta keys registered', isset( $user_meta['mai_views'] ) && isset( $user_meta['mai_trending'] ) );
-
-		$check( '[mai_views] shortcode', shortcode_exists( 'mai_views' ) );
-		$check( 'mai_views_get_count()', function_exists( 'mai_views_get_count' ) );
-		$check( 'mai_views_get_views()', function_exists( 'mai_views_get_views' ) );
-
-		// ── Cron ──
-		WP_CLI::log( '' );
-		WP_CLI::log( WP_CLI::colorize( '%B=== Cron ===%n' ) );
-
-		$next_cron = wp_next_scheduled( 'mai_views_cron_sync' );
-		$check( 'Cron scheduled', (bool) $next_cron, $next_cron ? wp_date( 'Y-m-d H:i:s', $next_cron ) : 'not scheduled' );
-
-		if ( ! $next_cron && $fix ) {
-			wp_schedule_event( time(), 'mai_views_15min', 'mai_views_cron_sync' );
-			WP_CLI::log( WP_CLI::colorize( "    %C\u{2192} Fixed: rescheduled cron%n" ) );
-		}
-
-		$schedules = wp_get_schedules();
-		$check( 'mai_views_15min schedule', isset( $schedules['mai_views_15min'] ), isset( $schedules['mai_views_15min'] ) ? $schedules['mai_views_15min']['interval'] . 's' : 'missing' );
-
-		$last_sync = get_option( 'mai_views_synced', 0 );
-		$sync_age  = $last_sync ? human_time_diff( $last_sync ) . ' ago' : 'never';
-		$sync_stale = $last_sync && ( time() - $last_sync ) > 3600;
-		$check( 'Last sync recent', ! $sync_stale, $sync_age, false );
-
-		// ── Settings & Provider ──
-		WP_CLI::log( '' );
-		WP_CLI::log( WP_CLI::colorize( '%B=== Settings & Provider ===%n' ) );
-
-		$settings = get_option( 'mai_views_settings', [] );
-		$check( 'Settings saved', ! empty( $settings ), 'data_source=' . ( $settings['data_source'] ?? 'NOT SET' ) );
-
-		$data_source = $settings['data_source'] ?? 'self_hosted';
-
-		if ( 'self_hosted' !== $data_source ) {
-			$provider = ProviderSync::get_provider();
-			$check( 'Provider found', (bool) $provider, $provider ? $provider->get_label() : 'no matching provider for ' . $data_source );
-
-			if ( $provider ) {
-				$check( 'Provider available', $provider->is_available(), $provider->is_available() ? 'connected' : ( method_exists( $provider, 'get_unavailable_reason' ) ? $provider->get_unavailable_reason() : 'unavailable' ) );
-
-				$last_error = method_exists( $provider, 'get_last_error' ) ? $provider::get_last_error() : '';
-				$check( 'No provider errors', empty( $last_error ), $last_error ?: 'clean', false );
-
-				$provider_sync = get_option( 'mai_views_provider_last_sync', 0 );
-				$provider_age  = $provider_sync ? human_time_diff( $provider_sync ) . ' ago' : 'never';
-				WP_CLI::log( WP_CLI::colorize( "  %w  Last provider sync: {$provider_age}%n" ) );
-			}
-		} else {
-			WP_CLI::log( '  Self-hosted mode — no external provider.' );
-		}
-
-		// ── REST Endpoints ──
-		WP_CLI::log( '' );
-		WP_CLI::log( WP_CLI::colorize( '%B=== REST Endpoints ===%n' ) );
-
-		$server     = rest_get_server();
-		$routes     = array_keys( $server->get_routes() );
-		$mai_routes = array_filter( $routes, fn( $r ) => str_starts_with( $r, '/mai-views/' ) );
-		$check( 'REST routes registered', count( $mai_routes ) >= 10, count( $mai_routes ) . ' routes' );
-
-		// Find a published post to test with.
-		$test_post_id = (int) $wpdb->get_var(
-			"SELECT ID FROM $wpdb->posts WHERE post_status = 'publish' AND post_type = 'post' ORDER BY ID ASC LIMIT 1"
-		);
-
-		if ( $test_post_id ) {
-			// Test GET views endpoint.
-			$request  = new \WP_REST_Request( 'GET', "/mai-views/v1/views/post/{$test_post_id}" );
-			$response = rest_do_request( $request );
-			$check( 'GET /views/post/{id}', ! $response->is_error(), 'status=' . $response->get_status() );
-
-			if ( ! $response->is_error() ) {
-				$data = $response->get_data();
-				$has_keys = isset( $data['views'] ) && isset( $data['trending'] );
-				$check( '  Response shape', $has_keys, $has_keys ? "views={$data['views']} trending={$data['trending']}" : 'missing keys' );
+			if ( $table_failed ) {
+				Database::create_table();
+				WP_CLI::log( WP_CLI::colorize( "  %C\u{2192} Fixed: created table%n" ) );
 			}
 
-			// Test POST view endpoint (records a real view).
-			$request = new \WP_REST_Request( 'POST', "/mai-views/v1/view/post/{$test_post_id}" );
-			$request->set_header( 'User-Agent', 'Mai-Views-Doctor/1.0' );
-			$response = rest_do_request( $request );
-			$check( 'POST /view/post/{id}', ! $response->is_error(), 'status=' . $response->get_status() );
-
-			if ( ! $response->is_error() ) {
-				$data = $response->get_data();
-				$succeeded = ! empty( $data['success'] );
-
-				// Check if a row exists in the buffer for this post (may be deduped in provider mode).
-				$in_buffer = (int) $wpdb->get_var(
-					$wpdb->prepare(
-						"SELECT COUNT(*) FROM $table WHERE object_id = %d AND object_type = 'post'",
-						$test_post_id
-					)
-				);
-
-				$detail = $succeeded
-					? ( $in_buffer ? "{$in_buffer} buffer rows (ok — may have deduped)" : 'accepted but not in buffer (check bot filter)' )
-					: 'endpoint returned failure';
-
-				$check( '  View accepted', $succeeded, $detail );
-			}
-
-			// Test trending endpoint.
-			$request  = new \WP_REST_Request( 'GET', '/mai-views/v1/views/trending' );
-			$response = rest_do_request( $request );
-			$check( 'GET /views/trending', ! $response->is_error(), 'status=' . $response->get_status() );
-		} else {
-			WP_CLI::log( '  (no published posts to test endpoints against)' );
-		}
-
-		// Test admin endpoints (need a privileged user).
-		$admin_id = Migration::get_first_admin_id();
-
-		if ( $admin_id ) {
-			wp_set_current_user( $admin_id );
-
-			$request  = new \WP_REST_Request( 'GET', '/mai-views/v1/admin/summary' );
-			$response = rest_do_request( $request );
-			$check( 'GET /admin/summary', ! $response->is_error(), 'status=' . $response->get_status() );
-
-			if ( ! $response->is_error() ) {
-				$data  = $response->get_data();
-				$parts = [];
-				foreach ( $data as $k => $v ) {
-					$parts[] = "{$k}={$v}";
-				}
-				WP_CLI::log( '      ' . implode( ' ', $parts ) );
-			}
-
-			$request  = new \WP_REST_Request( 'GET', '/mai-views/v1/admin/top/posts' );
-			$response = rest_do_request( $request );
-			$check( 'GET /admin/top/posts', ! $response->is_error(), 'status=' . $response->get_status() . ' items=' . count( $response->get_data()['items'] ?? [] ) );
-
-			$request  = new \WP_REST_Request( 'GET', '/mai-views/v1/admin/top/terms' );
-			$response = rest_do_request( $request );
-			$check( 'GET /admin/top/terms', ! $response->is_error(), 'status=' . $response->get_status() );
-
-			$request  = new \WP_REST_Request( 'GET', '/mai-views/v1/admin/filters' );
-			$response = rest_do_request( $request );
-			$check( 'GET /admin/filters', ! $response->is_error(), 'status=' . $response->get_status() );
-
-			wp_set_current_user( 0 );
-		}
-
-		// ── Provider API Test ──
-		if ( 'self_hosted' !== $data_source && isset( $provider ) && $provider && $provider->is_available() && $test_post_id ) {
-			WP_CLI::log( '' );
-			WP_CLI::log( WP_CLI::colorize( '%B=== Provider API Test ===%n' ) );
-
-			$path = wp_parse_url( get_permalink( $test_post_id ), PHP_URL_PATH ) ?: '/';
-			$today = gmdate( 'Y-m-d' );
-			$week_ago = gmdate( 'Y-m-d', strtotime( '-7 days' ) );
-
-			// Need auth context for Site Kit.
-			if ( $admin_id ) {
-				wp_set_current_user( $admin_id );
-			}
-
-			$alltime = $provider->get_views( [ $path ], '', $today );
-			$check( 'Provider all-time fetch', ! empty( $alltime ) || is_array( $alltime ), empty( $alltime ) ? 'empty (post may have no views)' : 'views=' . ( $alltime[ $path ] ?? 0 ) . " for {$path}", false );
-
-			$trending = $provider->get_views( [ $path ], $week_ago, $today );
-			$check( 'Provider trending fetch', ! empty( $trending ) || is_array( $trending ), empty( $trending ) ? 'empty (no recent views)' : 'views=' . ( $trending[ $path ] ?? 0 ) . ' (7d)', false );
-
-			if ( $admin_id ) {
-				wp_set_current_user( 0 );
+			if ( $cron_failed ) {
+				wp_schedule_event( time(), 'mai_views_15min', 'mai_views_cron_sync' );
+				WP_CLI::log( WP_CLI::colorize( "  %C\u{2192} Fixed: rescheduled cron%n" ) );
 			}
 		}
 
-		// ── Mai Publisher Coexistence ──
 		WP_CLI::log( '' );
-		WP_CLI::log( WP_CLI::colorize( '%B=== Mai Publisher Coexistence ===%n' ) );
+		$summary = sprintf( '%d passed, %d failed, %d warnings out of %d checks', $results['pass'], $results['fail'], $results['warn'], $results['total'] );
 
-		$pub_active = class_exists( 'Mai_Publisher_Plugin' );
-		WP_CLI::log( '  Mai Publisher: ' . ( $pub_active ? 'active' : 'not active' ) );
-
-		if ( $pub_active ) {
-			$has_ajax = has_action( 'wp_ajax_maipub_views' );
-			$check( 'Views class NOT instantiated', ! $has_ajax, $has_ajax ? 'maipub_views AJAX hook found (double-loading!)' : 'correctly gated' );
-
-			$pub_settings = get_option( 'mai_publisher', [] );
-			$check( 'Publisher settings readable', ! empty( $pub_settings ), ! empty( $pub_settings ) ? 'views_api=' . ( $pub_settings['views_api'] ?? 'not set' ) : 'empty', false );
-		}
-
-		// ── Summary ──
-		WP_CLI::log( '' );
-		$total = $pass + $fail + $warn;
-		$summary = sprintf( '%d passed, %d failed, %d warnings out of %d checks', $pass, $fail, $warn, $total );
-
-		if ( $fail > 0 ) {
+		if ( $results['fail'] > 0 ) {
 			WP_CLI::error( $summary, false );
-		} elseif ( $warn > 0 ) {
+		} elseif ( $results['warn'] > 0 ) {
 			WP_CLI::warning( $summary );
 		} else {
 			WP_CLI::success( $summary );
