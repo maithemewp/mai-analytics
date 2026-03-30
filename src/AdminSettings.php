@@ -152,6 +152,15 @@ class AdminSettings {
 			[ 'key' => 'matomo_token', 'type' => 'password', 'description' => __( 'Matomo API authentication token.', 'mai-views' ), 'class' => 'mai-views-provider-matomo' ]
 		);
 
+		add_settings_field(
+			'trending_window',
+			__( 'Trending Window', 'mai-views' ),
+			[ $this, 'render_text_field' ],
+			'mai-views-settings',
+			'mai_views_data_source',
+			[ 'key' => 'trending_window', 'type' => 'number', 'description' => __( 'Number of days used to calculate trending views.', 'mai-views' ) ]
+		);
+
 		// Redirect back to our tab after settings save.
 		add_filter( 'wp_redirect', function( string $location ): string {
 			if ( str_contains( $location, 'page=mai-views-settings' ) ) {
@@ -187,8 +196,9 @@ class AdminSettings {
 		$sanitized['data_source']    = in_array( $input['data_source'] ?? '', $valid_sources, true )
 			? $input['data_source']
 			: 'self_hosted';
-		$sanitized['sync_user']      = get_current_user_id();
-		$sanitized['matomo_url']     = esc_url_raw( $input['matomo_url'] ?? '' );
+		$sanitized['sync_user']        = get_current_user_id();
+		$sanitized['trending_window'] = max( 1, absint( $input['trending_window'] ?? 7 ) );
+		$sanitized['matomo_url']      = esc_url_raw( $input['matomo_url'] ?? '' );
 		$sanitized['matomo_site_id'] = absint( $input['matomo_site_id'] ?? 0 ) ?: '';
 		$sanitized['matomo_token']   = sanitize_text_field( $input['matomo_token'] ?? '' );
 
