@@ -78,6 +78,11 @@ class AdminRestApi {
 					'default'           => '',
 					'sanitize_callback' => 'sanitize_text_field',
 				],
+				'published_days' => [
+					'default'           => 0,
+					'validate_callback' => fn( $p ) => is_numeric( $p ) && (int) $p >= 0 && (int) $p <= 365,
+					'sanitize_callback' => 'absint',
+				],
 			] ),
 		] );
 
@@ -241,17 +246,18 @@ class AdminRestApi {
 	public function get_top_posts( WP_REST_Request $request ): WP_REST_Response {
 		global $wpdb;
 
-		$orderby   = $request->get_param( 'orderby' );
-		$order     = $request->get_param( 'order' );
-		$post_type = $request->get_param( 'post_type' );
-		$taxonomy  = $request->get_param( 'taxonomy' );
-		$term_ids  = array_filter( array_map( 'absint', explode( ',', (string) $request->get_param( 'term_id' ) ) ) );
-		$authors   = array_filter( array_map( 'absint', explode( ',', (string) $request->get_param( 'author' ) ) ) );
-		$search    = $request->get_param( 'search' );
-		$page      = (int) $request->get_param( 'page' );
-		$per_page  = (int) $request->get_param( 'per_page' );
-		$offset    = ( $page - 1 ) * $per_page;
-		$meta_key  = 'trending' === $orderby ? 'mai_trending' : 'mai_views';
+		$orderby        = $request->get_param( 'orderby' );
+		$order          = $request->get_param( 'order' );
+		$post_type      = $request->get_param( 'post_type' );
+		$taxonomy       = $request->get_param( 'taxonomy' );
+		$term_ids       = array_filter( array_map( 'absint', explode( ',', (string) $request->get_param( 'term_id' ) ) ) );
+		$authors        = array_filter( array_map( 'absint', explode( ',', (string) $request->get_param( 'author' ) ) ) );
+		$search         = $request->get_param( 'search' );
+		$published_days = (int) $request->get_param( 'published_days' );
+		$page           = (int) $request->get_param( 'page' );
+		$per_page       = (int) $request->get_param( 'per_page' );
+		$offset         = ( $page - 1 ) * $per_page;
+		$meta_key       = 'trending' === $orderby ? 'mai_trending' : 'mai_views';
 		$other_key = 'trending' === $orderby ? 'mai_views' : 'mai_trending';
 
 		$public_types = get_post_types( [ 'public' => true ] );
@@ -287,6 +293,10 @@ class AdminRestApi {
 			$joins   .= " INNER JOIN $wpdb->term_relationships tr ON p.ID = tr.object_id";
 			$joins   .= " INNER JOIN $wpdb->term_taxonomy tt ON tr.term_taxonomy_id = tt.term_taxonomy_id";
 			$wheres[] = $wpdb->prepare( 'tt.taxonomy = %s', $taxonomy );
+		}
+
+		if ( $published_days > 0 ) {
+			$wheres[] = $wpdb->prepare( 'p.post_date > DATE_SUB(NOW(), INTERVAL %d DAY)', $published_days );
 		}
 
 		$where_sql = implode( ' AND ', $wheres );
@@ -585,6 +595,8 @@ class AdminRestApi {
 	 * @return WP_REST_Response Available post types and taxonomies.
 	 */
 	public function get_filters( WP_REST_Request $request ): WP_REST_Response {
+		global $wpdb;
+
 		// Public post types.
 		$post_types = [];
 
@@ -605,9 +617,27 @@ class AdminRestApi {
 			];
 		}
 
+		// Authors with views.
+		$authors = [];
+		$author_rows = $wpdb->get_results(
+			"SELECT u.ID, u.display_name
+			 FROM $wpdb->users u
+			 INNER JOIN $wpdb->usermeta um ON u.ID = um.user_id
+			 WHERE um.meta_key = 'mai_views' AND CAST(um.meta_value AS UNSIGNED) > 0
+			 ORDER BY u.display_name ASC"
+		);
+
+		foreach ( $author_rows as $author ) {
+			$authors[] = [
+				'id'   => (int) $author->ID,
+				'name' => $author->display_name,
+			];
+		}
+
 		return new WP_REST_Response( [
 			'post_types' => $post_types,
 			'taxonomies' => $taxonomies,
+			'authors'    => $authors,
 		] );
 	}
 

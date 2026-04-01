@@ -12,8 +12,8 @@
 	var currentOrder   = 'desc';
 	var searchQuery   = '';
 	var searchTimer   = null;
+	var publishedDays = 0;
 	var filtersData   = null;
-	var authorSelect  = null;
 	var termSelect    = null;
 
 	/**
@@ -42,7 +42,9 @@
 				currentOrderby = 'views';
 				currentOrder   = 'desc';
 				searchQuery    = '';
+				publishedDays  = 0;
 				document.getElementById('mai-views-search').value = '';
+				clearPublishedDaysUI();
 				updateFilterVisibility();
 				loadTable();
 			});
@@ -57,6 +59,11 @@
 		document.getElementById('mai-views-taxonomy').addEventListener('change', function () {
 			currentPage = 1;
 			updateTermDropdown();
+			loadTable();
+		});
+
+		document.getElementById('mai-views-author').addEventListener('change', function () {
+			currentPage = 1;
 			loadTable();
 		});
 
@@ -86,16 +93,47 @@
 			}, 300);
 		});
 
+		// Published-within select.
+		var publishedSelect = document.getElementById('mai-views-published-days');
+		var customDaysInput = document.getElementById('mai-views-custom-days');
+		var customDaysWrap  = document.querySelector('.mai-views-custom-days');
+		var customTimer     = null;
+
+		publishedSelect.addEventListener('change', function () {
+			var val = this.value;
+
+			if (val === 'custom') {
+				customDaysWrap.style.display = '';
+				customDaysInput.focus();
+				return;
+			}
+
+			customDaysWrap.style.display = 'none';
+			customDaysInput.value = '';
+			publishedDays = val ? parseInt(val, 10) : 0;
+			currentPage   = 1;
+			loadTable();
+		});
+
+		customDaysInput.addEventListener('input', function () {
+			clearTimeout(customTimer);
+			var input = this;
+
+			customTimer = setTimeout(function () {
+				var val = parseInt(input.value, 10);
+				if (val > 365) { val = 365; input.value = 365; }
+				publishedDays = val > 0 ? val : 0;
+				currentPage   = 1;
+				loadTable();
+			}, 400);
+		});
+
 	}
 
 	/**
 	 * Initialize Tom Select instances.
 	 */
 	function initSelects() {
-		authorSelect = initTomSelect('mai-views-author', 'author', function () {
-			return {};
-		});
-
 		termSelect = initTomSelect('mai-views-term', 'term', function () {
 			return { taxonomy: document.getElementById('mai-views-taxonomy').value };
 		});
@@ -207,9 +245,23 @@
 				taxSelect.add(new Option(tax.label, tax.slug));
 			});
 
+			var authorSelect = document.getElementById('mai-views-author');
+			data.authors.forEach(function (author) {
+				authorSelect.add(new Option(author.name, author.id));
+			});
+
 			updateFilterVisibility();
 			updateTermDropdown();
 		});
+	}
+
+	/**
+	 * Reset the published-within filter UI without changing state.
+	 */
+	function clearPublishedDaysUI() {
+		document.getElementById('mai-views-published-days').value = '';
+		document.getElementById('mai-views-custom-days').value = '';
+		document.querySelector('.mai-views-custom-days').style.display = 'none';
 	}
 
 	/**
@@ -228,12 +280,13 @@
 			var pt     = document.getElementById('mai-views-post-type').value;
 			var tax    = document.getElementById('mai-views-taxonomy').value;
 			var terms  = termSelect ? termSelect.getValue() : [];
-			var authors = authorSelect ? authorSelect.getValue() : [];
+			var author = document.getElementById('mai-views-author').value;
 
 			if (pt)              params.set('post_type', pt);
 			if (tax)             params.set('taxonomy', tax);
 			if (terms.length)    params.set('term_id', terms.join(','));
-			if (authors.length)  params.set('author', authors.join(','));
+			if (author)          params.set('author', author);
+			if (publishedDays > 0) params.set('published_days', publishedDays);
 		} else if (activeTab === 'terms') {
 			var tax2 = document.getElementById('mai-views-taxonomy').value;
 			if (tax2) params.set('taxonomy', tax2);
@@ -543,12 +596,20 @@
 			});
 		}
 
-		// Authors (Tom Select multi).
-		if (authorSelect && authorSelect.getValue().length && (activeTab === 'posts')) {
-			authorSelect.getValue().forEach(function (val) {
-				var item = authorSelect.getItem(val);
-				if (item) filters.push(item.textContent);
-			});
+		// Author.
+		var authorEl = document.getElementById('mai-views-author');
+		if (authorEl.value && (activeTab === 'posts')) {
+			filters.push(authorEl.options[authorEl.selectedIndex].text);
+		}
+
+		// Published within.
+		if (publishedDays > 0 && activeTab === 'posts') {
+			var pdSelect = document.getElementById('mai-views-published-days');
+			if (pdSelect.value === 'custom') {
+				filters.push('Published within ' + publishedDays + (publishedDays === 1 ? ' day' : ' days'));
+			} else {
+				filters.push('Published within ' + pdSelect.options[pdSelect.selectedIndex].text);
+			}
 		}
 
 		// Search query.

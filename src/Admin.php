@@ -208,7 +208,23 @@ class Admin {
 				<option value=""><?php esc_html_e( 'All Taxonomies', 'mai-views' ); ?></option>
 			</select>
 			<select id="mai-views-term" class="mai-views-tom-select" style="display:none;" placeholder="<?php esc_attr_e( 'Search terms...', 'mai-views' ); ?>" multiple></select>
-			<select id="mai-views-author" class="mai-views-tom-select mai-views-filter-posts" placeholder="<?php esc_attr_e( 'Search authors...', 'mai-views' ); ?>" multiple></select>
+			<select id="mai-views-author" class="mai-views-filter-posts">
+				<option value=""><?php esc_html_e( 'All Authors', 'mai-views' ); ?></option>
+			</select>
+			<select id="mai-views-published-days" class="mai-views-filter-posts">
+				<option value=""><?php esc_html_e( 'All Publish Dates', 'mai-views' ); ?></option>
+				<option value="3"><?php esc_html_e( '3 days', 'mai-views' ); ?></option>
+				<option value="7"><?php esc_html_e( '7 days (1 week)', 'mai-views' ); ?></option>
+				<option value="14"><?php esc_html_e( '14 days (2 weeks)', 'mai-views' ); ?></option>
+				<option value="21"><?php esc_html_e( '21 days (3 weeks)', 'mai-views' ); ?></option>
+				<option value="28"><?php esc_html_e( '28 days (4 weeks)', 'mai-views' ); ?></option>
+				<option value="60"><?php esc_html_e( '60 days (2 months)', 'mai-views' ); ?></option>
+				<option value="90"><?php esc_html_e( '90 days (3 months)', 'mai-views' ); ?></option>
+				<option value="custom"><?php esc_html_e( 'Custom Days', 'mai-views' ); ?></option>
+			</select>
+			<span class="mai-views-custom-days" style="display:none;">
+				<input type="number" id="mai-views-custom-days" min="1" max="365" placeholder="<?php esc_attr_e( 'Days', 'mai-views' ); ?>">
+			</span>
 		</div>
 
 		<!-- Active Filters -->

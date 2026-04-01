@@ -77,6 +77,11 @@
 
 .mai-views-filters select {
 	max-width: 200px;
+}
+
+/* Published Within Filter — custom days input */
+.mai-views-custom-days input {
+	width: 70px;
 	padding: 4px 8px;
 	border: 1px solid #8c8f94;
 	border-radius: 3px;
