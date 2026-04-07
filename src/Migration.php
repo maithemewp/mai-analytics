@@ -1,11 +1,11 @@
 <?php
 
-namespace Mai\Views;
+namespace Mai\Analytics;
 
 class Migration {
 
 	/**
-	 * Runs one-time migrations from Mai Publisher and/or old Mai Analytics installs.
+	 * Runs one-time migrations from Mai Publisher and/or legacy meta keys.
 	 *
 	 * Called early in Plugin::init() before other components load.
 	 *
@@ -13,19 +13,19 @@ class Migration {
 	 */
 	public static function maybe_migrate(): void {
 		self::maybe_migrate_from_publisher();
-		self::maybe_migrate_from_analytics();
+		self::maybe_migrate_legacy_meta_keys();
 	}
 
 	/**
 	 * Migrates views-related settings from Mai Publisher's option.
 	 *
-	 * Only runs if mai_views_settings doesn't exist yet and mai_publisher option is present.
+	 * Only runs if mai_analytics_settings doesn't exist yet and mai_publisher option is present.
 	 * Reads the Mai Publisher option but does not modify it.
 	 *
 	 * @return void
 	 */
 	private static function maybe_migrate_from_publisher(): void {
-		if ( get_option( 'mai_views_migrated_from_publisher' ) ) {
+		if ( get_option( 'mai_analytics_migrated_from_publisher' ) ) {
 			return;
 		}
 
@@ -37,7 +37,7 @@ class Migration {
 
 		$views_api = $publisher['views_api'] ?? 'disabled';
 
-		// Map Mai Publisher's views_api to Mai Views' data_source.
+		// Map Mai Publisher's views_api to Mai Analytics' data_source.
 		$data_source = in_array( $views_api, [ 'matomo', 'jetpack', 'disabled' ], true )
 			? $views_api
 			: 'self_hosted';
@@ -50,11 +50,11 @@ class Migration {
 			'matomo_token'   => $publisher['matomo_token'] ?? '',
 		];
 
-		update_option( 'mai_views_settings', $settings, false );
+		update_option( 'mai_analytics_settings', $settings, false );
 
 		// Store Mai Publisher's trending_days and views_interval as filter defaults
 		// via a persistent option, since they were DB-backed in Mai Publisher
-		// but are filter-only in Mai Views.
+		// but are filter-only in Mai Analytics.
 		$filter_defaults = [];
 
 		if ( ! empty( $publisher['trending_days'] ) ) {
@@ -66,74 +66,40 @@ class Migration {
 		}
 
 		if ( $filter_defaults ) {
-			update_option( 'mai_views_migrated_defaults', $filter_defaults, false );
+			update_option( 'mai_analytics_migrated_defaults', $filter_defaults, false );
 		}
 
-		update_option( 'mai_views_migrated_from_publisher', true, false );
+		update_option( 'mai_analytics_migrated_from_publisher', true, false );
 	}
 
 	/**
-	 * Migrates options and meta from old Mai Analytics installs.
+	 * Renames legacy meta keys from early Mai Analytics dev installs.
 	 *
-	 * Only relevant for test/dev installs that ran Mai Analytics before the rename.
-	 *
-	 * @return void
-	 */
-	private static function maybe_migrate_from_analytics(): void {
-		if ( get_option( 'mai_views_migrated_from_analytics' ) ) {
-			return;
-		}
-
-		// Check if any old Mai Analytics options exist.
-		$old_settings = get_option( 'mai_analytics_settings', [] );
-
-		if ( ! $old_settings ) {
-			return;
-		}
-
-		// Migrate settings if not already set.
-		if ( ! get_option( 'mai_views_settings' ) ) {
-			update_option( 'mai_views_settings', $old_settings, false );
-		}
-
-		// Migrate options.
-		$option_map = [
-			'mai_analytics_synced'                => 'mai_views_synced',
-			'mai_analytics_provider_last_sync'    => 'mai_views_provider_last_sync',
-			'mai_analytics_post_type_views'       => 'mai_views_post_type_views',
-			'mai_analytics_post_type_views_web'   => 'mai_views_post_type_views_web',
-			'mai_analytics_post_type_views_app'   => 'mai_views_post_type_views_app',
-			'mai_analytics_post_type_trending'    => 'mai_views_post_type_trending',
-		];
-
-		foreach ( $option_map as $old_key => $new_key ) {
-			$old_value = get_option( $old_key );
-
-			if ( false !== $old_value && ! get_option( $new_key ) ) {
-				update_option( $new_key, $old_value, false );
-				delete_option( $old_key );
-			}
-		}
-
-		// Clean up old settings option.
-		delete_option( 'mai_analytics_settings' );
-
-		// Migrate meta keys in bulk via direct SQL for efficiency.
-		self::migrate_meta_keys();
-
-		update_option( 'mai_views_migrated_from_analytics', true, false );
-	}
-
-	/**
-	 * Renames old Mai Analytics meta keys to the new Mai Views keys.
+	 * The original Mai Analytics used mai_analytics_views, mai_analytics_views_web, etc.
+	 * as meta keys. Current Mai Analytics uses mai_views, mai_views_web, etc.
 	 *
 	 * For mai_analytics_views → mai_views and mai_analytics_trending → mai_trending,
 	 * keeps the higher value if both old and new keys exist.
 	 *
 	 * @return void
 	 */
-	private static function migrate_meta_keys(): void {
+	private static function maybe_migrate_legacy_meta_keys(): void {
+		if ( get_option( 'mai_analytics_migrated_from_analytics' ) ) {
+			return;
+		}
+
 		global $wpdb;
+
+		// Check if any old meta keys exist before doing work.
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		$has_old = (bool) $wpdb->get_var(
+			"SELECT 1 FROM {$wpdb->postmeta} WHERE meta_key LIKE 'mai_analytics_views%' OR meta_key = 'mai_analytics_trending' LIMIT 1"
+		);
+
+		if ( ! $has_old ) {
+			update_option( 'mai_analytics_migrated_from_analytics', true, false );
+			return;
+		}
 
 		// Direct renames (no conflict possible).
 		$direct_renames = [
@@ -224,6 +190,8 @@ class Migration {
 				);
 			}
 		}
+
+		update_option( 'mai_analytics_migrated_from_analytics', true, false );
 	}
 
 	/**

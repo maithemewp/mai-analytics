@@ -1,19 +1,19 @@
 <?php
 
-namespace Mai\Views;
+namespace Mai\Analytics;
 
 class ProviderSync {
 
 	/**
 	 * Gets the active web view provider matching the current data_source setting.
 	 *
-	 * Calls the 'mai_views_providers' filter to collect registered provider instances,
+	 * Calls the 'mai_analytics_providers' filter to collect registered provider instances,
 	 * then returns the one whose slug matches Settings::get('data_source').
 	 *
 	 * @return WebViewProvider|null The matched provider, or null if none found.
 	 */
 	public static function get_provider(): ?WebViewProvider {
-		$providers   = apply_filters( 'mai_views_providers', [] );
+		$providers   = apply_filters( 'mai_analytics_providers', [] );
 		$data_source = Settings::get( 'data_source' );
 
 		foreach ( $providers as $provider ) {
@@ -35,19 +35,19 @@ class ProviderSync {
 	 */
 	public static function sync(): void {
 		// Concurrency lock.
-		if ( get_transient( 'mai_views_provider_syncing' ) ) {
+		if ( get_transient( 'mai_analytics_provider_syncing' ) ) {
 			return;
 		}
 
-		set_transient( 'mai_views_provider_syncing', 1, 15 * MINUTE_IN_SECONDS );
+		set_transient( 'mai_analytics_provider_syncing', 1, 15 * MINUTE_IN_SECONDS );
 
 		// Mark sync as started so fallback triggers don't re-fire while we're working.
-		update_option( 'mai_views_provider_last_sync', time(), false );
+		update_option( 'mai_analytics_provider_last_sync', time(), false );
 
 		$provider = self::get_provider();
 
 		if ( ! $provider || ! $provider->is_available() ) {
-			delete_transient( 'mai_views_provider_syncing' );
+			delete_transient( 'mai_analytics_provider_syncing' );
 			return;
 		}
 
@@ -64,7 +64,7 @@ class ProviderSync {
 		global $wpdb;
 
 		$table          = Database::get_table_name();
-		$last_sync      = (int) get_option( 'mai_views_provider_last_sync', 0 );
+		$last_sync      = (int) get_option( 'mai_analytics_provider_last_sync', 0 );
 		$last_sync_date = $last_sync ? gmdate( 'Y-m-d H:i:s', $last_sync ) : '1970-01-01 00:00:00';
 		$trending_days  = (int) Settings::get( 'trending_window' );
 		$retention_days = (int) Settings::get( 'retention' );
@@ -99,7 +99,7 @@ class ProviderSync {
 
 		// Schedule catchup if batches remain.
 		if ( $processed < count( $batches ) ) {
-			wp_schedule_single_event( time() + 60, 'mai_views_provider_catchup' );
+			wp_schedule_single_event( time() + 60, 'mai_analytics_provider_catchup' );
 		}
 
 		self::finish_sync( $wpdb, $table, $retention_days );
@@ -150,10 +150,10 @@ class ProviderSync {
 		$provider_failed = empty( $web_views_all ) && empty( $web_views_trending );
 
 		// Options for post_type archives.
-		$pt_views     = get_option( 'mai_views_post_type_views', [] );
-		$pt_views_web = get_option( 'mai_views_post_type_views_web', [] );
-		$pt_views_app = get_option( 'mai_views_post_type_views_app', [] );
-		$pt_trending  = get_option( 'mai_views_post_type_trending', [] );
+		$pt_views     = get_option( 'mai_analytics_post_type_views', [] );
+		$pt_views_web = get_option( 'mai_analytics_post_type_views_web', [] );
+		$pt_views_app = get_option( 'mai_analytics_post_type_views_app', [] );
+		$pt_trending  = get_option( 'mai_analytics_post_type_trending', [] );
 
 		$pt_options_dirty = false;
 
@@ -243,10 +243,10 @@ class ProviderSync {
 		}
 
 		if ( $pt_options_dirty ) {
-			update_option( 'mai_views_post_type_views', $pt_views, false );
-			update_option( 'mai_views_post_type_views_web', $pt_views_web, false );
-			update_option( 'mai_views_post_type_views_app', $pt_views_app, false );
-			update_option( 'mai_views_post_type_trending', $pt_trending, false );
+			update_option( 'mai_analytics_post_type_views', $pt_views, false );
+			update_option( 'mai_analytics_post_type_views_web', $pt_views_web, false );
+			update_option( 'mai_analytics_post_type_views_app', $pt_views_app, false );
+			update_option( 'mai_analytics_post_type_trending', $pt_trending, false );
 		}
 	}
 
@@ -268,8 +268,8 @@ class ProviderSync {
 			)
 		);
 
-		update_option( 'mai_views_provider_last_sync', time(), false );
-		delete_transient( 'mai_views_provider_syncing' );
+		update_option( 'mai_analytics_provider_last_sync', time(), false );
+		delete_transient( 'mai_analytics_provider_syncing' );
 	}
 
 	/**
@@ -363,9 +363,9 @@ class ProviderSync {
 		$trend_start = gmdate( 'Y-m-d', strtotime( "-{$trending_days} days" ) );
 
 		// Options for post_type archives.
-		$pt_views     = get_option( 'mai_views_post_type_views', [] );
-		$pt_views_web = get_option( 'mai_views_post_type_views_web', [] );
-		$pt_trending  = get_option( 'mai_views_post_type_trending', [] );
+		$pt_views     = get_option( 'mai_analytics_post_type_views', [] );
+		$pt_views_web = get_option( 'mai_analytics_post_type_views_web', [] );
+		$pt_trending  = get_option( 'mai_analytics_post_type_trending', [] );
 
 		foreach ( $batches as $batch_index => $batch ) {
 			// Build path map.
@@ -425,7 +425,7 @@ class ProviderSync {
 						if ( null !== $web_total ) {
 							$pt_views_web[ $key ] = $web_total;
 						}
-						$app_count            = (int) ( get_option( 'mai_views_post_type_views_app', [] )[ $key ] ?? 0 );
+						$app_count            = (int) ( get_option( 'mai_analytics_post_type_views_app', [] )[ $key ] ?? 0 );
 						$pt_views[ $key ]     = ( $pt_views_web[ $key ] ?? 0 ) + $app_count;
 						$pt_trending[ $key ]  = ( $web_trending ?? 0 ) + $app_trending;
 					} else {
@@ -448,9 +448,9 @@ class ProviderSync {
 			}
 
 			// Persist post_type options after each batch.
-			update_option( 'mai_views_post_type_views', $pt_views, false );
-			update_option( 'mai_views_post_type_views_web', $pt_views_web, false );
-			update_option( 'mai_views_post_type_trending', $pt_trending, false );
+			update_option( 'mai_analytics_post_type_views', $pt_views, false );
+			update_option( 'mai_analytics_post_type_views_web', $pt_views_web, false );
+			update_option( 'mai_analytics_post_type_trending', $pt_trending, false );
 
 			yield [
 				'batch'   => $batch_index + 1,

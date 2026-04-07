@@ -1,6 +1,6 @@
 <?php
 
-namespace Mai\Views;
+namespace Mai\Analytics;
 
 class Cron {
 
@@ -9,8 +9,8 @@ class Cron {
 	 */
 	public function __construct() {
 		add_filter( 'cron_schedules', [ $this, 'add_schedule' ] );
-		add_action( 'mai_views_cron_sync', [ $this, 'maybe_sync' ] );
-		add_action( 'mai_views_provider_catchup', [ $this, 'maybe_provider_sync' ] );
+		add_action( 'mai_analytics_cron_sync', [ $this, 'maybe_sync' ] );
+		add_action( 'mai_analytics_provider_catchup', [ $this, 'maybe_provider_sync' ] );
 
 		// Self-heal: re-schedule cron if deleted, force sync if stale.
 		add_action( 'admin_init', [ $this, 'ensure_healthy' ] );
@@ -25,15 +25,20 @@ class Cron {
 	 * @return void
 	 */
 	public function ensure_healthy(): void {
-		if ( ! wp_next_scheduled( 'mai_views_cron_sync' ) ) {
-			wp_schedule_event( time(), 'mai_views_15min', 'mai_views_cron_sync' );
+		// Clean up legacy cron hook from when plugin was named Mai Views.
+		if ( wp_next_scheduled( 'mai_views_cron_sync' ) ) {
+			wp_clear_scheduled_hook( 'mai_views_cron_sync' );
+		}
+
+		if ( ! wp_next_scheduled( 'mai_analytics_cron_sync' ) ) {
+			wp_schedule_event( time(), 'mai_analytics_15min', 'mai_analytics_cron_sync' );
 		}
 
 		if ( 'disabled' === Settings::get( 'data_source' ) ) {
 			return;
 		}
 
-		$last_sync = (int) get_option( 'mai_views_synced', 0 );
+		$last_sync = (int) get_option( 'mai_analytics_synced', 0 );
 
 		// If sync has never run or hasn't run in 30+ minutes, force it now.
 		if ( ! $last_sync || ( time() - $last_sync ) > 30 * MINUTE_IN_SECONDS ) {
@@ -55,7 +60,7 @@ class Cron {
 			return;
 		}
 
-		$last_sync = (int) get_option( 'mai_views_synced', 0 );
+		$last_sync = (int) get_option( 'mai_analytics_synced', 0 );
 
 		if ( $last_sync && ( time() - $last_sync ) < HOUR_IN_SECONDS ) {
 			return;
@@ -72,9 +77,9 @@ class Cron {
 	 * @return array The modified schedules with the 15-minute interval added.
 	 */
 	public function add_schedule( array $schedules ): array {
-		$schedules['mai_views_15min'] = [
+		$schedules['mai_analytics_15min'] = [
 			'interval' => 15 * MINUTE_IN_SECONDS,
-			'display'  => __( 'Every 15 Minutes', 'mai-views' ),
+			'display'  => __( 'Every 15 Minutes', 'mai-analytics' ),
 		];
 
 		return $schedules;

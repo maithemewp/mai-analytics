@@ -1,6 +1,6 @@
 <?php
 
-namespace Mai\Views;
+namespace Mai\Analytics;
 
 class BotFilter {
 
@@ -26,13 +26,13 @@ class BotFilter {
 	}
 
 	/**
-	 * Gets the list of bot user-agent patterns. Filterable via mai_views_bot_patterns.
+	 * Gets the list of bot user-agent patterns. Filterable via mai_analytics_bot_patterns.
 	 *
 	 * @return string[] Array of bot user-agent substring patterns.
 	 */
 	public static function get_patterns(): array {
-		$patterns = require MAI_VIEWS_PLUGIN_DIR . 'data/bot-patterns.php';
+		$patterns = require MAI_ANALYTICS_PLUGIN_DIR . 'data/bot-patterns.php';
 
-		return apply_filters( 'mai_views_bot_patterns', $patterns );
+		return apply_filters( 'mai_analytics_bot_patterns', $patterns );
 	}
 }

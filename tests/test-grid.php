@@ -1,6 +1,6 @@
 <?php
 
-use Mai\Views\MaiGrid;
+use Mai\Analytics\MaiGrid;
 
 class Test_Grid extends WP_UnitTestCase {
 
@@ -18,7 +18,7 @@ class Test_Grid extends WP_UnitTestCase {
 		$result = $this->grid->add_trending_choice( $field );
 
 		$this->assertArrayHasKey( 'trending', $result['choices'] );
-		$this->assertStringContainsString( 'Mai Views', $result['choices']['trending'] );
+		$this->assertStringContainsString( 'Mai Analytics', $result['choices']['trending'] );
 	}
 
 	public function test_views_choice_added_first(): void {

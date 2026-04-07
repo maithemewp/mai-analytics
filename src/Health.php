@@ -1,6 +1,6 @@
 <?php
 
-namespace Mai\Views;
+namespace Mai\Analytics;
 
 class Health {
 
@@ -32,8 +32,8 @@ class Health {
 		};
 
 		// ── Core ──
-		$check( 'Core', 'Plugin loaded', defined( 'MAI_VIEWS_VERSION' ), 'v' . MAI_VIEWS_VERSION );
-		$check( 'Core', 'Constants defined', defined( 'MAI_VIEWS_PLUGIN_DIR' ) && defined( 'MAI_VIEWS_PLUGIN_FILE' ) );
+		$check( 'Core', 'Plugin loaded', defined( 'MAI_ANALYTICS_VERSION' ), 'v' . MAI_ANALYTICS_VERSION );
+		$check( 'Core', 'Constants defined', defined( 'MAI_ANALYTICS_PLUGIN_DIR' ) && defined( 'MAI_ANALYTICS_PLUGIN_FILE' ) );
 		$check( 'Core', 'Autoloader', class_exists( Plugin::class ) && class_exists( Sync::class ) );
 
 		$env      = wp_get_environment_type();
@@ -46,7 +46,7 @@ class Health {
 		$check( 'Database', 'Buffer table exists', $table_exists, $table );
 
 		$db_version = get_option( Database::DB_VERSION_OPTION, '0' );
-		$check( 'Database', 'DB version current', version_compare( $db_version, MAI_VIEWS_DB_VERSION, '>=' ), "stored={$db_version} required=" . MAI_VIEWS_DB_VERSION );
+		$check( 'Database', 'DB version current', version_compare( $db_version, MAI_ANALYTICS_DB_VERSION, '>=' ), "stored={$db_version} required=" . MAI_ANALYTICS_DB_VERSION );
 
 		$buffer_rows = $table_exists ? (int) $wpdb->get_var( "SELECT COUNT(*) FROM $table" ) : 0;
 		$check( 'Database', 'Buffer rows', true, number_format( $buffer_rows ) );
@@ -67,23 +67,23 @@ class Health {
 		$check( 'Meta', 'User meta keys registered', isset( $user_meta['mai_views'] ) && isset( $user_meta['mai_trending'] ) );
 
 		$check( 'Meta', '[mai_views] shortcode', shortcode_exists( 'mai_views' ) );
-		$check( 'Meta', 'mai_views_get_count()', function_exists( 'mai_views_get_count' ) );
-		$check( 'Meta', 'mai_views_get_views()', function_exists( 'mai_views_get_views' ) );
+		$check( 'Meta', 'mai_analytics_get_count()', function_exists( 'mai_analytics_get_count' ) );
+		$check( 'Meta', 'mai_analytics_get_views()', function_exists( 'mai_analytics_get_views' ) );
 
 		// ── Cron ──
-		$next_cron = wp_next_scheduled( 'mai_views_cron_sync' );
+		$next_cron = wp_next_scheduled( 'mai_analytics_cron_sync' );
 		$check( 'Cron', 'Cron scheduled', (bool) $next_cron, $next_cron ? wp_date( 'Y-m-d H:i:s', $next_cron ) : 'not scheduled' );
 
 		$schedules = wp_get_schedules();
-		$check( 'Cron', 'mai_views_15min schedule', isset( $schedules['mai_views_15min'] ), isset( $schedules['mai_views_15min'] ) ? $schedules['mai_views_15min']['interval'] . 's' : 'missing' );
+		$check( 'Cron', 'mai_analytics_15min schedule', isset( $schedules['mai_analytics_15min'] ), isset( $schedules['mai_analytics_15min'] ) ? $schedules['mai_analytics_15min']['interval'] . 's' : 'missing' );
 
-		$last_sync  = get_option( 'mai_views_synced', 0 );
+		$last_sync  = get_option( 'mai_analytics_synced', 0 );
 		$sync_age   = $last_sync ? human_time_diff( $last_sync ) . ' ago' : 'never';
 		$sync_stale = $last_sync && ( time() - $last_sync ) > 3600;
 		$check( 'Cron', 'Last sync recent', ! $sync_stale, $sync_age, false );
 
 		// ── Settings & Provider ──
-		$settings    = get_option( 'mai_views_settings', [] );
+		$settings    = get_option( 'mai_analytics_settings', [] );
 		$data_source = $settings['data_source'] ?? 'self_hosted';
 		$check( 'Provider', 'Settings saved', ! empty( $settings ), 'data_source=' . $data_source );
 
@@ -97,7 +97,7 @@ class Health {
 				$last_error = method_exists( $provider, 'get_last_error' ) ? $provider::get_last_error() : '';
 				$check( 'Provider', 'No provider errors', empty( $last_error ), $last_error ?: 'clean', false );
 
-				$provider_sync = get_option( 'mai_views_provider_last_sync', 0 );
+				$provider_sync = get_option( 'mai_analytics_provider_last_sync', 0 );
 				$check( 'Provider', 'Last provider sync', true, $provider_sync ? human_time_diff( $provider_sync ) . ' ago' : 'never' );
 			}
 		}
@@ -106,7 +106,7 @@ class Health {
 		if ( $include_endpoint_tests ) {
 			$server     = rest_get_server();
 			$routes     = array_keys( $server->get_routes() );
-			$mai_routes = array_filter( $routes, fn( $r ) => str_starts_with( $r, '/mai-views/' ) );
+			$mai_routes = array_filter( $routes, fn( $r ) => str_starts_with( $r, '/mai-analytics/' ) );
 			$check( 'REST', 'REST routes registered', count( $mai_routes ) >= 10, count( $mai_routes ) . ' routes' );
 
 			$test_post_id = (int) $wpdb->get_var(
@@ -114,7 +114,7 @@ class Health {
 			);
 
 			if ( $test_post_id ) {
-				$request  = new \WP_REST_Request( 'GET', "/mai-views/v1/views/post/{$test_post_id}" );
+				$request  = new \WP_REST_Request( 'GET', "/mai-analytics/v1/views/post/{$test_post_id}" );
 				$response = rest_do_request( $request );
 				$check( 'REST', 'GET /views/post/{id}', ! $response->is_error(), 'status=' . $response->get_status() );
 
@@ -124,8 +124,8 @@ class Health {
 					$check( 'REST', 'Response shape', $has_keys, $has_keys ? "views={$data['views']} trending={$data['trending']}" : 'missing keys' );
 				}
 
-				$request = new \WP_REST_Request( 'POST', "/mai-views/v1/view/post/{$test_post_id}" );
-				$request->set_header( 'User-Agent', 'Mai-Views-Health/1.0' );
+				$request = new \WP_REST_Request( 'POST', "/mai-analytics/v1/view/post/{$test_post_id}" );
+				$request->set_header( 'User-Agent', 'Mai-Analytics-Health/1.0' );
 				$response = rest_do_request( $request );
 				$check( 'REST', 'POST /view/post/{id}', ! $response->is_error(), 'status=' . $response->get_status() );
 
@@ -144,7 +144,7 @@ class Health {
 					$check( 'REST', 'View accepted', $succeeded, $detail );
 				}
 
-				$request  = new \WP_REST_Request( 'GET', '/mai-views/v1/views/trending' );
+				$request  = new \WP_REST_Request( 'GET', '/mai-analytics/v1/views/trending' );
 				$response = rest_do_request( $request );
 				$check( 'REST', 'GET /views/trending', ! $response->is_error(), 'status=' . $response->get_status() );
 			}
@@ -160,15 +160,15 @@ class Health {
 				}
 			}
 
-			$request  = new \WP_REST_Request( 'GET', '/mai-views/v1/admin/summary' );
+			$request  = new \WP_REST_Request( 'GET', '/mai-analytics/v1/admin/summary' );
 			$response = rest_do_request( $request );
 			$check( 'REST', 'GET /admin/summary', ! $response->is_error(), 'status=' . $response->get_status() );
 
-			$request  = new \WP_REST_Request( 'GET', '/mai-views/v1/admin/top/posts' );
+			$request  = new \WP_REST_Request( 'GET', '/mai-analytics/v1/admin/top/posts' );
 			$response = rest_do_request( $request );
 			$check( 'REST', 'GET /admin/top/posts', ! $response->is_error(), 'status=' . $response->get_status() );
 
-			$request  = new \WP_REST_Request( 'GET', '/mai-views/v1/admin/filters' );
+			$request  = new \WP_REST_Request( 'GET', '/mai-analytics/v1/admin/filters' );
 			$response = rest_do_request( $request );
 			$check( 'REST', 'GET /admin/filters', ! $response->is_error(), 'status=' . $response->get_status() );
 

@@ -1,28 +1,28 @@
 <?php
 
-namespace Mai\Views;
+namespace Mai\Analytics;
 
 use WP_CLI;
 
 class CLI {
 
 	/**
-	 * Registers all WP-CLI subcommands for Mai Views.
+	 * Registers all WP-CLI subcommands for Mai Analytics.
 	 */
 	public function __construct() {
-		WP_CLI::add_command( 'mai-views health',         [ $this, 'health' ] );
-		WP_CLI::add_command( 'mai-views migrate',       [ $this, 'migrate' ] );
-		WP_CLI::add_command( 'mai-views sync',          [ $this, 'sync' ] );
-		WP_CLI::add_command( 'mai-views stats',         [ $this, 'stats' ] );
-		WP_CLI::add_command( 'mai-views prune',         [ $this, 'prune' ] );
-		WP_CLI::add_command( 'mai-views seed',          [ $this, 'seed' ] );
-		WP_CLI::add_command( 'mai-views reset',         [ $this, 'reset' ] );
-		WP_CLI::add_command( 'mai-views update-bots',   [ $this, 'update_bots' ] );
-		WP_CLI::add_command( 'mai-views warm',          [ $this, 'warm' ] );
+		WP_CLI::add_command( 'mai-analytics health',         [ $this, 'health' ] );
+		WP_CLI::add_command( 'mai-analytics migrate',       [ $this, 'migrate' ] );
+		WP_CLI::add_command( 'mai-analytics sync',          [ $this, 'sync' ] );
+		WP_CLI::add_command( 'mai-analytics stats',         [ $this, 'stats' ] );
+		WP_CLI::add_command( 'mai-analytics prune',         [ $this, 'prune' ] );
+		WP_CLI::add_command( 'mai-analytics seed',          [ $this, 'seed' ] );
+		WP_CLI::add_command( 'mai-analytics reset',         [ $this, 'reset' ] );
+		WP_CLI::add_command( 'mai-analytics update-bots',   [ $this, 'update_bots' ] );
+		WP_CLI::add_command( 'mai-analytics warm',          [ $this, 'warm' ] );
 	}
 
 	/**
-	 * Run health checks on the Mai Views installation.
+	 * Run health checks on the Mai Analytics installation.
 	 *
 	 * Checks plugin health, database state, REST endpoints, provider connectivity,
 	 * view recording, and Mai Publisher coexistence. Exits with error if any
@@ -35,8 +35,8 @@ class CLI {
 	 *
 	 * ## EXAMPLES
 	 *
-	 *     wp mai-views health
-	 *     wp mai-views health --fix
+	 *     wp mai-analytics health
+	 *     wp mai-analytics health --fix
 	 *
 	 * @param array $args       Positional arguments (unused).
 	 * @param array $assoc_args Associative arguments: --fix.
@@ -78,7 +78,7 @@ class CLI {
 			}
 
 			if ( $cron_failed ) {
-				wp_schedule_event( time(), 'mai_views_15min', 'mai_views_cron_sync' );
+				wp_schedule_event( time(), 'mai_analytics_15min', 'mai_analytics_cron_sync' );
 				WP_CLI::log( WP_CLI::colorize( "  %C\u{2192} Fixed: rescheduled cron%n" ) );
 			}
 		}
@@ -108,8 +108,8 @@ class CLI {
 	 *
 	 * ## EXAMPLES
 	 *
-	 *     wp mai-views migrate
-	 *     wp mai-views migrate --force
+	 *     wp mai-analytics migrate
+	 *     wp mai-analytics migrate --force
 	 *
 	 * @param array $args       Positional arguments (unused).
 	 * @param array $assoc_args Associative arguments: --force.
@@ -120,26 +120,26 @@ class CLI {
 		$force = \WP_CLI\Utils\get_flag_value( $assoc_args, 'force', false );
 
 		if ( $force ) {
-			delete_option( 'mai_views_migrated_from_publisher' );
-			delete_option( 'mai_views_migrated_from_analytics' );
+			delete_option( 'mai_analytics_migrated_from_publisher' );
+			delete_option( 'mai_analytics_migrated_from_analytics' );
 			WP_CLI::log( 'Force flag set. Cleared migration flags.' );
 		}
 
 		$had_publisher_settings = (bool) get_option( 'mai_publisher' );
 		$had_analytics_settings = (bool) get_option( 'mai_analytics_settings' );
-		$already_configured     = (bool) get_option( 'mai_views_settings' );
+		$already_configured     = (bool) get_option( 'mai_analytics_settings' );
 
 		if ( $already_configured && ! $force ) {
-			WP_CLI::log( 'Mai Views settings already exist. Use --force to re-run migration.' );
+			WP_CLI::log( 'Mai Analytics settings already exist. Use --force to re-run migration.' );
 		}
 
 		Migration::maybe_migrate();
 
 		if ( $had_publisher_settings ) {
-			$settings = get_option( 'mai_views_settings', [] );
+			$settings = get_option( 'mai_analytics_settings', [] );
 			WP_CLI::log( sprintf( 'Migrated from Mai Publisher: data_source=%s', $settings['data_source'] ?? 'unknown' ) );
 
-			$defaults = get_option( 'mai_views_migrated_defaults', [] );
+			$defaults = get_option( 'mai_analytics_migrated_defaults', [] );
 
 			if ( $defaults ) {
 				WP_CLI::log( sprintf( 'Migrated filter defaults: %s', wp_json_encode( $defaults ) ) );
@@ -163,8 +163,8 @@ class CLI {
 	 *
 	 * ## EXAMPLES
 	 *
-	 *     wp mai-views sync
-	 *     wp mai-views sync --verbose
+	 *     wp mai-analytics sync
+	 *     wp mai-analytics sync --verbose
 	 *
 	 * @param array $args       Positional arguments (unused).
 	 * @param array $assoc_args Associative arguments: --verbose.
@@ -202,7 +202,7 @@ class CLI {
 			WP_CLI::log( sprintf( 'Buffer table rows after sync:  %s', number_format( $count ) ) );
 		}
 
-		$last_sync = get_option( 'mai_views_synced', 0 );
+		$last_sync = get_option( 'mai_analytics_synced', 0 );
 		WP_CLI::success( sprintf( 'Sync complete. Last sync: %s', $last_sync ? wp_date( 'Y-m-d H:i:s', $last_sync ) : 'never' ) );
 	}
 
@@ -216,8 +216,8 @@ class CLI {
 	 *
 	 * ## EXAMPLES
 	 *
-	 *     wp mai-views stats
-	 *     wp mai-views stats --type=post
+	 *     wp mai-analytics stats
+	 *     wp mai-analytics stats --type=post
 	 *
 	 * @param array $args       Positional arguments (unused).
 	 * @param array $assoc_args Associative arguments: --type.
@@ -252,7 +252,7 @@ class CLI {
 			$total_views += (int) $wpdb->get_var( "SELECT COALESCE(SUM(meta_value), 0) FROM $wpdb->usermeta WHERE meta_key = 'mai_views'" );
 		}
 
-		$last_sync = get_option( 'mai_views_synced', 0 );
+		$last_sync = get_option( 'mai_analytics_synced', 0 );
 
 		$data_source = Settings::get( 'data_source' );
 
@@ -263,7 +263,7 @@ class CLI {
 		WP_CLI::log( sprintf( 'Last sync:                %s', $last_sync ? wp_date( 'Y-m-d H:i:s', $last_sync ) : 'never' ) );
 
 		if ( 'self_hosted' !== $data_source ) {
-			$provider_sync = get_option( 'mai_views_provider_last_sync', 0 );
+			$provider_sync = get_option( 'mai_analytics_provider_last_sync', 0 );
 
 			WP_CLI::log( sprintf( 'Last provider sync:       %s', $provider_sync ? wp_date( 'Y-m-d H:i:s', $provider_sync ) : 'never' ) );
 		}
@@ -282,8 +282,8 @@ class CLI {
 	 *
 	 * ## EXAMPLES
 	 *
-	 *     wp mai-views prune
-	 *     wp mai-views prune --older-than=48h --dry-run
+	 *     wp mai-analytics prune
+	 *     wp mai-analytics prune --older-than=48h --dry-run
 	 *
 	 * @param array $args       Positional arguments (unused).
 	 * @param array $assoc_args Associative arguments: --older-than, --dry-run.
@@ -347,9 +347,9 @@ class CLI {
 	 *
 	 * ## EXAMPLES
 	 *
-	 *     wp mai-views seed
-	 *     wp mai-views seed --posts=100 --views=500 --days=14
-	 *     wp mai-views seed --include-terms --include-authors
+	 *     wp mai-analytics seed
+	 *     wp mai-analytics seed --posts=100 --views=500 --days=14
+	 *     wp mai-analytics seed --include-terms --include-authors
 	 *
 	 * @param array $args       Positional arguments (unused).
 	 * @param array $assoc_args Associative arguments: --posts, --views, --days, --include-terms, --include-authors.
@@ -434,16 +434,16 @@ class CLI {
 		WP_CLI::log( sprintf( 'Inserted %s raw view rows. Running sync...', number_format( $total_views ) ) );
 
 		// Reset sync timestamp so all seeded rows are picked up.
-		update_option( 'mai_views_synced', 0 );
-		delete_transient( 'mai_views_syncing' );
+		update_option( 'mai_analytics_synced', 0 );
+		delete_transient( 'mai_analytics_syncing' );
 
 		Sync::sync();
 
-		WP_CLI::success( 'Seed complete. Run `wp mai-views stats` to see results.' );
+		WP_CLI::success( 'Seed complete. Run `wp mai-analytics stats` to see results.' );
 	}
 
 	/**
-	 * Wipe all Mai Views data (buffer table, meta, options).
+	 * Wipe all Mai Analytics data (buffer table, meta, options).
 	 *
 	 * ## OPTIONS
 	 *
@@ -452,8 +452,8 @@ class CLI {
 	 *
 	 * ## EXAMPLES
 	 *
-	 *     wp mai-views reset
-	 *     wp mai-views reset --yes
+	 *     wp mai-analytics reset
+	 *     wp mai-analytics reset --yes
 	 *
 	 * @param array $args       Positional arguments (unused).
 	 * @param array $assoc_args Associative arguments: --yes.
@@ -463,7 +463,7 @@ class CLI {
 	public function reset( array $args, array $assoc_args ): void {
 		global $wpdb;
 
-		WP_CLI::confirm( 'This will DELETE all Mai Views data (buffer table, view/trending meta, options). Continue?', $assoc_args );
+		WP_CLI::confirm( 'This will DELETE all Mai Analytics data (buffer table, view/trending meta, options). Continue?', $assoc_args );
 
 		$table = Database::get_table_name();
 
@@ -480,16 +480,16 @@ class CLI {
 		$user_deleted = (int) $wpdb->query( "DELETE FROM $wpdb->usermeta WHERE meta_key IN ({$meta_keys})" );
 		WP_CLI::log( sprintf( 'Deleted %s user meta rows.', number_format( $user_deleted ) ) );
 
-		delete_option( 'mai_views_synced' );
-		delete_option( 'mai_views_provider_last_sync' );
-		delete_option( 'mai_views_post_type_views_web' );
-		delete_option( 'mai_views_post_type_views_app' );
-		delete_transient( 'mai_views_sync_lock' );
-		delete_transient( 'mai_views_syncing' );
-		delete_transient( 'mai_views_provider_syncing' );
+		delete_option( 'mai_analytics_synced' );
+		delete_option( 'mai_analytics_provider_last_sync' );
+		delete_option( 'mai_analytics_post_type_views_web' );
+		delete_option( 'mai_analytics_post_type_views_app' );
+		delete_transient( 'mai_analytics_sync_lock' );
+		delete_transient( 'mai_analytics_syncing' );
+		delete_transient( 'mai_analytics_provider_syncing' );
 		WP_CLI::log( 'Options and transients cleared.' );
 
-		WP_CLI::success( 'All Mai Views data has been reset.' );
+		WP_CLI::success( 'All Mai Analytics data has been reset.' );
 	}
 
 	/**
@@ -514,9 +514,9 @@ class CLI {
 	 *
 	 * ## EXAMPLES
 	 *
-	 *     wp mai-views warm
-	 *     wp mai-views warm --type=post --ids=1,2,3
-	 *     wp mai-views warm --type=term --taxonomy=category --verbose
+	 *     wp mai-analytics warm
+	 *     wp mai-analytics warm --type=post --ids=1,2,3
+	 *     wp mai-analytics warm --type=term --taxonomy=category --verbose
 	 *
 	 * @param array $args       Positional arguments (unused).
 	 * @param array $assoc_args Associative arguments.
@@ -574,7 +574,7 @@ class CLI {
 	 *
 	 * ## EXAMPLES
 	 *
-	 *     wp mai-views update-bots
+	 *     wp mai-analytics update-bots
 	 *
 	 * @param array $args       Positional arguments (unused).
 	 * @param array $assoc_args Associative arguments (unused).
@@ -582,7 +582,7 @@ class CLI {
 	 * @return void
 	 */
 	public function update_bots( array $args, array $assoc_args ): void {
-		$script = MAI_VIEWS_PLUGIN_DIR . 'bin/update-bot-patterns.php';
+		$script = MAI_ANALYTICS_PLUGIN_DIR . 'bin/update-bot-patterns.php';
 
 		if ( ! file_exists( $script ) ) {
 			WP_CLI::error( 'bin/update-bot-patterns.php not found.' );

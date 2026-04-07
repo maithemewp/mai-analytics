@@ -1,4 +1,4 @@
-# Mai Views
+# Mai Analytics
 
 View tracking for WordPress posts, terms, and authors. Supports self-hosted tracking, Google Analytics (via Site Kit), Matomo, and Jetpack Stats.
 
@@ -19,21 +19,21 @@ View tracking for WordPress posts, terms, and authors. Supports self-hosted trac
 ## Installation
 
 ### Standalone plugin
-Download and activate in `wp-content/plugins/mai-views/`.
+Download and activate in `wp-content/plugins/mai-analytics/`.
 
 ### Via Composer (inside Mai Publisher)
 ```json
 {
-    "repositories": [{"type": "vcs", "url": "https://github.com/maithemewp/mai-views"}],
-    "require": {"maithemewp/mai-views": "^1.0"}
+    "repositories": [{"type": "vcs", "url": "https://github.com/maithemewp/mai-analytics"}],
+    "require": {"maithemewp/mai-analytics": "^1.0"}
 }
 ```
 
-A constant guard (`MAI_VIEWS_VERSION`) prevents double-loading if both standalone and Composer versions are present.
+A constant guard (`MAI_ANALYTICS_VERSION`) prevents double-loading if both standalone and Composer versions are present.
 
 ## Settings
 
-Navigate to **Settings > Mai Views** (or **Mai Theme > Mai Views** when using Mai Theme) to configure:
+Navigate to **Settings > Mai Analytics** (or **Mai Theme > Mai Analytics** when using Mai Theme) to configure:
 
 - **Disabled** — No tracking or syncing. Dashboard shows existing data.
 - **Self-Hosted** — Built-in beacon tracking with buffer table aggregation.
@@ -72,115 +72,115 @@ icon_style         — solid, light, etc. (default: 'solid')
 
 ```php
 // Get formatted HTML with icon and count.
-mai_views_get_views( $atts );
+mai_analytics_get_views( $atts );
 
 // Get raw integer count.
-mai_views_get_count( [ 'id' => 123, 'views' => 'trending' ] );
+mai_analytics_get_count( [ 'id' => 123, 'views' => 'trending' ] );
 
 // Format a number as 2K+, 1M+, etc.
-mai_views_get_short_number( 2500 ); // "2K+"
+mai_analytics_get_short_number( 2500 ); // "2K+"
 ```
 
 ## WP-CLI
 
-### `wp mai-views health`
+### `wp mai-analytics health`
 
 Run 33 health checks: plugin state, database, meta keys, cron, settings, provider connectivity, REST endpoint tests (GET and POST), and Mai Publisher coexistence.
 
 ```
-wp mai-views health          # Full health check
-wp mai-views health --fix    # Attempt to auto-fix issues (re-create table, reschedule cron)
+wp mai-analytics health          # Full health check
+wp mai-analytics health --fix    # Attempt to auto-fix issues (re-create table, reschedule cron)
 ```
 
-### `wp mai-views stats`
+### `wp mai-analytics stats`
 
 Show current stats summary: data source, buffer row count, total lifetime views, last sync times.
 
 ```
-wp mai-views stats           # All object types
-wp mai-views stats --type=post   # Posts only
-wp mai-views stats --type=term   # Terms only
-wp mai-views stats --type=user   # Users only
+wp mai-analytics stats           # All object types
+wp mai-analytics stats --type=post   # Posts only
+wp mai-analytics stats --type=term   # Terms only
+wp mai-analytics stats --type=user   # Users only
 ```
 
-### `wp mai-views sync`
+### `wp mai-analytics sync`
 
 Force a sync immediately. Automatically routes based on the data source setting — runs buffer-to-meta aggregation in self-hosted mode, or fetches from the external provider in Site Kit/Matomo/Jetpack mode.
 
 ```
-wp mai-views sync
-wp mai-views sync --verbose  # Show data source and buffer row counts
+wp mai-analytics sync
+wp mai-analytics sync --verbose  # Show data source and buffer row counts
 ```
 
-### `wp mai-views warm`
+### `wp mai-analytics warm`
 
 Bulk-fetch stats from the active provider for all objects (or a filtered subset). Unlike provider-sync which only fetches objects in the buffer, warm fetches everything — useful after switching providers or on staging sites that need production data.
 
 ```
-wp mai-views warm                                    # All objects
-wp mai-views warm --type=post                        # Posts only
-wp mai-views warm --type=post --post_type=portfolio  # Specific post type
-wp mai-views warm --type=term --taxonomy=category    # Specific taxonomy
-wp mai-views warm --type=post --ids=1,2,3            # Specific IDs
-wp mai-views warm --verbose                          # Show per-batch progress
+wp mai-analytics warm                                    # All objects
+wp mai-analytics warm --type=post                        # Posts only
+wp mai-analytics warm --type=post --post_type=portfolio  # Specific post type
+wp mai-analytics warm --type=term --taxonomy=category    # Specific taxonomy
+wp mai-analytics warm --type=post --ids=1,2,3            # Specific IDs
+wp mai-analytics warm --verbose                          # Show per-batch progress
 ```
 
-### `wp mai-views migrate`
+### `wp mai-analytics migrate`
 
 Migrate settings from Mai Publisher (views_api, Matomo credentials, trending_days, views_interval) and/or old Mai Analytics options/meta keys.
 
 ```
-wp mai-views migrate         # Run migration (skips if already done)
-wp mai-views migrate --force # Clear migration flags and re-run
+wp mai-analytics migrate         # Run migration (skips if already done)
+wp mai-analytics migrate --force # Clear migration flags and re-run
 ```
 
-### `wp mai-views seed`
+### `wp mai-analytics seed`
 
 Generate fake view data in the buffer table for testing. Picks random published posts and inserts view rows spread across a time range, then runs a sync.
 
 ```
-wp mai-views seed                                    # 50 posts, up to 200 views each, 30 days
-wp mai-views seed --posts=100 --views=500 --days=14  # Custom parameters
-wp mai-views seed --include-terms --include-authors   # Also seed terms and authors
+wp mai-analytics seed                                    # 50 posts, up to 200 views each, 30 days
+wp mai-analytics seed --posts=100 --views=500 --days=14  # Custom parameters
+wp mai-analytics seed --include-terms --include-authors   # Also seed terms and authors
 ```
 
-### `wp mai-views prune`
+### `wp mai-analytics prune`
 
 Manually prune old buffer rows. By default uses the retention setting (14 days). Useful for cleanup after testing.
 
 ```
-wp mai-views prune                    # Prune using retention setting
-wp mai-views prune --older-than=48h   # Prune rows older than 48 hours
-wp mai-views prune --older-than=7d    # Prune rows older than 7 days
-wp mai-views prune --dry-run          # Show what would be pruned
+wp mai-analytics prune                    # Prune using retention setting
+wp mai-analytics prune --older-than=48h   # Prune rows older than 48 hours
+wp mai-analytics prune --older-than=7d    # Prune rows older than 7 days
+wp mai-analytics prune --dry-run          # Show what would be pruned
 ```
 
-### `wp mai-views reset`
+### `wp mai-analytics reset`
 
-Delete ALL Mai Views data: truncate buffer table, delete all view/trending meta from posts/terms/users, clear all options and transients. Requires confirmation.
+Delete ALL Mai Analytics data: truncate buffer table, delete all view/trending meta from posts/terms/users, clear all options and transients. Requires confirmation.
 
 ```
-wp mai-views reset           # Prompts for confirmation
-wp mai-views reset --yes     # Skip confirmation
+wp mai-analytics reset           # Prompts for confirmation
+wp mai-analytics reset --yes     # Skip confirmation
 ```
 
-### `wp mai-views update-bots`
+### `wp mai-analytics update-bots`
 
 Fetch the latest bot user-agent patterns from Matomo's device-detector repository. Same script that runs on `composer update`.
 
 ```
-wp mai-views update-bots
+wp mai-analytics update-bots
 ```
 
 ## Filters
 
 | Filter | Default | Description |
 |--------|---------|-------------|
-| `mai_views_trending_window` | `7` (days) | Trending calculation window |
-| `mai_views_retention` | `14` (days) | Buffer row retention |
-| `mai_views_sync_interval` | `5` (minutes) | Sync transient TTL |
-| `mai_views_exclude_bots` | `true` | Filter bot user-agents |
-| `mai_views_tracking_enabled` | `true` on production | Override beacon tracking per environment |
+| `mai_analytics_trending_window` | `7` (days) | Trending calculation window |
+| `mai_analytics_retention` | `14` (days) | Buffer row retention |
+| `mai_analytics_sync_interval` | `5` (minutes) | Sync transient TTL |
+| `mai_analytics_exclude_bots` | `true` | Filter bot user-agents |
+| `mai_analytics_tracking_enabled` | `true` on production | Override beacon tracking per environment |
 
 ## How It Works
 
@@ -189,12 +189,12 @@ wp mai-views update-bots
 Every page load outputs a single inline script in `wp_footer`:
 
 ```html
-<script>if('sendBeacon' in navigator){navigator.sendBeacon('/wp-json/mai-views/v1/view/post/123');}</script>
+<script>if('sendBeacon' in navigator){navigator.sendBeacon('/wp-json/mai-analytics/v1/view/post/123');}</script>
 ```
 
 `navigator.sendBeacon` is fire-and-forget — no response needed, non-blocking, works during page unload. The visitor never waits. On cached pages (Varnish, nginx, etc.), PHP doesn't run at all — only the beacon JS fires from the browser.
 
-The beacon hits a REST endpoint that does **one INSERT** into a buffer table (`wp_mai_views_buffer`). No meta reads, no meta writes, no aggregation. One row, ~1ms, done.
+The beacon hits a REST endpoint that does **one INSERT** into a buffer table (`wp_mai_analytics_buffer`). No meta reads, no meta writes, no aggregation. One row, ~1ms, done.
 
 Logged-in users with `edit_posts` capability are excluded. Bots are filtered by user-agent. Non-production environments are excluded automatically.
 
@@ -209,7 +209,7 @@ At 2M views/month with 14-day retention: ~940K rows, ~75MB. Trivial for MySQL.
 **Self-hosted mode:** Total views (`mai_views`) are an incrementing counter — each sync aggregates new rows into meta. But trending views (`mai_trending`) are recalculated every sync by counting raw rows in the sliding window:
 
 ```sql
-SELECT object_id, COUNT(*) FROM wp_mai_views_buffer
+SELECT object_id, COUNT(*) FROM wp_mai_analytics_buffer
 WHERE viewed_at > NOW() - INTERVAL 7 DAY
 GROUP BY object_id, object_type
 ```
@@ -265,7 +265,7 @@ At 5K concurrent users all loading a page in the same second, that's 5K INSERTs 
 
 ### Rate limiting and DDoS
 
-Mai Views does not implement application-level rate limiting. The beacon endpoint is intentionally lightweight (one INSERT, ~1ms) to minimize server load, and adding per-request checks would negate that.
+Mai Analytics does not implement application-level rate limiting. The beacon endpoint is intentionally lightweight (one INSERT, ~1ms) to minimize server load, and adding per-request checks would negate that.
 
 **In provider mode**, the dedup logic already prevents abuse — only one buffer row per object per sync cycle, regardless of how many times the endpoint is hit.
 
@@ -283,12 +283,12 @@ Beacon tracking is automatically disabled on non-production environments (`wp_ge
 
 ```php
 // wp-config.php
-define( 'MAI_VIEWS_ENABLE_TRACKING', true );
+define( 'MAI_ANALYTICS_ENABLE_TRACKING', true );
 ```
 
 Or via filter:
 ```php
-add_filter( 'mai_views_tracking_enabled', '__return_true' );
+add_filter( 'mai_analytics_tracking_enabled', '__return_true' );
 ```
 
 Provider sync, dashboard, CLI, and all read operations work on any environment.

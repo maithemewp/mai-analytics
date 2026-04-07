@@ -1,5 +1,5 @@
 {
-    "name": "maithemewp/mai-views",
+    "name": "maithemewp/mai-analytics",
     "description": "View tracking for posts, terms, and authors. Supports self-hosted tracking, Google Analytics (via Site Kit), Matomo, and Jetpack Stats.",
     "type": "wordpress-plugin",
     "license": "GPL-2.0-or-later",
@@ -8,7 +8,7 @@
     },
     "autoload": {
         "psr-4": {
-            "Mai\\Views\\": "src/"
+            "Mai\\Analytics\\": "src/"
         },
         "files": [
             "includes/functions.php"

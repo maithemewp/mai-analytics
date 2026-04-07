@@ -1,11 +1,11 @@
 <?php
 
-namespace Mai\Views;
+namespace Mai\Analytics;
 
 class Database {
 
-	public const TABLE_NAME        = 'mai_views_buffer';
-	public const DB_VERSION_OPTION = 'mai_views_db_version';
+	public const TABLE_NAME        = 'mai_analytics_buffer';
+	public const DB_VERSION_OPTION = 'mai_analytics_db_version';
 
 	/**
 	 * Gets the full table name with prefix.
@@ -43,7 +43,7 @@ class Database {
 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 		dbDelta( $sql );
 
-		update_option( self::DB_VERSION_OPTION, MAI_VIEWS_DB_VERSION );
+		update_option( self::DB_VERSION_OPTION, MAI_ANALYTICS_DB_VERSION );
 	}
 
 	/**
@@ -56,36 +56,45 @@ class Database {
 
 		$installed = get_option( self::DB_VERSION_OPTION, '0' );
 
-		if ( version_compare( $installed, MAI_VIEWS_DB_VERSION, '<' ) ) {
+		if ( version_compare( $installed, MAI_ANALYTICS_DB_VERSION, '<' ) ) {
 			self::create_table();
 		}
 	}
 
 	/**
-	 * Renames the old mai_analytics_views table and migrates the DB version option
-	 * if upgrading from Mai Analytics.
+	 * Renames legacy table names to the current mai_analytics_buffer name.
+	 *
+	 * Handles two legacy names:
+	 * - mai_analytics_views (from original Mai Analytics dev installs)
+	 * - mai_views_buffer (from the Mai Views era)
 	 *
 	 * @return void
 	 */
 	private static function maybe_migrate_old_table(): void {
-		if ( get_option( 'mai_views_table_migrated' ) ) {
+		if ( get_option( 'mai_analytics_table_migrated' ) ) {
 			return;
 		}
 
 		global $wpdb;
 
-		$old_table = $wpdb->prefix . 'mai_analytics_views';
-		$new_table = self::get_table_name();
+		$new_table  = self::get_table_name();
+		$old_tables = [
+			$wpdb->prefix . 'mai_views_buffer',
+			$wpdb->prefix . 'mai_analytics_views',
+		];
 
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
-		$old_exists = (bool) $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $old_table ) );
+		foreach ( $old_tables as $old_table ) {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery
+			$old_exists = (bool) $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $old_table ) );
 
-		if ( $old_exists ) {
+			if ( ! $old_exists ) {
+				continue;
+			}
+
 			// phpcs:ignore WordPress.DB.DirectDatabaseQuery
 			$new_exists = (bool) $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $new_table ) );
 
 			if ( $new_exists ) {
-				// Both exist — merge old rows into new, then drop old.
 				// phpcs:ignore WordPress.DB.DirectDatabaseQuery
 				$wpdb->query( "INSERT INTO `$new_table` SELECT * FROM `$old_table`" );
 				// phpcs:ignore WordPress.DB.DirectDatabaseQuery
@@ -102,14 +111,15 @@ class Database {
 			}
 		}
 
-		$old_version = get_option( 'mai_analytics_db_version', '' );
+		// Migrate DB version from the Mai Views era.
+		$old_version = get_option( 'mai_views_db_version', '' );
 
 		if ( $old_version ) {
 			update_option( self::DB_VERSION_OPTION, $old_version );
-			delete_option( 'mai_analytics_db_version' );
+			delete_option( 'mai_views_db_version' );
 		}
 
-		update_option( 'mai_views_table_migrated', true );
+		update_option( 'mai_analytics_table_migrated', true );
 	}
 
 	/**
@@ -151,9 +161,9 @@ class Database {
 	 * @return bool True if the object already has a buffer row since last sync.
 	 */
 	public static function is_queued( int $object_id, string $object_type, int $last_sync ): bool {
-		$cache_key = "mai_views_queued_{$object_type}_{$object_id}";
+		$cache_key = "mai_analytics_queued_{$object_type}_{$object_id}";
 
-		if ( wp_using_ext_object_cache() && wp_cache_get( $cache_key, 'mai-views' ) ) {
+		if ( wp_using_ext_object_cache() && wp_cache_get( $cache_key, 'mai-analytics' ) ) {
 			return true;
 		}
 
@@ -171,7 +181,7 @@ class Database {
 		);
 
 		if ( $exists && wp_using_ext_object_cache() ) {
-			wp_cache_set( $cache_key, 1, 'mai-views', 15 * MINUTE_IN_SECONDS );
+			wp_cache_set( $cache_key, 1, 'mai-analytics', 15 * MINUTE_IN_SECONDS );
 		}
 
 		return $exists;

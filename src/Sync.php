@@ -1,6 +1,6 @@
 <?php
 
-namespace Mai\Views;
+namespace Mai\Analytics;
 
 class Sync {
 
@@ -14,15 +14,15 @@ class Sync {
 	 */
 	public static function sync(): void {
 		// Prevent concurrent syncs from double-counting.
-		if ( get_transient( 'mai_views_syncing' ) ) {
+		if ( get_transient( 'mai_analytics_syncing' ) ) {
 			return;
 		}
 
-		set_transient( 'mai_views_syncing', 1, 5 * MINUTE_IN_SECONDS );
+		set_transient( 'mai_analytics_syncing', 1, 5 * MINUTE_IN_SECONDS );
 
 		// Mark sync as started so other triggers don't re-fire while we're working.
-		$last_sync = get_option( 'mai_views_synced', 0 );
-		update_option( 'mai_views_synced', time(), false );
+		$last_sync = get_option( 'mai_analytics_synced', 0 );
+		update_option( 'mai_analytics_synced', time(), false );
 
 		global $wpdb;
 
@@ -48,9 +48,9 @@ class Sync {
 		);
 
 		if ( $new_views ) {
-			$pt_views     = get_option( 'mai_views_post_type_views', [] );
-			$pt_views_web = get_option( 'mai_views_post_type_views_web', [] );
-			$pt_views_app = get_option( 'mai_views_post_type_views_app', [] );
+			$pt_views     = get_option( 'mai_analytics_post_type_views', [] );
+			$pt_views_web = get_option( 'mai_analytics_post_type_views_web', [] );
+			$pt_views_app = get_option( 'mai_analytics_post_type_views_app', [] );
 
 			foreach ( $new_views as $row ) {
 				$cnt        = (int) $row->cnt;
@@ -75,9 +75,9 @@ class Sync {
 				}
 			}
 
-			update_option( 'mai_views_post_type_views', $pt_views, false );
-			update_option( 'mai_views_post_type_views_web', $pt_views_web, false );
-			update_option( 'mai_views_post_type_views_app', $pt_views_app, false );
+			update_option( 'mai_analytics_post_type_views', $pt_views, false );
+			update_option( 'mai_analytics_post_type_views_web', $pt_views_web, false );
+			update_option( 'mai_analytics_post_type_views_app', $pt_views_app, false );
 		}
 
 		// 2. Recalculate trending: query the trending window (all sources merged).
@@ -107,7 +107,7 @@ class Sync {
 		}
 
 		// Zero out post_type trending for archives that fell out of the window.
-		$existing_pt_trending = get_option( 'mai_views_post_type_trending', [] );
+		$existing_pt_trending = get_option( 'mai_analytics_post_type_trending', [] );
 
 		foreach ( $existing_pt_trending as $key => $count ) {
 			if ( ! isset( $pt_trending[ $key ] ) ) {
@@ -115,7 +115,7 @@ class Sync {
 			}
 		}
 
-		update_option( 'mai_views_post_type_trending', $pt_trending, false );
+		update_option( 'mai_analytics_post_type_trending', $pt_trending, false );
 
 		// Zero out trending for non-archive objects that fell out of the trending window.
 		$all_in_buffer = $wpdb->get_results(
@@ -147,8 +147,8 @@ class Sync {
 		);
 
 		// 4. Record sync time and release lock.
-		update_option( 'mai_views_synced', time(), false );
-		delete_transient( 'mai_views_syncing' );
+		update_option( 'mai_analytics_synced', time(), false );
+		delete_transient( 'mai_analytics_syncing' );
 	}
 
 	/**

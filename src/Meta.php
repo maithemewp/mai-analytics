@@ -1,6 +1,6 @@
 <?php
 
-namespace Mai\Views;
+namespace Mai\Analytics;
 
 class Meta {
 

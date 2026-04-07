@@ -1,18 +1,18 @@
 /* Mai Views Dashboard */
 
-.mai-views-wrap {
+.mai-analytics-wrap {
 	max-width: 1200px;
 }
 
 /* Summary Cards */
-.mai-views-cards {
+.mai-analytics-cards {
 	display: grid;
 	grid-template-columns: repeat(4, 1fr);
 	gap: 16px;
 	margin: 20px 0;
 }
 
-.mai-views-card {
+.mai-analytics-card {
 	background: #fff;
 	border: 1px solid #c3c4c7;
 	border-radius: 4px;
@@ -20,7 +20,7 @@
 	text-align: center;
 }
 
-.mai-views-card__value {
+.mai-analytics-card__value {
 	display: block;
 	font-size: 32px;
 	font-weight: 600;
@@ -28,14 +28,14 @@
 	color: #1d2327;
 }
 
-.mai-views-card__label {
+.mai-analytics-card__label {
 	display: block;
 	margin-top: 4px;
 	font-size: 13px;
 	color: #646970;
 }
 
-.mai-views-card__time {
+.mai-analytics-card__time {
 	display: block;
 	font-size: 14px;
 	font-weight: 400;
@@ -44,7 +44,7 @@
 }
 
 /* Chart Section */
-.mai-views-chart-section {
+.mai-analytics-chart-section {
 	background: #fff;
 	border: 1px solid #c3c4c7;
 	border-radius: 4px;
@@ -52,22 +52,22 @@
 	margin-bottom: 20px;
 }
 
-.mai-views-chart-wrap {
+.mai-analytics-chart-wrap {
 	position: relative;
 	max-height: 400px;
 }
 
 /* Tabs */
-.mai-views-tabs {
+.mai-analytics-tabs {
 	margin-top: 0;
 }
 
-.mai-views-tabs .nav-tab {
+.mai-analytics-tabs .nav-tab {
 	cursor: pointer;
 }
 
 /* Filters */
-.mai-views-filters {
+.mai-analytics-filters {
 	display: flex;
 	gap: 8px;
 	padding: 12px 0;
@@ -75,12 +75,12 @@
 	align-items: center;
 }
 
-.mai-views-filters select {
+.mai-analytics-filters select {
 	max-width: 200px;
 }
 
 /* Published Within Filter — custom days input */
-.mai-views-custom-days input {
+.mai-analytics-custom-days input {
 	width: 70px;
 	padding: 4px 8px;
 	border: 1px solid #8c8f94;
@@ -91,7 +91,7 @@
 }
 
 /* Table Controls */
-.mai-views-table-controls {
+.mai-analytics-table-controls {
 	display: flex;
 	justify-content: space-between;
 	align-items: center;
@@ -101,13 +101,13 @@
 
 
 /* Tom Select — flexible sizing and height matching */
-.mai-views-filters .ts-wrapper {
+.mai-analytics-filters .ts-wrapper {
 	min-width: 180px;
 	max-width: 400px;
 	flex: 1 1 auto;
 }
 
-.mai-views-filters .ts-wrapper .ts-control {
+.mai-analytics-filters .ts-wrapper .ts-control {
 	min-height: 30px;
 	padding: 2px 8px;
 	border-color: #8c8f94;
@@ -115,12 +115,12 @@
 
 /* Spinners */
 
-.mai-views-search-wrap {
+.mai-analytics-search-wrap {
 	position: relative;
 	flex: 1 1 auto;
 }
 
-.mai-views-search-wrap input {
+.mai-analytics-search-wrap input {
 	width: 100%;
 	box-sizing: border-box;
 	padding: 4px 8px;
@@ -132,7 +132,7 @@
 	background: #fff;
 }
 
-.mai-views-search-spinner {
+.mai-analytics-search-spinner {
 	position: absolute;
 	right: 10px;
 	top: 50%;
@@ -144,7 +144,7 @@
 }
 
 /* Active Filters */
-.mai-views-active-filters {
+.mai-analytics-active-filters {
 	display: flex;
 	align-items: center;
 	gap: 6px;
@@ -153,12 +153,12 @@
 	flex-wrap: wrap;
 }
 
-.mai-views-active-filters__label {
+.mai-analytics-active-filters__label {
 	color: #646970;
 	font-weight: 600;
 }
 
-.mai-views-active-filters__tag {
+.mai-analytics-active-filters__tag {
 	display: inline-block;
 	background: #f0f0f1;
 	border: 1px solid #c3c4c7;
@@ -169,84 +169,84 @@
 }
 
 /* Table */
-.mai-views-table-wrap {
+.mai-analytics-table-wrap {
 	margin-bottom: 16px;
 }
 
-.mai-views-table .column-views,
-.mai-views-table .column-trending,
-.mai-views-table .column-web,
-.mai-views-table .column-app {
+.mai-analytics-table .column-views,
+.mai-analytics-table .column-trending,
+.mai-analytics-table .column-web,
+.mai-analytics-table .column-app {
 	width: 90px;
 	text-align: right;
 }
 
-.mai-views-table .column-title,
-.mai-views-table .column-name {
+.mai-analytics-table .column-title,
+.mai-analytics-table .column-name {
 	width: auto;
 }
 
-.mai-views-table .column-type,
-.mai-views-table .column-taxonomy,
-.mai-views-table .column-post-type {
+.mai-analytics-table .column-type,
+.mai-analytics-table .column-taxonomy,
+.mai-analytics-table .column-post-type {
 	width: 120px;
 }
 
-.mai-views-table td {
+.mai-analytics-table td {
 	vertical-align: middle;
 }
 
-.mai-views-table a {
+.mai-analytics-table a {
 	font-weight: 600;
 }
 
-.mai-views-table .sortable {
+.mai-analytics-table .sortable {
 	cursor: pointer;
 	user-select: none;
 }
 
-.mai-views-table .sortable:hover {
+.mai-analytics-table .sortable:hover {
 	color: #2271b1;
 }
 
-.mai-views-table .sorted {
+.mai-analytics-table .sorted {
 	color: #2271b1;
 	font-weight: 600;
 }
 
-.mai-views-caret {
+.mai-analytics-caret {
 	font-size: 10px;
 	opacity: 0.4;
 }
 
-.mai-views-table .sorted .mai-views-caret {
+.mai-analytics-table .sorted .mai-analytics-caret {
 	opacity: 1;
 }
 
 /* Pagination */
-.mai-views-pagination {
+.mai-analytics-pagination {
 	display: flex;
 	justify-content: space-between;
 	align-items: center;
 	padding: 8px 0;
 }
 
-.mai-views-pagination__info {
+.mai-analytics-pagination__info {
 	color: #646970;
 	font-size: 13px;
 }
 
-.mai-views-pagination__buttons {
+.mai-analytics-pagination__buttons {
 	display: flex;
 	gap: 4px;
 }
 
-.mai-views-pagination__buttons .button {
+.mai-analytics-pagination__buttons .button {
 	min-width: 32px;
 	text-align: center;
 }
 
-.mai-views-pagination__buttons .button.current {
+.mai-analytics-pagination__buttons .button.current {
 	background: #2271b1;
 	border-color: #2271b1;
 	color: #fff;
@@ -254,7 +254,7 @@
 }
 
 /* Loading State */
-.mai-views-loading {
+.mai-analytics-loading {
 	padding: 40px;
 	text-align: center;
 	color: #646970;
@@ -262,7 +262,7 @@
 }
 
 /* Empty State */
-.mai-views-empty {
+.mai-analytics-empty {
 	padding: 40px;
 	text-align: center;
 	color: #646970;
@@ -273,28 +273,28 @@
 
 /* Responsive */
 @media screen and (max-width: 782px) {
-	.mai-views-cards {
+	.mai-analytics-cards {
 		grid-template-columns: repeat(2, 1fr);
 	}
 
-	.mai-views-filters {
+	.mai-analytics-filters {
 		flex-direction: column;
 		align-items: stretch;
 	}
 
-	.mai-views-filters select,
-	.mai-views-filters .ts-wrapper {
+	.mai-analytics-filters select,
+	.mai-analytics-filters .ts-wrapper {
 		width: 100%;
 		max-width: none;
 		flex: 1 1 100%;
 	}
 
-	.mai-views-table-controls {
+	.mai-analytics-table-controls {
 		flex-direction: column;
 		align-items: stretch;
 	}
 
-	.mai-views-table-controls input[type="text"] {
+	.mai-analytics-table-controls input[type="text"] {
 		max-width: none;
 	}
 }

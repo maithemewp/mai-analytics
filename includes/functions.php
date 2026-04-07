@@ -30,7 +30,7 @@ defined( 'ABSPATH' ) || die;
  *
  * @return string The views HTML, or empty string if below minimum.
  */
-function mai_views_get_views( $atts = [] ) {
+function mai_analytics_get_views( $atts = [] ) {
 	$atts = shortcode_atts(
 		[
 			'object'             => '',
@@ -71,13 +71,13 @@ function mai_views_get_views( $atts = [] ) {
 		'icon_margin_left'   => esc_attr( $atts['icon_margin_left'] ),
 	];
 
-	$count = mai_views_get_count( $atts );
+	$count = mai_analytics_get_count( $atts );
 
 	if ( ! $count || $count < $atts['min'] ) {
 		return '';
 	}
 
-	$display = 'short' === $atts['format'] ? mai_views_get_short_number( $count ) : number_format_i18n( $count );
+	$display = 'short' === $atts['format'] ? mai_analytics_get_short_number( $count ) : number_format_i18n( $count );
 	$style   = $atts['style'] ? sprintf( ' style="%s"', $atts['style'] ) : '';
 	$icon    = $atts['icon'] && function_exists( 'mai_get_icon' ) ? mai_get_icon(
 		[
@@ -92,7 +92,7 @@ function mai_views_get_views( $atts = [] ) {
 	) : '';
 
 	$html = sprintf(
-		'<span class="mai-views"%s>%s%s<span class="mai-views__count">%s</span>%s</span>',
+		'<span class="mai-analytics"%s>%s%s<span class="mai-analytics__count">%s</span>%s</span>',
 		$style,
 		$atts['before'],
 		$icon,
@@ -100,7 +100,7 @@ function mai_views_get_views( $atts = [] ) {
 		$atts['after']
 	);
 
-	$html = apply_filters( 'mai_views_entry_views', $html );
+	$html = apply_filters( 'mai_analytics_entry_views', $html );
 
 	// Backward compat: fire old filter with deprecation notice.
 	if ( has_filter( 'mai_publisher_entry_views' ) ) {
@@ -108,7 +108,7 @@ function mai_views_get_views( $atts = [] ) {
 			'mai_publisher_entry_views',
 			[ $html ],
 			'1.0.0',
-			'mai_views_entry_views'
+			'mai_analytics_entry_views'
 		);
 	}
 
@@ -129,7 +129,7 @@ function mai_views_get_views( $atts = [] ) {
  *
  * @return int The view count.
  */
-function mai_views_get_count( $args = [] ) {
+function mai_analytics_get_count( $args = [] ) {
 	global $mai_term;
 
 	$args = wp_parse_args( $args, [
@@ -142,7 +142,7 @@ function mai_views_get_count( $args = [] ) {
 
 	// Auto-detect object type and ID when not explicitly provided.
 	if ( ! $args['object'] && ! $args['id'] ) {
-		$detected       = mai_views_detect_context();
+		$detected       = mai_analytics_detect_context();
 		$args['object'] = $detected['object'];
 		$args['id']     = $detected['id'];
 	}
@@ -164,7 +164,7 @@ function mai_views_get_count( $args = [] ) {
 
 	// Post type archives store counts in options, not meta.
 	if ( 'post_type' === $args['object'] ) {
-		$option = 'trending' === $args['views'] ? 'mai_views_post_type_trending' : 'mai_views_post_type_views';
+		$option = 'trending' === $args['views'] ? 'mai_analytics_post_type_trending' : 'mai_analytics_post_type_views';
 		$values = get_option( $option, [] );
 		return absint( $values[ $args['id'] ] ?? 0 );
 	}
@@ -184,11 +184,11 @@ function mai_views_get_count( $args = [] ) {
  * Detects the current page context for view count lookups.
  *
  * Returns the object type and ID based on WordPress conditional tags.
- * Used by mai_views_get_count() when no explicit args are provided.
+ * Used by mai_analytics_get_count() when no explicit args are provided.
  *
  * @return array { object: string, id: int|string }
  */
-function mai_views_detect_context() {
+function mai_analytics_detect_context() {
 	global $mai_term;
 
 	// Term grid loop context (Mai Theme global).
@@ -246,7 +246,7 @@ function mai_views_detect_context() {
  *
  * @return string Formatted string (e.g., '2K+', '1M+').
  */
-function mai_views_get_short_number( int $number ) {
+function mai_analytics_get_short_number( int $number ) {
 	if ( $number < 1000 ) {
 		return sprintf( '%d', $number );
 	}

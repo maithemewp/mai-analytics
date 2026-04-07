@@ -1,6 +1,6 @@
 <?php
 
-namespace Mai\Views;
+namespace Mai\Analytics;
 
 class MaiGrid {
 
@@ -28,7 +28,7 @@ class MaiGrid {
 	}
 
 	/**
-	 * Adds "Trending (Mai Views)" as a "Get Entries By" choice.
+	 * Adds "Trending (Mai Analytics)" as a "Get Entries By" choice.
 	 *
 	 * @param array $field The ACF field configuration.
 	 *
@@ -39,13 +39,13 @@ class MaiGrid {
 			return $field;
 		}
 
-		$field['choices']['trending'] = __( 'Trending', 'mai-views' ) . ' (Mai Views)';
+		$field['choices']['trending'] = __( 'Trending', 'mai-analytics' ) . ' (Mai Analytics)';
 
 		return $field;
 	}
 
 	/**
-	 * Adds "Views (Mai Views)" as an "Order By" choice.
+	 * Adds "Views (Mai Analytics)" as an "Order By" choice.
 	 *
 	 * @param array $field The ACF field configuration.
 	 *
@@ -57,7 +57,7 @@ class MaiGrid {
 		}
 
 		$field['choices'] = array_merge(
-			[ 'views' => __( 'Views', 'mai-views' ) . ' (Mai Views)' ],
+			[ 'views' => __( 'Views', 'mai-analytics' ) . ' (Mai Analytics)' ],
 			$field['choices']
 		);
 

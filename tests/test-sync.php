@@ -1,21 +1,21 @@
 <?php
 
-use Mai\Views\Database;
-use Mai\Views\Sync;
+use Mai\Analytics\Database;
+use Mai\Analytics\Sync;
 
 class Test_Sync extends WP_UnitTestCase {
 
 	public function setUp(): void {
 		parent::setUp();
 		Database::create_table();
-		delete_option( 'mai_views_synced' );
+		delete_option( 'mai_analytics_synced' );
 	}
 
 	public function tearDown(): void {
 		global $wpdb;
 		$wpdb->query( 'TRUNCATE TABLE ' . Database::get_table_name() );
-		delete_transient( 'mai_views_sync_lock' );
-		delete_transient( 'mai_views_syncing' );
+		delete_transient( 'mai_analytics_sync_lock' );
+		delete_transient( 'mai_analytics_syncing' );
 		parent::tearDown();
 	}
 
@@ -94,12 +94,12 @@ class Test_Sync extends WP_UnitTestCase {
 		$before = time();
 		Sync::sync();
 
-		$synced = (int) get_option( 'mai_views_synced' );
+		$synced = (int) get_option( 'mai_analytics_synced' );
 		$this->assertGreaterThanOrEqual( $before, $synced );
 	}
 
 	public function test_concurrent_sync_blocked(): void {
-		set_transient( 'mai_views_syncing', 1, 60 );
+		set_transient( 'mai_analytics_syncing', 1, 60 );
 
 		$post_id = self::factory()->post->create();
 		Database::insert_view( $post_id, 'post' );

@@ -1,6 +1,6 @@
 <?php
 
-namespace Mai\Views;
+namespace Mai\Analytics;
 
 class Settings {
 
@@ -11,7 +11,7 @@ class Settings {
 	 * - Filter-only: retention, sync_interval, exclude_bots
 	 * - DB-backed: data_source, sync_user, trending_window, matomo_url, matomo_site_id, matomo_token
 	 *
-	 * All settings can be overridden via `mai_views_{$key}` filter.
+	 * All settings can be overridden via `mai_analytics_{$key}` filter.
 	 *
 	 * @param string $key The setting key.
 	 *
@@ -20,9 +20,9 @@ class Settings {
 	public static function get( string $key ): mixed {
 		// Filter-only settings with defaults.
 		$filter_defaults = [
-			'retention'   => apply_filters( 'mai_views_retention', 14 ),
-			'sync_interval' => apply_filters( 'mai_views_sync_interval', 5 ),
-			'exclude_bots'  => apply_filters( 'mai_views_exclude_bots', true ),
+			'retention'   => apply_filters( 'mai_analytics_retention', 14 ),
+			'sync_interval' => apply_filters( 'mai_analytics_sync_interval', 5 ),
+			'exclude_bots'  => apply_filters( 'mai_analytics_exclude_bots', true ),
 		];
 
 		if ( isset( $filter_defaults[ $key ] ) ) {
@@ -40,11 +40,11 @@ class Settings {
 		];
 
 		if ( isset( $db_defaults[ $key ] ) ) {
-			$saved = get_option( 'mai_views_settings', [] );
+			$saved = get_option( 'mai_analytics_settings', [] );
 			$value = $saved[ $key ] ?? $db_defaults[ $key ];
 
 			// Allow filter overrides for DB settings too.
-			return apply_filters( "mai_views_{$key}", $value );
+			return apply_filters( "mai_analytics_{$key}", $value );
 		}
 
 		return null;
@@ -78,7 +78,7 @@ class Settings {
 	 */
 	public static function update( array $values ): void {
 		$db_keys = [ 'data_source', 'sync_user', 'trending_window', 'matomo_url', 'matomo_site_id', 'matomo_token' ];
-		$saved   = get_option( 'mai_views_settings', [] );
+		$saved   = get_option( 'mai_analytics_settings', [] );
 
 		foreach ( $values as $key => $value ) {
 			if ( in_array( $key, $db_keys, true ) ) {
@@ -86,6 +86,6 @@ class Settings {
 			}
 		}
 
-		update_option( 'mai_views_settings', $saved, false );
+		update_option( 'mai_analytics_settings', $saved, false );
 	}
 }

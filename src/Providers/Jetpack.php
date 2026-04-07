@@ -1,9 +1,9 @@
 <?php
 
-namespace Mai\Views\Providers;
+namespace Mai\Analytics\Providers;
 
-use Mai\Views\Settings;
-use Mai\Views\WebViewProvider;
+use Mai\Analytics\Settings;
+use Mai\Analytics\WebViewProvider;
 
 class Jetpack implements WebViewProvider {
 
@@ -62,15 +62,15 @@ class Jetpack implements WebViewProvider {
 	 */
 	public function get_unavailable_reason(): string {
 		if ( ! class_exists( 'Jetpack' ) ) {
-			return __( 'Jetpack plugin is not installed or activated.', 'mai-views' );
+			return __( 'Jetpack plugin is not installed or activated.', 'mai-analytics' );
 		}
 
 		if ( ! \Jetpack::is_module_active( 'stats' ) ) {
-			return __( 'Jetpack Stats module is not active.', 'mai-views' );
+			return __( 'Jetpack Stats module is not active.', 'mai-analytics' );
 		}
 
 		if ( ! class_exists( 'Automattic\Jetpack\Stats\WPCOM_Stats' ) ) {
-			return __( 'Jetpack Stats WPCOM_Stats class is not available.', 'mai-views' );
+			return __( 'Jetpack Stats WPCOM_Stats class is not available.', 'mai-analytics' );
 		}
 
 		return '';
@@ -137,7 +137,7 @@ class Jetpack implements WebViewProvider {
 
 		// Clear any previous error on success if we got results.
 		if ( $views ) {
-			delete_transient( 'mai_views_provider_error' );
+			delete_transient( 'mai_analytics_provider_error' );
 		}
 
 		return $views;
@@ -160,8 +160,8 @@ class Jetpack implements WebViewProvider {
 
 		if ( is_wp_error( $data ) || ! is_array( $data ) ) {
 			$message = is_wp_error( $data ) ? $data->get_error_message() : 'Invalid response from Jetpack Stats.';
-			error_log( '[Mai Views] Jetpack Stats error for post ' . $post_id . ': ' . $message );
-			set_transient( 'mai_views_provider_error', $message, HOUR_IN_SECONDS );
+			error_log( '[Mai Analytics] Jetpack Stats error for post ' . $post_id . ': ' . $message );
+			set_transient( 'mai_analytics_provider_error', $message, HOUR_IN_SECONDS );
 
 			$this->cache[ $post_id ] = null;
 			return null;

@@ -1,37 +1,37 @@
 <?php
 
-use Mai\Views\Database;
-use Mai\Views\ProviderSync;
-use Mai\Views\Settings;
-use Mai\Views\Sync;
+use Mai\Analytics\Database;
+use Mai\Analytics\ProviderSync;
+use Mai\Analytics\Settings;
+use Mai\Analytics\Sync;
 
 class Test_Provider_Sync extends WP_UnitTestCase {
 
 	public function setUp(): void {
 		parent::setUp();
 		Database::create_table();
-		delete_option( 'mai_views_provider_last_sync' );
-		delete_option( 'mai_views_settings' );
-		delete_option( 'mai_views_post_type_views' );
-		delete_option( 'mai_views_post_type_views_web' );
-		delete_option( 'mai_views_post_type_views_app' );
-		delete_option( 'mai_views_post_type_trending' );
+		delete_option( 'mai_analytics_provider_last_sync' );
+		delete_option( 'mai_analytics_settings' );
+		delete_option( 'mai_analytics_post_type_views' );
+		delete_option( 'mai_analytics_post_type_views_web' );
+		delete_option( 'mai_analytics_post_type_views_app' );
+		delete_option( 'mai_analytics_post_type_trending' );
 
 		// Remove any previously registered provider filters.
-		remove_all_filters( 'mai_views_providers' );
+		remove_all_filters( 'mai_analytics_providers' );
 	}
 
 	public function tearDown(): void {
 		global $wpdb;
 		$wpdb->query( 'TRUNCATE TABLE ' . Database::get_table_name() );
-		delete_transient( 'mai_views_provider_syncing' );
-		remove_all_filters( 'mai_views_providers' );
-		delete_option( 'mai_views_settings' );
-		delete_option( 'mai_views_provider_last_sync' );
-		delete_option( 'mai_views_post_type_views' );
-		delete_option( 'mai_views_post_type_views_web' );
-		delete_option( 'mai_views_post_type_views_app' );
-		delete_option( 'mai_views_post_type_trending' );
+		delete_transient( 'mai_analytics_provider_syncing' );
+		remove_all_filters( 'mai_analytics_providers' );
+		delete_option( 'mai_analytics_settings' );
+		delete_option( 'mai_analytics_provider_last_sync' );
+		delete_option( 'mai_analytics_post_type_views' );
+		delete_option( 'mai_analytics_post_type_views_web' );
+		delete_option( 'mai_analytics_post_type_views_app' );
+		delete_option( 'mai_analytics_post_type_trending' );
 		parent::tearDown();
 	}
 
@@ -47,8 +47,8 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 		$mock_views = $views_per_path;
 		$mock_avail = $available;
 
-		add_filter( 'mai_views_providers', function () use ( $mock_views, $mock_avail ) {
-			return [ new class( $mock_views, $mock_avail ) implements \Mai\Views\WebViewProvider {
+		add_filter( 'mai_analytics_providers', function () use ( $mock_views, $mock_avail ) {
+			return [ new class( $mock_views, $mock_avail ) implements \Mai\Analytics\WebViewProvider {
 				private int $views;
 				private bool $avail;
 
@@ -73,7 +73,7 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 			} ];
 		} );
 
-		update_option( 'mai_views_settings', [
+		update_option( 'mai_analytics_settings', [
 			'data_source' => 'test_provider',
 			'sync_user'   => 1,
 		] );
@@ -185,7 +185,7 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 		$this->register_mock_provider( 100 );
 
 		// Set the concurrency lock.
-		set_transient( 'mai_views_provider_syncing', 1, 60 );
+		set_transient( 'mai_analytics_provider_syncing', 1, 60 );
 
 		$post_id = self::factory()->post->create( [ 'post_status' => 'publish' ] );
 		Database::insert_view( $post_id, 'post', 'web' );

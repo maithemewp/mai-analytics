@@ -8,8 +8,8 @@
 	'use strict';
 
 	document.addEventListener('DOMContentLoaded', function () {
-		bindButton('mai-views-sync-now', 'sync-now', 'Syncing...');
-		bindButton('mai-views-warm', 'warm', 'Warming stats...');
+		bindButton('mai-analytics-sync-now', 'sync-now', 'Syncing...');
+		bindButton('mai-analytics-warm', 'warm', 'Warming stats...');
 		bindHealthCheck();
 	});
 
@@ -20,16 +20,16 @@
 			return;
 		}
 
-		var statusEl = btn.parentNode.querySelector('.mai-views-btn-status');
+		var statusEl = btn.parentNode.querySelector('.mai-analytics-btn-status');
 
 		btn.addEventListener('click', function () {
 			btn.disabled = true;
 			showStatus(statusEl, loadingText, '#666');
 
-			fetch(maiViewsSettings.restBase + endpoint, {
+			fetch(maiAnalyticsSettings.restBase + endpoint, {
 				method: 'POST',
 				headers: {
-					'X-WP-Nonce': maiViewsSettings.nonce,
+					'X-WP-Nonce': maiAnalyticsSettings.nonce,
 					'Content-Type': 'application/json',
 				},
 			})
@@ -47,8 +47,8 @@
 	}
 
 	function bindHealthCheck() {
-		var btn = document.getElementById('mai-views-health-check');
-		var resultsEl = document.getElementById('mai-views-health-results');
+		var btn = document.getElementById('mai-analytics-health-check');
+		var resultsEl = document.getElementById('mai-analytics-health-results');
 
 		if (!btn || !resultsEl) {
 			return;
@@ -60,10 +60,10 @@
 			resultsEl.style.display = 'block';
 			resultsEl.textContent = 'Running health checks...';
 
-			fetch(maiViewsSettings.restBase + 'health', {
+			fetch(maiAnalyticsSettings.restBase + 'health', {
 				method: 'POST',
 				headers: {
-					'X-WP-Nonce': maiViewsSettings.nonce,
+					'X-WP-Nonce': maiAnalyticsSettings.nonce,
 					'Content-Type': 'application/json',
 				},
 			})

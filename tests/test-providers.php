@@ -1,19 +1,19 @@
 <?php
 
-use Mai\Views\Providers\SiteKit;
-use Mai\Views\Providers\Matomo;
-use Mai\Views\Settings;
+use Mai\Analytics\Providers\SiteKit;
+use Mai\Analytics\Providers\Matomo;
+use Mai\Analytics\Settings;
 
 class Test_Providers extends WP_UnitTestCase {
 
 	public function setUp(): void {
 		parent::setUp();
-		delete_option( 'mai_views_settings' );
+		delete_option( 'mai_analytics_settings' );
 		delete_option( 'googlesitekit_analytics-4_settings' );
 	}
 
 	public function tearDown(): void {
-		delete_option( 'mai_views_settings' );
+		delete_option( 'mai_analytics_settings' );
 		delete_option( 'googlesitekit_analytics-4_settings' );
 		parent::tearDown();
 	}
@@ -47,7 +47,7 @@ class Test_Providers extends WP_UnitTestCase {
 	}
 
 	public function test_matomo_not_available_with_partial_credentials(): void {
-		update_option( 'mai_views_settings', [
+		update_option( 'mai_analytics_settings', [
 			'matomo_url'     => 'https://matomo.example.com',
 			'matomo_site_id' => '',
 			'matomo_token'   => '',
@@ -58,7 +58,7 @@ class Test_Providers extends WP_UnitTestCase {
 	}
 
 	public function test_matomo_available_when_configured(): void {
-		update_option( 'mai_views_settings', [
+		update_option( 'mai_analytics_settings', [
 			'matomo_url'     => 'https://matomo.example.com',
 			'matomo_site_id' => '1',
 			'matomo_token'   => 'abc123',

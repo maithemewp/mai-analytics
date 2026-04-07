@@ -1,9 +1,9 @@
 <?php
 
-namespace Mai\Views\Providers;
+namespace Mai\Analytics\Providers;
 
-use Mai\Views\Settings;
-use Mai\Views\WebViewProvider;
+use Mai\Analytics\Settings;
+use Mai\Analytics\WebViewProvider;
 
 class Matomo implements WebViewProvider {
 
@@ -96,7 +96,7 @@ class Matomo implements WebViewProvider {
 
 		// Bail if settings are incomplete.
 		if ( ! ( $matomo_url && $site_id && $token ) ) {
-			error_log( '[Mai Views] Matomo provider missing required settings.' );
+			error_log( '[Mai Analytics] Matomo provider missing required settings.' );
 			return [];
 		}
 
@@ -130,7 +130,7 @@ class Matomo implements WebViewProvider {
 		$response = wp_remote_post( $api_url, [
 			'headers' => [
 				'Content-Type' => 'application/x-www-form-urlencoded',
-				'User-Agent'   => 'MaiViews/1.0',
+				'User-Agent'   => 'MaiAnalytics/1.0',
 			],
 			'body'    => $body,
 			'timeout' => 30,
@@ -138,7 +138,7 @@ class Matomo implements WebViewProvider {
 
 		// Check for WP error.
 		if ( is_wp_error( $response ) ) {
-			error_log( '[Mai Views] Matomo API request failed: ' . $response->get_error_message() );
+			error_log( '[Mai Analytics] Matomo API request failed: ' . $response->get_error_message() );
 			return [];
 		}
 
@@ -146,7 +146,7 @@ class Matomo implements WebViewProvider {
 		$code = wp_remote_retrieve_response_code( $response );
 
 		if ( 200 !== $code ) {
-			error_log( '[Mai Views] Matomo API returned HTTP ' . $code . ': ' . wp_remote_retrieve_response_message( $response ) );
+			error_log( '[Mai Analytics] Matomo API returned HTTP ' . $code . ': ' . wp_remote_retrieve_response_message( $response ) );
 			return [];
 		}
 
@@ -155,14 +155,14 @@ class Matomo implements WebViewProvider {
 		$data     = json_decode( $body_raw, true );
 
 		if ( ! $data || ! is_array( $data ) ) {
-			error_log( '[Mai Views] Matomo API returned empty or invalid JSON response.' );
+			error_log( '[Mai Analytics] Matomo API returned empty or invalid JSON response.' );
 			return [];
 		}
 
 		// Check for Matomo-level error.
 		if ( isset( $data['result'] ) && 'error' === $data['result'] ) {
 			$message = $data['message'] ?? 'Unknown Matomo API error.';
-			error_log( '[Mai Views] Matomo API error: ' . $message );
+			error_log( '[Mai Analytics] Matomo API error: ' . $message );
 			return [];
 		}
 

@@ -1,20 +1,20 @@
 <?php return array(
     'root' => array(
-        'name' => '__root__',
+        'name' => 'maithemewp/mai-analytics',
         'pretty_version' => 'dev-develop',
         'version' => 'dev-develop',
-        'reference' => '282062f28f025387c1155e9d706d17da7af8dad8',
-        'type' => 'library',
+        'reference' => '0a925a17cb98b44e1126b0d5e7f236b82a295c1b',
+        'type' => 'wordpress-plugin',
         'install_path' => __DIR__ . '/../../',
         'aliases' => array(),
         'dev' => true,
     ),
     'versions' => array(
-        '__root__' => array(
+        'maithemewp/mai-analytics' => array(
             'pretty_version' => 'dev-develop',
             'version' => 'dev-develop',
-            'reference' => '282062f28f025387c1155e9d706d17da7af8dad8',
-            'type' => 'library',
+            'reference' => '0a925a17cb98b44e1126b0d5e7f236b82a295c1b',
+            'type' => 'wordpress-plugin',
             'install_path' => __DIR__ . '/../../',
             'aliases' => array(),
             'dev_requirement' => false,

@@ -1,6 +1,6 @@
 <?php
 
-use Mai\Views\Database;
+use Mai\Analytics\Database;
 
 class Test_Database extends WP_UnitTestCase {
 
@@ -28,7 +28,7 @@ class Test_Database extends WP_UnitTestCase {
 		$table = Database::get_table_name();
 
 		$this->assertStringStartsWith( $wpdb->prefix, $table );
-		$this->assertStringEndsWith( 'mai_views_buffer', $table );
+		$this->assertStringEndsWith( 'mai_analytics_buffer', $table );
 	}
 
 	public function test_insert_view(): void {
@@ -71,7 +71,7 @@ class Test_Database extends WP_UnitTestCase {
 	}
 
 	public function test_db_version_option_set(): void {
-		$this->assertEquals( MAI_VIEWS_DB_VERSION, get_option( Database::DB_VERSION_OPTION ) );
+		$this->assertEquals( MAI_ANALYTICS_DB_VERSION, get_option( Database::DB_VERSION_OPTION ) );
 	}
 
 	public function test_is_queued_returns_true_when_exists(): void {

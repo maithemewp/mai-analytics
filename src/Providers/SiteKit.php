@@ -1,9 +1,9 @@
 <?php
 
-namespace Mai\Views\Providers;
+namespace Mai\Analytics\Providers;
 
-use Mai\Views\Settings;
-use Mai\Views\WebViewProvider;
+use Mai\Analytics\Settings;
+use Mai\Analytics\WebViewProvider;
 use WP_REST_Request;
 
 class SiteKit implements WebViewProvider {
@@ -53,19 +53,19 @@ class SiteKit implements WebViewProvider {
 	 */
 	public function get_unavailable_reason(): string {
 		if ( ! defined( 'GOOGLESITEKIT_VERSION' ) ) {
-			return __( 'Google Site Kit plugin is not installed or activated.', 'mai-views' );
+			return __( 'Google Site Kit plugin is not installed or activated.', 'mai-analytics' );
 		}
 
 		if ( version_compare( GOOGLESITEKIT_VERSION, self::MIN_SITE_KIT_VERSION, '<' ) ) {
 			return sprintf(
 				/* translators: 1: current version, 2: required version */
-				__( 'Site Kit version %1$s is too old. Version %2$s or later is required.', 'mai-views' ),
+				__( 'Site Kit version %1$s is too old. Version %2$s or later is required.', 'mai-analytics' ),
 				GOOGLESITEKIT_VERSION,
 				self::MIN_SITE_KIT_VERSION
 			);
 		}
 
-		return __( 'Google Analytics 4 is not connected in Site Kit.', 'mai-views' );
+		return __( 'Google Analytics 4 is not connected in Site Kit.', 'mai-analytics' );
 	}
 
 	/**
@@ -133,7 +133,7 @@ class SiteKit implements WebViewProvider {
 		}
 
 		if ( ! $owner_id ) {
-			self::set_last_error( __( 'Site Kit owner user not found. Cannot authenticate GA4 request.', 'mai-views' ) );
+			self::set_last_error( __( 'Site Kit owner user not found. Cannot authenticate GA4 request.', 'mai-analytics' ) );
 			return [];
 		}
 
@@ -200,7 +200,7 @@ class SiteKit implements WebViewProvider {
 		}
 
 		// Clear any previous error on success.
-		delete_transient( 'mai_views_provider_error' );
+		delete_transient( 'mai_analytics_provider_error' );
 
 		return $views;
 	}
@@ -213,8 +213,8 @@ class SiteKit implements WebViewProvider {
 	 * @return void
 	 */
 	private static function set_last_error( string $message ): void {
-		error_log( '[Mai Views] Site Kit report error: ' . $message );
-		set_transient( 'mai_views_provider_error', $message, HOUR_IN_SECONDS );
+		error_log( '[Mai Analytics] Site Kit report error: ' . $message );
+		set_transient( 'mai_analytics_provider_error', $message, HOUR_IN_SECONDS );
 	}
 
 	/**
@@ -223,6 +223,6 @@ class SiteKit implements WebViewProvider {
 	 * @return string The error message, or empty string if none.
 	 */
 	public static function get_last_error(): string {
-		return (string) get_transient( 'mai_views_provider_error' );
+		return (string) get_transient( 'mai_analytics_provider_error' );
 	}
 }
