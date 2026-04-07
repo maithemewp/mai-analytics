@@ -11,6 +11,7 @@
             "Mai\\Analytics\\": "src/"
         },
         "files": [
+            "mai-analytics.php",
             "includes/functions.php"
         ]
     },
