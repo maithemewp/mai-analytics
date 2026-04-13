@@ -29,7 +29,7 @@ Download and activate in `wp-content/plugins/mai-analytics/`.
 }
 ```
 
-A constant guard (`MAI_ANALYTICS_VERSION`) prevents double-loading if both standalone and Composer versions are present.
+When both the standalone plugin and Mai Publisher's bundled copy are active, the standalone always wins. Mai Publisher defers loading its bundled copy until after all plugins have loaded, and the standalone plugin re-prepends its Composer autoloader so `Mai\Analytics\*` classes and helper functions resolve to the standalone's files. Drop a newer standalone plugin onto a Mai Publisher site to override the bundled version without touching Mai Publisher.
 
 ## Settings
 
