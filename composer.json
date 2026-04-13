@@ -9,11 +9,7 @@
     "autoload": {
         "psr-4": {
             "Mai\\Analytics\\": "src/"
-        },
-        "files": [
-            "mai-analytics.php",
-            "includes/functions.php"
-        ]
+        }
     },
     "scripts": {
         "update-bots": "php bin/update-bot-patterns.php",
