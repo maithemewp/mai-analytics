@@ -77,14 +77,23 @@ class Health {
 		$schedules = wp_get_schedules();
 		$check( 'Cron', 'mai_analytics_15min schedule', isset( $schedules['mai_analytics_15min'] ), isset( $schedules['mai_analytics_15min'] ) ? $schedules['mai_analytics_15min']['interval'] . 's' : 'missing' );
 
-		$last_sync  = get_option( 'mai_analytics_synced', 0 );
-		$sync_age   = $last_sync ? human_time_diff( $last_sync ) . ' ago' : 'never';
-		$sync_stale = $last_sync && ( time() - $last_sync ) > 3600;
-		$check( 'Cron', 'Last sync recent', ! $sync_stale, $sync_age, false );
-
-		// ── Settings & Provider ──
+		// Read settings here so the sync check knows which option to read.
+		// Cron::maybe_sync() branches on data_source: self_hosted writes to
+		// mai_analytics_synced, external providers write to mai_analytics_provider_last_sync.
 		$settings    = get_option( 'mai_analytics_settings', [] );
 		$data_source = $settings['data_source'] ?? 'self_hosted';
+
+		if ( 'disabled' === $data_source ) {
+			$check( 'Cron', 'Last sync recent', true, 'disabled', false );
+		} else {
+			$option_key = ( 'self_hosted' === $data_source ) ? 'mai_analytics_synced' : 'mai_analytics_provider_last_sync';
+			$last_sync  = (int) get_option( $option_key, 0 );
+			$sync_age   = $last_sync ? human_time_diff( $last_sync ) . ' ago' : 'never';
+			$sync_stale = $last_sync && ( time() - $last_sync ) > 3600;
+			$check( 'Cron', 'Last sync recent', ! $sync_stale, $sync_age, false );
+		}
+
+		// ── Settings & Provider ──
 		$check( 'Provider', 'Settings saved', ! empty( $settings ), 'data_source=' . $data_source );
 
 		if ( 'self_hosted' !== $data_source && 'disabled' !== $data_source ) {
