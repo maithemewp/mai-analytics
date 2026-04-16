@@ -12,6 +12,19 @@ class Plugin {
 	 * @return void
 	 */
 	public static function init(): void {
+		// Old Mai Publisher (pre-develop) has its own views system. Running
+		// both would double-track and double-sync. Bail with an admin notice
+		// until Mai Publisher is updated to a version that defers to Mai Analytics.
+		if ( class_exists( 'Mai_Publisher_Views' ) ) {
+			add_action( 'admin_notices', [ __CLASS__, 'conflict_notice' ] );
+
+			if ( defined( 'WP_CLI' ) && WP_CLI ) {
+				new CLI();
+			}
+
+			return;
+		}
+
 		Migration::maybe_migrate();
 		Database::maybe_update();
 		self::apply_migrated_defaults();
@@ -37,6 +50,22 @@ class Plugin {
 		if ( defined( 'WP_CLI' ) && WP_CLI ) {
 			new CLI();
 		}
+	}
+
+	/**
+	 * Renders an admin notice when old Mai Publisher's views system is active.
+	 *
+	 * @return void
+	 */
+	public static function conflict_notice(): void {
+		if ( ! current_user_can( 'activate_plugins' ) ) {
+			return;
+		}
+
+		printf(
+			'<div class="notice notice-error"><p><strong>Mai Analytics:</strong> %s</p></div>',
+			'This version of Mai Publisher includes its own view tracking that conflicts with Mai Analytics. Please update Mai Publisher to the latest version, or deactivate Mai Analytics until Mai Publisher is updated.'
+		);
 	}
 
 	/**

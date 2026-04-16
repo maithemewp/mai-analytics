@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.3
+
+Bail gracefully when installed alongside old Mai Publisher versions that still have the built-in `Mai_Publisher_Views` class. Shows an admin notice prompting the user to update Mai Publisher or deactivate Mai Analytics. Prevents double-tracking.
+
 ## 1.0.2
 
 Standalone installs now override Mai Publisher's bundled copy. Composer's `files` autoload no longer auto-runs `mai-analytics.php`; the standalone plugin prepends its Composer `ClassLoader` so `Mai\Analytics\*` resolves to its `src/` even when Mai Publisher's autoloader ran first. Mai Publisher loads the bundled bootstrap only if no standalone is active. Drop a new Mai Analytics onto a Mai Publisher site and it takes over cleanly.
