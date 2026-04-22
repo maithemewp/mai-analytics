@@ -40,7 +40,7 @@ class AdminSettings {
 	public function maybe_show_provider_notice(): void {
 		$data_source = Settings::get( 'data_source' );
 
-		if ( 'self_hosted' === $data_source ) {
+		if ( in_array( $data_source, [ 'disabled', 'self_hosted' ], true ) ) {
 			return;
 		}
 

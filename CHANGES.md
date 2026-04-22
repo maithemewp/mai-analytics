@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.4
+
+Skip provider-unavailable admin notice when view tracking is set to disabled.
+
 ## 1.0.3
 
 Bail gracefully when installed alongside old Mai Publisher versions that still have the built-in `Mai_Publisher_Views` class. Shows an admin notice prompting the user to update Mai Publisher or deactivate Mai Analytics. Prevents double-tracking.
