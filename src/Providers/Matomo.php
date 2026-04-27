@@ -270,7 +270,20 @@ class Matomo implements WebViewProvider {
 		$code = wp_remote_retrieve_response_code( $response );
 
 		if ( 200 !== $code ) {
-			self::set_last_error( 'Matomo API returned HTTP ' . $code . ': ' . wp_remote_retrieve_response_message( $response ) );
+			// Include a snippet of the response body so 500s actually tell us
+			// what Matomo (or the proxy in front of it) said. Strip tags and
+			// collapse whitespace so the transient stays readable; cap length
+			// so a full error page doesn't blow up the option_value column.
+			$snippet = trim( preg_replace( '/\s+/', ' ', wp_strip_all_tags( (string) wp_remote_retrieve_body( $response ) ) ) );
+			$snippet = mb_substr( $snippet, 0, 500 );
+
+			$message = 'Matomo API returned HTTP ' . $code . ': ' . wp_remote_retrieve_response_message( $response );
+
+			if ( '' !== $snippet ) {
+				$message .= ' — ' . $snippet;
+			}
+
+			self::set_last_error( $message );
 			return null;
 		}
 
