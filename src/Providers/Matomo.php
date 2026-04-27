@@ -152,6 +152,67 @@ class Matomo implements WebViewProvider {
 			}
 		}
 
+		// Chunk paths into smaller bulk requests. ProviderSync hands us up to
+		// `Matomo::get_batch_size()` (100) paths at once, which becomes
+		// (paths × windows) sub-queries inside one urls[] body — 200 sub-queries
+		// for two windows. Many Matomo / PHP installs choke on that:
+		// `max_input_vars` defaults to 1000 but is commonly clamped lower, and
+		// processing 200 sub-queries server-side can return HTTP 500. Chunking
+		// to a smaller per-request count keeps each round-trip portable across
+		// hosts. Filter `mai_analytics_matomo_bulk_chunk` to raise it on
+		// beefier infra (e.g. return 100 to keep one HTTP call per provider
+		// batch). 0 / negative falls back to 25.
+		$chunk_size = (int) apply_filters( 'mai_analytics_matomo_bulk_chunk', 25 );
+		$chunk_size = $chunk_size > 0 ? $chunk_size : 25;
+
+		$results        = [];
+		$path_chunks    = array_chunk( $path_list, $chunk_size );
+		$any_chunk_ok   = false;
+
+		foreach ( $path_chunks as $chunk_paths ) {
+			$chunk_results = $this->fetch_chunk( $api_url, $site_id, $token, $chunk_paths, $translated, $window_names, $window_count );
+
+			// `null` signals a transport- or API-level error (already surfaced
+			// via set_last_error). Bail the whole call so callers see all-or-
+			// nothing semantics — partial results would let ProviderSync's
+			// `?? 0` fall through and silently zero meta for unfetched paths.
+			if ( null === $chunk_results ) {
+				return [];
+			}
+
+			$any_chunk_ok = true;
+
+			foreach ( $chunk_results as $path => $window_counts ) {
+				foreach ( $window_counts as $window_name => $count ) {
+					$results[ $path ][ $window_name ] = $count;
+				}
+			}
+		}
+
+		if ( $any_chunk_ok ) {
+			delete_transient( 'mai_analytics_provider_error' );
+		}
+
+		return $results;
+	}
+
+	/**
+	 * Sends one bulk request for the given path chunk and returns parsed counts.
+	 *
+	 * Returns `null` to signal a hard failure (HTTP/network/API error); returns
+	 * an array (possibly empty) on a successful round-trip.
+	 *
+	 * @param string $api_url      Resolved Matomo `index.php` endpoint.
+	 * @param mixed  $site_id      Matomo site ID.
+	 * @param string $token        Matomo auth token.
+	 * @param array  $chunk_paths  Paths in this chunk.
+	 * @param array  $translated   Pre-translated `$window_name => ['period'=>..,'date'=>..]` map.
+	 * @param array  $window_names Ordered window names matching `$translated`.
+	 * @param int    $window_count Cached `count( $window_names )` for index math.
+	 *
+	 * @return array<string, array<string, int>>|null
+	 */
+	private function fetch_chunk( string $api_url, $site_id, string $token, array $chunk_paths, array $translated, array $window_names, int $window_count ): ?array {
 		// Bulk request body. The urls[] ordering is paths × windows: for each
 		// path we append one sub-query per window in caller-provided order.
 		// Index mapping on the response side: index = path_index * window_count + window_index.
@@ -164,7 +225,7 @@ class Matomo implements WebViewProvider {
 			'urls'       => [],
 		];
 
-		foreach ( $path_list as $path ) {
+		foreach ( $chunk_paths as $path ) {
 			// Matomo records full URLs against pageUrl, so expand the path-only
 			// argument here. SiteKit (GA4 pagePath) and Jetpack handle paths
 			// directly, so the upstream contract stays path-based.
@@ -200,14 +261,14 @@ class Matomo implements WebViewProvider {
 
 		if ( is_wp_error( $response ) ) {
 			self::set_last_error( 'Matomo API request failed: ' . $response->get_error_message() );
-			return [];
+			return null;
 		}
 
 		$code = wp_remote_retrieve_response_code( $response );
 
 		if ( 200 !== $code ) {
 			self::set_last_error( 'Matomo API returned HTTP ' . $code . ': ' . wp_remote_retrieve_response_message( $response ) );
-			return [];
+			return null;
 		}
 
 		$body_raw = wp_remote_retrieve_body( $response );
@@ -215,30 +276,31 @@ class Matomo implements WebViewProvider {
 
 		if ( ! $data || ! is_array( $data ) ) {
 			self::set_last_error( __( 'Matomo API returned empty or invalid JSON response.', 'mai-analytics' ) );
-			return [];
+			return null;
 		}
 
 		if ( isset( $data['result'] ) && 'error' === $data['result'] ) {
 			$message = $data['message'] ?? __( 'Unknown Matomo API error.', 'mai-analytics' );
 			self::set_last_error( 'Matomo API error: ' . $message );
-			return [];
+			return null;
 		}
 
 		// Map response indexes back to (path, window). Each $data[$i] is the
 		// response for the i-th urls[] sub-query, in the same order we built it.
 		// We sum nb_visits across the period buckets returned (weekly buckets
 		// for an all-time query, daily buckets for trending).
-		$results = [];
+		$chunk_paths_list = array_values( $chunk_paths );
+		$chunk_results    = [];
 
 		foreach ( $data as $index => $row ) {
 			$path_index   = intdiv( (int) $index, $window_count );
 			$window_index = (int) $index % $window_count;
 
-			if ( ! isset( $path_list[ $path_index ], $window_names[ $window_index ] ) ) {
+			if ( ! isset( $chunk_paths_list[ $path_index ], $window_names[ $window_index ] ) ) {
 				continue;
 			}
 
-			$path        = $path_list[ $path_index ];
+			$path        = $chunk_paths_list[ $path_index ];
 			$window_name = $window_names[ $window_index ];
 
 			$visits = 0;
@@ -255,16 +317,11 @@ class Matomo implements WebViewProvider {
 			}
 
 			if ( $visits > 0 ) {
-				$results[ $path ][ $window_name ] = $visits;
+				$chunk_results[ $path ][ $window_name ] = $visits;
 			}
 		}
 
-		// Clear any stale error on a successful round-trip so the admin
-		// "Sync Now" health check (which reads this transient) reflects the
-		// current request, not a previous failure.
-		delete_transient( 'mai_analytics_provider_error' );
-
-		return $results;
+		return $chunk_results;
 	}
 
 	/**
