@@ -78,7 +78,7 @@ class AdminSettings {
 				$message .= ' ' . esc_html( $reason );
 			}
 
-			$message .= ' ' . esc_html__( 'View syncing is paused — existing stats are preserved.', 'mai-analytics' );
+			$message .= ' ' . esc_html__( 'View syncing is paused; existing stats are preserved.', 'mai-analytics' );
 		}
 
 		printf(

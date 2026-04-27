@@ -759,7 +759,7 @@ class AdminRestApi {
 		$queue_size = count( Database::get_distinct_objects_since( $since ) );
 
 		if ( 0 === $queue_size ) {
-			return new WP_REST_Response( [ 'message' => __( 'Provider connected. No pages in the queue — try "Warm Stats" to fetch all stats.', 'mai-analytics' ) ] );
+			return new WP_REST_Response( [ 'message' => __( 'Provider connected. No pages in the queue. Try "Warm Stats" to fetch all stats.', 'mai-analytics' ) ] );
 		}
 
 		delete_transient( 'mai_analytics_provider_error' );
