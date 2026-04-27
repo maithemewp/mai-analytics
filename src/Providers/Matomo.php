@@ -154,16 +154,19 @@ class Matomo implements WebViewProvider {
 
 		// Chunk paths into smaller bulk requests. ProviderSync hands us up to
 		// `Matomo::get_batch_size()` (100) paths at once, which becomes
-		// (paths × windows) sub-queries inside one urls[] body — 200 sub-queries
-		// for two windows. Many Matomo / PHP installs choke on that:
-		// `max_input_vars` defaults to 1000 but is commonly clamped lower, and
-		// processing 200 sub-queries server-side can return HTTP 500. Chunking
-		// to a smaller per-request count keeps each round-trip portable across
-		// hosts. Filter `mai_analytics_matomo_bulk_chunk` to raise it on
-		// beefier infra (e.g. return 100 to keep one HTTP call per provider
-		// batch). 0 / negative falls back to 25.
-		$chunk_size = (int) apply_filters( 'mai_analytics_matomo_bulk_chunk', 25 );
-		$chunk_size = $chunk_size > 0 ? $chunk_size : 25;
+		// (paths × windows) sub-queries inside one urls[] body. Matomo enforces
+		// a server-side cap via `API_bulk_request_limit` (introduced in
+		// Matomo 5.8.0) — defaults are 10 for anonymous users without view,
+		// 50 for anonymous users with view, and the configured value otherwise.
+		// Hitting the cap returns HTTP 400 in vanilla Matomo, but proxies (e.g.
+		// Cloudflare) commonly wrap that as HTTP 500. Default chunk of 10
+		// (= 20 sub-queries with 2 windows) stays well under any plausible
+		// configuration. Operators with `API_bulk_request_limit = -1` (or a
+		// raised explicit cap) in Matomo's config.ini.php can scale back up
+		// via the `mai_analytics_matomo_bulk_chunk` filter. 0 / negative falls
+		// back to 10.
+		$chunk_size = (int) apply_filters( 'mai_analytics_matomo_bulk_chunk', 10 );
+		$chunk_size = $chunk_size > 0 ? $chunk_size : 10;
 
 		$results        = [];
 		$path_chunks    = array_chunk( $path_list, $chunk_size );
