@@ -509,6 +509,12 @@ class CLI {
 	 * [--taxonomy=<taxonomy>]
 	 * : Limit to a specific taxonomy (only with --type=term).
 	 *
+	 * [--chunk=<n>]
+	 * : Override the Matomo bulk chunk size (paths per HTTP request) for this
+	 * call. Useful on beefy infra to push more (paths × windows) into a single
+	 * request without registering a `mai_analytics_matomo_bulk_chunk` filter
+	 * in a mu-plugin. Ignored by non-Matomo providers.
+	 *
 	 * [--verbose]
 	 * : Show detailed per-batch output.
 	 *
@@ -517,6 +523,7 @@ class CLI {
 	 *     wp mai-analytics warm
 	 *     wp mai-analytics warm --type=post --ids=1,2,3
 	 *     wp mai-analytics warm --type=term --taxonomy=category --verbose
+	 *     wp mai-analytics warm --chunk=25 --verbose
 	 *
 	 * @param array $args       Positional arguments (unused).
 	 * @param array $assoc_args Associative arguments.
@@ -546,6 +553,17 @@ class CLI {
 
 		if ( isset( $assoc_args['taxonomy'] ) ) {
 			$warm_args['taxonomy'] = $assoc_args['taxonomy'];
+		}
+
+		// Per-call override of the Matomo bulk chunk size. Registered as a
+		// filter rather than passed through warm_args because the filter is
+		// the public extension point any mu-plugin would use anyway, and the
+		// CLI process exits when warm finishes so the closure doesn't leak
+		// into request-handling code.
+		$chunk = isset( $assoc_args['chunk'] ) ? (int) $assoc_args['chunk'] : 0;
+
+		if ( $chunk > 0 ) {
+			add_filter( 'mai_analytics_matomo_bulk_chunk', fn() => $chunk );
 		}
 
 		WP_CLI::log( 'Warming stats from provider...' );
