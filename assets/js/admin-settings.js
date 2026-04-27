@@ -65,9 +65,18 @@
 
 		var statusEl = btn.parentNode.querySelector('.mai-analytics-btn-status');
 
+		// Catches accidental tab-close / navigation while a warm is in flight.
+		// Polling stops as soon as the tab unloads, so partial progress is
+		// preserved server-side but the rest never runs without a re-click.
+		var beforeUnloadHandler = function (e) {
+			e.preventDefault();
+			e.returnValue = '';
+		};
+
 		btn.addEventListener('click', async function () {
 			btn.disabled = true;
 			showStatus(statusEl, 'Warming stats...', '#666');
+			window.addEventListener('beforeunload', beforeUnloadHandler);
 
 			var cursor = 0;
 			var totalUpdated = 0;
@@ -92,6 +101,7 @@
 					if (!res.ok) {
 						showStatus(statusEl, data.message || 'Warm failed.', '#d63638');
 						btn.disabled = false;
+						window.removeEventListener('beforeunload', beforeUnloadHandler);
 						return;
 					}
 
@@ -104,6 +114,7 @@
 							'#00a32a'
 						);
 						btn.disabled = false;
+						window.removeEventListener('beforeunload', beforeUnloadHandler);
 						return;
 					}
 
@@ -120,9 +131,11 @@
 
 				showStatus(statusEl, 'Warm aborted: too many iterations.', '#d63638');
 				btn.disabled = false;
+				window.removeEventListener('beforeunload', beforeUnloadHandler);
 			} catch (e) {
 				showStatus(statusEl, 'Request failed.', '#d63638');
 				btn.disabled = false;
+				window.removeEventListener('beforeunload', beforeUnloadHandler);
 			}
 		});
 	}

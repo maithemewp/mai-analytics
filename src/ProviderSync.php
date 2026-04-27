@@ -591,8 +591,12 @@ class ProviderSync {
 					$where       .= $wpdb->prepare( " AND ID IN ($placeholders)", ...$ids_filter );
 				}
 
+				// DESC so the most-recent posts (highest IDs) get processed
+				// first. On publishing sites the recent posts are the ones the
+				// user cares about seeing populated quickly; the long tail of
+				// older posts can backfill over time.
 				$posts = $wpdb->get_results(
-					"SELECT ID FROM {$wpdb->posts} $where ORDER BY ID ASC"
+					"SELECT ID FROM {$wpdb->posts} $where ORDER BY ID DESC"
 				);
 
 				foreach ( $posts as $row ) {
@@ -626,7 +630,7 @@ class ProviderSync {
 					 FROM {$wpdb->terms} t
 					 INNER JOIN {$wpdb->term_taxonomy} tt ON t.term_id = tt.term_id
 					 $where
-					 ORDER BY t.term_id ASC"
+					 ORDER BY t.term_id DESC"
 				);
 
 				foreach ( $terms as $row ) {
