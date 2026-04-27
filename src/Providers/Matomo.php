@@ -165,8 +165,8 @@ class Matomo implements WebViewProvider {
 		// raised explicit cap) in Matomo's config.ini.php can scale back up
 		// via the `mai_analytics_matomo_bulk_chunk` filter. 0 / negative falls
 		// back to 10.
-		$chunk_size = (int) apply_filters( 'mai_analytics_matomo_bulk_chunk', 10 );
-		$chunk_size = $chunk_size > 0 ? $chunk_size : 10;
+		$chunk_size = (int) apply_filters( 'mai_analytics_matomo_bulk_chunk', 5 );
+		$chunk_size = $chunk_size > 0 ? $chunk_size : 5;
 
 		$results        = [];
 		$path_chunks    = array_chunk( $path_list, $chunk_size );
