@@ -155,7 +155,25 @@ class SiteKit implements WebViewProvider {
 			return [];
 		}
 
-		wp_set_current_user( $owner_id );
+		// Verify the resolved owner actually exists. If the option points at
+		// a deleted user, wp_set_current_user( $owner_id ) silently switches
+		// us to a phantom user with no caps; the GA4 REST permission_callback
+		// then returns rest_forbidden, which surfaces as a confusing
+		// "Sorry, you are not allowed to do that." with no signal that the
+		// underlying problem is a stale option pointing at a removed admin.
+		// Validate up-front so the admin sees an actionable message instead.
+		$owner = get_user_by( 'id', $owner_id );
+
+		if ( ! $owner ) {
+			self::set_last_error( sprintf(
+				/* translators: %d is the stale owner user ID. */
+				__( 'Site Kit owner user (ID %d) does not exist. Have an existing admin re-sign-in via Site Kit, or update googlesitekit_owner_id to a valid user.', 'mai-analytics' ),
+				$owner_id
+			) );
+			return [];
+		}
+
+		wp_set_current_user( $owner->ID );
 
 		$results       = [];
 		$any_success   = false;
