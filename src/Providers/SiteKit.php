@@ -52,6 +52,15 @@ class SiteKit implements WebViewProvider {
 	 * @return string The reason, or empty string if available.
 	 */
 	public function get_unavailable_reason(): string {
+		// Without this guard the cascade falls through to the
+		// "GA4 not connected" string even on properly-configured sites,
+		// so callers that surface the reason next to is_available() show a
+		// contradictory pair (available: yes / unavailable: …). Match the
+		// docblock contract: empty string when the provider is usable.
+		if ( $this->is_available() ) {
+			return '';
+		}
+
 		if ( ! defined( 'GOOGLESITEKIT_VERSION' ) ) {
 			return __( 'Google Site Kit plugin is not installed or activated.', 'mai-analytics' );
 		}
