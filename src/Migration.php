@@ -52,9 +52,9 @@ class Migration {
 
 		update_option( 'mai_analytics_settings', $settings, false );
 
-		// Store Mai Publisher's trending_days and views_interval as filter defaults
-		// via a persistent option, since they were DB-backed in Mai Publisher
-		// but are filter-only in Mai Analytics.
+		// Store Mai Publisher's trending_days, views_interval, and views_years as
+		// filter defaults via a persistent option, since they were DB-backed in
+		// Mai Publisher but are filter-only in Mai Analytics.
 		$filter_defaults = [];
 
 		if ( ! empty( $publisher['trending_days'] ) ) {
@@ -63,6 +63,10 @@ class Migration {
 
 		if ( ! empty( $publisher['views_interval'] ) ) {
 			$filter_defaults['sync_interval'] = (int) $publisher['views_interval'];
+		}
+
+		if ( ! empty( $publisher['views_years'] ) ) {
+			$filter_defaults['views_years'] = (int) $publisher['views_years'];
 		}
 
 		if ( $filter_defaults ) {

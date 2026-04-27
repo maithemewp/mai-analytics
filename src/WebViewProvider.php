@@ -42,13 +42,23 @@ interface WebViewProvider {
 	public function get_settings_fields(): array;
 
 	/**
-	 * Fetches pageview counts for the given URL paths within a date range.
+	 * Fetches pageview counts for the given URL paths across one or more named date windows.
 	 *
-	 * @param array  $paths      Array of URL paths (e.g., ['/some-post/', '/category/news/']).
-	 * @param string $start_date Start date in 'Y-m-d' format.
-	 * @param string $end_date   End date in 'Y-m-d' format.
+	 * Callers pass every window they need in a single call so providers can bulk-fetch.
+	 * For example, a sync pulling both "all-time" and "trending" totals sends them together
+	 * and the provider returns both per path. The window names are caller-defined keys —
+	 * implementations must preserve them in the response.
 	 *
-	 * @return array Associative array of path => view count. Missing paths are omitted.
+	 * An empty start_date in a window's range means "all-time" and is each provider's
+	 * responsibility to interpret (Matomo: a long weekly range; Site Kit: omit/far-back
+	 * startDate; Jetpack: use the all-time `views` field).
+	 *
+	 * @param array<string> $paths URL paths (e.g., ['/some-post/', '/category/news/']).
+	 * @param array<string, array{0:string,1:string}> $windows Map of window name to
+	 *     [start_date, end_date]. Dates are 'Y-m-d' or empty string.
+	 *
+	 * @return array<string, array<string, int>> Map of path => (window name => view count).
+	 *     Paths or windows with no data may be omitted.
 	 */
-	public function get_views( array $paths, string $start_date, string $end_date ): array;
+	public function get_views( array $paths, array $windows ): array;
 }

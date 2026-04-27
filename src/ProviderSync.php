@@ -5,6 +5,32 @@ namespace Mai\Analytics;
 class ProviderSync {
 
 	/**
+	 * Window names this class uses when calling WebViewProvider::get_views().
+	 * The actual request ordering — trending first so a later all-time timeout
+	 * doesn't lose the more time-sensitive number — is enforced by
+	 * `build_default_windows()`, not by these constants' declaration order.
+	 */
+	private const WINDOW_TRENDING = 'trending';
+	private const WINDOW_ALL_TIME = 'all_time';
+
+	/**
+	 * Builds the default trending+all-time windows pair for a sync/warm pass.
+	 *
+	 * @param int    $trending_days How many days back the trending window covers.
+	 * @param string $today         End date for both windows (Y-m-d).
+	 *
+	 * @return array<string, array{0:string,1:string}>
+	 */
+	private static function build_default_windows( int $trending_days, string $today ): array {
+		$trend_start = gmdate( 'Y-m-d', strtotime( "-{$trending_days} days" ) );
+
+		return [
+			self::WINDOW_TRENDING => [ $trend_start, $today ],
+			self::WINDOW_ALL_TIME => [ '', $today ],
+		];
+	}
+
+	/**
 	 * Gets the active web view provider matching the current data_source setting.
 	 *
 	 * Calls the 'mai_analytics_providers' filter to collect registered provider instances,
@@ -118,7 +144,6 @@ class ProviderSync {
 	 * @return void
 	 */
 	private static function process_batch( WebViewProvider $provider, array $batch, \wpdb $wpdb, string $table, string $last_sync_date, int $trending_days ): void {
-		// Build path → object map.
 		$path_map = [];
 
 		foreach ( $batch as $obj ) {
@@ -135,19 +160,14 @@ class ProviderSync {
 			return;
 		}
 
-		$paths     = array_keys( $path_map );
-		$today     = gmdate( 'Y-m-d' );
-		$trend_start = gmdate( 'Y-m-d', strtotime( "-{$trending_days} days" ) );
+		$paths   = array_keys( $path_map );
+		$today   = gmdate( 'Y-m-d' );
+		$windows = self::build_default_windows( $trending_days, $today );
 
-		// Fetch all-time web views from provider.
-		$web_views_all = $provider->get_views( $paths, '', $today );
-
-		// Fetch trending-window web views from provider.
-		$web_views_trending = $provider->get_views( $paths, $trend_start, $today );
-
-		// If both calls returned empty, the provider likely failed. Skip web meta writes
-		// to preserve existing data. App views still get processed.
-		$provider_failed = empty( $web_views_all ) && empty( $web_views_trending );
+		// One bulk call for both windows. See WebViewProvider::get_views() for
+		// the contract; ordering rationale lives on the WINDOW_* constants.
+		$web_views       = $provider->get_views( $paths, $windows );
+		$provider_failed = empty( $web_views );
 
 		// Options for post_type archives.
 		$pt_views     = get_option( 'mai_analytics_post_type_views', [] );
@@ -163,9 +183,9 @@ class ProviderSync {
 			$key  = $obj->object_key;
 			$path = self::get_object_path( $obj );
 
-			// Web views — only update if provider call succeeded.
-			$web_total    = ( ! $provider_failed && $path ) ? (int) ( $web_views_all[ $path ] ?? 0 ) : null;
-			$web_trending = ( ! $provider_failed && $path ) ? (int) ( $web_views_trending[ $path ] ?? 0 ) : null;
+			// Only overwrite when the provider succeeded; otherwise leave existing meta intact.
+			$web_total    = ( ! $provider_failed && $path ) ? (int) ( $web_views[ $path ][ self::WINDOW_ALL_TIME ] ?? 0 ) : null;
+			$web_trending = ( ! $provider_failed && $path ) ? (int) ( $web_views[ $path ][ self::WINDOW_TRENDING ] ?? 0 ) : null;
 
 			// App views: count new buffer rows since last sync.
 			$app_new = (int) $wpdb->get_var(
@@ -311,14 +331,77 @@ class ProviderSync {
 	 * @return \Generator Yields arrays: ['batch' => int, 'total' => int, 'updated' => int, 'type' => string].
 	 */
 	public static function warm( array $args = [] ): \Generator {
-		$provider = self::get_provider();
+		$state = self::prepare_warm_state( $args );
 
-		if ( ! $provider || ! $provider->is_available() ) {
+		if ( ! $state ) {
 			return;
 		}
 
-		// Provider handles its own API auth (e.g., SiteKit uses googlesitekit_owner_id).
-		// We just need a user context for meta writes during cron.
+		foreach ( $state['batches'] as $batch_index => $batch ) {
+			$progress = self::process_warm_batch( $state, $batch_index, $batch );
+
+			if ( $state['pt_dirty'] ) {
+				self::persist_warm_pt_options( $state );
+				$state['pt_dirty'] = false;
+			}
+
+			yield $progress;
+		}
+	}
+
+	/**
+	 * Processes exactly one warm batch by index and returns its progress payload.
+	 *
+	 * The admin Warm Stats button uses this so each REST request finishes well
+	 * within Cloudflare's 100-second gateway window. Re-runs the prelude
+	 * (`prepare_warm_state()`) each call — that's bounded by site size, not by
+	 * the cursor — but does **not** re-run any earlier batch's provider HTTP
+	 * call or per-object DB writes.
+	 *
+	 * @param int   $batch_index Zero-indexed batch to process.
+	 * @param array $args        Same args accepted by warm().
+	 *
+	 * @return array|null Progress payload, or null when index is past the end.
+	 */
+	public static function warm_batch( int $batch_index, array $args = [] ): ?array {
+		$state = self::prepare_warm_state( $args );
+
+		if ( ! $state || ! isset( $state['batches'][ $batch_index ] ) ) {
+			return null;
+		}
+
+		$progress = self::process_warm_batch( $state, $batch_index, $state['batches'][ $batch_index ] );
+
+		if ( $state['pt_dirty'] ) {
+			self::persist_warm_pt_options( $state );
+		}
+
+		return $progress;
+	}
+
+	/**
+	 * Builds the shared state used by both warm() and warm_batch().
+	 *
+	 * Doing this work once per request instead of per-batch is the difference
+	 * between the chunked endpoint scaling linearly (one prelude per batch
+	 * request, T preludes total) and quadratically (T preludes × per-batch
+	 * provider calls + DB writes for every preceding batch on every request).
+	 *
+	 * Returns null if there's nothing to warm.
+	 *
+	 * @param array $args See warm().
+	 *
+	 * @return array|null
+	 */
+	private static function prepare_warm_state( array $args ): ?array {
+		$provider = self::get_provider();
+
+		if ( ! $provider || ! $provider->is_available() ) {
+			return null;
+		}
+
+		// Provider handles its own API auth. We just need a user context for
+		// meta writes during cron.
 		if ( ! get_current_user_id() ) {
 			$sync_user = Settings::get( 'sync_user' );
 
@@ -327,22 +410,18 @@ class ProviderSync {
 			}
 		}
 
-		global $wpdb;
-
-		$table         = Database::get_table_name();
 		$trending_days = (int) Settings::get( 'trending_window' );
 		$batch_size    = $provider->get_batch_size();
-		$type_filter   = $args['type'] ?? null;
-		$ids_filter    = $args['ids'] ?? [];
-		$post_type     = $args['post_type'] ?? null;
-		$taxonomy      = $args['taxonomy'] ?? null;
 
-		// Collect all objects to warm, grouped by type.
-		$object_groups = self::collect_warm_objects( $type_filter, $ids_filter, $post_type, $taxonomy );
+		$object_groups = self::collect_warm_objects(
+			$args['type']      ?? null,
+			$args['ids']       ?? [],
+			$args['post_type'] ?? null,
+			$args['taxonomy']  ?? null
+		);
 
-		// Flatten into a single list with type tracking.
-		$all_objects   = [];
-		$object_types  = [];
+		$all_objects  = [];
+		$object_types = [];
 
 		foreach ( $object_groups as $group_type => $items ) {
 			foreach ( $items as $item ) {
@@ -352,113 +431,130 @@ class ProviderSync {
 		}
 
 		if ( ! $all_objects ) {
-			return;
+			return null;
 		}
 
-		$batches       = array_chunk( $all_objects, $batch_size );
-		$type_batches  = array_chunk( $object_types, $batch_size );
-		$total_batches = count( $batches );
+		$today = gmdate( 'Y-m-d' );
 
-		$today       = gmdate( 'Y-m-d' );
-		$trend_start = gmdate( 'Y-m-d', strtotime( "-{$trending_days} days" ) );
+		return [
+			'provider'      => $provider,
+			'batches'       => array_chunk( $all_objects, $batch_size ),
+			'type_batches'  => array_chunk( $object_types, $batch_size ),
+			'today'         => $today,
+			'trending_days' => $trending_days,
+			'windows'       => self::build_default_windows( $trending_days, $today ),
+			'pt_views'      => get_option( 'mai_analytics_post_type_views', [] ),
+			'pt_views_web'  => get_option( 'mai_analytics_post_type_views_web', [] ),
+			'pt_trending'   => get_option( 'mai_analytics_post_type_trending', [] ),
+			'pt_dirty'      => false,
+		];
+	}
 
-		// Options for post_type archives.
-		$pt_views     = get_option( 'mai_analytics_post_type_views', [] );
-		$pt_views_web = get_option( 'mai_analytics_post_type_views_web', [] );
-		$pt_trending  = get_option( 'mai_analytics_post_type_trending', [] );
+	/**
+	 * Processes one warm batch in place against $state, returning the yield payload.
+	 *
+	 * Mutates $state['pt_views']/['pt_views_web']/['pt_trending']/['pt_dirty']
+	 * by reference. The caller is responsible for persisting the pt_* options
+	 * via `persist_warm_pt_options()` when the dirty flag is set.
+	 *
+	 * @param array $state       Shared state from prepare_warm_state(); mutated in place.
+	 * @param int   $batch_index Zero-indexed batch position within $state['batches'].
+	 * @param array $batch       The batch's flat list of buffer-style objects to process.
+	 *
+	 * @return array Progress payload with keys: batch, total, updated, type.
+	 */
+	private static function process_warm_batch( array &$state, int $batch_index, array $batch ): array {
+		global $wpdb;
 
-		foreach ( $batches as $batch_index => $batch ) {
-			// Build path map.
-			$path_map = [];
+		$table        = Database::get_table_name();
+		$path_map     = [];
+		$updated      = 0;
+		$current_type = $state['type_batches'][ $batch_index ][0] ?? 'unknown';
 
-			foreach ( $batch as $obj ) {
-				$path = self::get_object_path( $obj );
+		foreach ( $batch as $obj ) {
+			$path = self::get_object_path( $obj );
 
-				if ( ! $path ) {
-					continue;
-				}
-
-				$path_map[ $path ] = $obj;
+			if ( ! $path ) {
+				continue;
 			}
 
-			$updated      = 0;
-			$current_type = $type_batches[ $batch_index ][0] ?? 'unknown';
+			$path_map[ $path ] = $obj;
+		}
 
-			if ( $path_map ) {
-				$paths = array_keys( $path_map );
+		if ( $path_map ) {
+			$paths           = array_keys( $path_map );
+			$web_views       = $state['provider']->get_views( $paths, $state['windows'] );
+			$provider_failed = empty( $web_views );
 
-				// Fetch all-time web views.
-				$web_views_all = $provider->get_views( $paths, '', $today );
+			foreach ( $path_map as $path => $obj ) {
+				$id   = (int) $obj->object_id;
+				$type = $obj->object_type;
+				$key  = $obj->object_key;
 
-				// Fetch trending-window web views.
-				$web_views_trending = $provider->get_views( $paths, $trend_start, $today );
+				$web_total    = $provider_failed ? null : (int) ( $web_views[ $path ][ self::WINDOW_ALL_TIME ] ?? 0 );
+				$web_trending = $provider_failed ? null : (int) ( $web_views[ $path ][ self::WINDOW_TRENDING ] ?? 0 );
 
-				// If both calls returned empty, the provider likely failed. Skip web writes.
-				$provider_failed = empty( $web_views_all ) && empty( $web_views_trending );
+				$app_trending = (int) $wpdb->get_var(
+					$wpdb->prepare(
+						"SELECT COUNT(*)
+						 FROM $table
+						 WHERE object_id = %d
+						   AND object_type = %s
+						   AND object_key = %s
+						   AND source = 'app'
+						   AND viewed_at > DATE_SUB(UTC_TIMESTAMP(), INTERVAL %d DAY)",
+						$id,
+						$type,
+						$key,
+						$state['trending_days']
+					)
+				);
 
-				foreach ( $path_map as $path => $obj ) {
-					$id   = (int) $obj->object_id;
-					$type = $obj->object_type;
-					$key  = $obj->object_key;
-
-					$web_total    = $provider_failed ? null : (int) ( $web_views_all[ $path ] ?? 0 );
-					$web_trending = $provider_failed ? null : (int) ( $web_views_trending[ $path ] ?? 0 );
-
-					// App trending from buffer.
-					$app_trending = (int) $wpdb->get_var(
-						$wpdb->prepare(
-							"SELECT COUNT(*)
-							 FROM $table
-							 WHERE object_id = %d
-							   AND object_type = %s
-							   AND object_key = %s
-							   AND source = 'app'
-							   AND viewed_at > DATE_SUB(UTC_TIMESTAMP(), INTERVAL %d DAY)",
-							$id,
-							$type,
-							$key,
-							$trending_days
-						)
-					);
-
-					if ( 'post_type' === $type ) {
-						if ( null !== $web_total ) {
-							$pt_views_web[ $key ] = $web_total;
-						}
-						$app_count            = (int) ( get_option( 'mai_analytics_post_type_views_app', [] )[ $key ] ?? 0 );
-						$pt_views[ $key ]     = ( $pt_views_web[ $key ] ?? 0 ) + $app_count;
-						$pt_trending[ $key ]  = ( $web_trending ?? 0 ) + $app_trending;
-					} else {
-						if ( null !== $web_total ) {
-							Sync::update_meta( $id, $type, 'mai_views_web', 'replace', $web_total );
-						}
-
-						// Recompute total from current values.
-						$current_web = (int) Sync::get_meta( $id, $type, 'mai_views_web' );
-						$current_app = (int) Sync::get_meta( $id, $type, 'mai_views_app' );
-						Sync::update_meta( $id, $type, 'mai_views', 'replace', $current_web + $current_app );
-
-						// Trending total — only update web portion if provider succeeded.
-						$effective_web_trending = ( null !== $web_trending ) ? $web_trending : (int) Sync::get_meta( $id, $type, 'mai_trending' );
-						Sync::update_meta( $id, $type, 'mai_trending', 'replace', $effective_web_trending + $app_trending );
+				if ( 'post_type' === $type ) {
+					if ( null !== $web_total ) {
+						$state['pt_views_web'][ $key ] = $web_total;
+					}
+					$app_count                    = (int) ( get_option( 'mai_analytics_post_type_views_app', [] )[ $key ] ?? 0 );
+					$state['pt_views'][ $key ]    = ( $state['pt_views_web'][ $key ] ?? 0 ) + $app_count;
+					$state['pt_trending'][ $key ] = ( $web_trending ?? 0 ) + $app_trending;
+					$state['pt_dirty']            = true;
+				} else {
+					if ( null !== $web_total ) {
+						Sync::update_meta( $id, $type, 'mai_views_web', 'replace', $web_total );
 					}
 
-					$updated++;
+					$current_web = (int) Sync::get_meta( $id, $type, 'mai_views_web' );
+					$current_app = (int) Sync::get_meta( $id, $type, 'mai_views_app' );
+					Sync::update_meta( $id, $type, 'mai_views', 'replace', $current_web + $current_app );
+
+					// Trending total — only update web portion if provider succeeded.
+					$effective_web_trending = ( null !== $web_trending ) ? $web_trending : (int) Sync::get_meta( $id, $type, 'mai_trending' );
+					Sync::update_meta( $id, $type, 'mai_trending', 'replace', $effective_web_trending + $app_trending );
 				}
+
+				$updated++;
 			}
-
-			// Persist post_type options after each batch.
-			update_option( 'mai_analytics_post_type_views', $pt_views, false );
-			update_option( 'mai_analytics_post_type_views_web', $pt_views_web, false );
-			update_option( 'mai_analytics_post_type_trending', $pt_trending, false );
-
-			yield [
-				'batch'   => $batch_index + 1,
-				'total'   => $total_batches,
-				'updated' => $updated,
-				'type'    => $current_type,
-			];
 		}
+
+		return [
+			'batch'   => $batch_index + 1,
+			'total'   => count( $state['batches'] ),
+			'updated' => $updated,
+			'type'    => $current_type,
+		];
+	}
+
+	/**
+	 * Persists the post_type archive option arrays from $state.
+	 *
+	 * @param array $state Shared state from prepare_warm_state().
+	 *
+	 * @return void
+	 */
+	private static function persist_warm_pt_options( array $state ): void {
+		update_option( 'mai_analytics_post_type_views', $state['pt_views'], false );
+		update_option( 'mai_analytics_post_type_views_web', $state['pt_views_web'], false );
+		update_option( 'mai_analytics_post_type_trending', $state['pt_trending'], false );
 	}
 
 	/**

@@ -63,12 +63,14 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 				public function get_batch_size(): int { return 50; }
 				public function get_settings_fields(): array { return []; }
 
-				public function get_views( array $paths, string $start_date, string $end_date ): array {
-					$views = [];
+				public function get_views( array $paths, array $windows ): array {
+					$out = [];
 					foreach ( $paths as $path ) {
-						$views[ $path ] = $this->views;
+						foreach ( $windows as $name => $_range ) {
+							$out[ $path ][ $name ] = $this->views;
+						}
 					}
-					return $views;
+					return $out;
 				}
 			} ];
 		} );

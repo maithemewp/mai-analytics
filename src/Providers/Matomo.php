@@ -78,32 +78,83 @@ class Matomo implements WebViewProvider {
 	}
 
 	/**
-	 * Fetches pageview counts for the given URL paths within a date range.
+	 * Fetches pageview counts for the given URL paths across one or more named windows.
 	 *
-	 * Uses the Matomo Bulk API (API.getBulkRequest) with Actions.getPageUrl
-	 * to retrieve nb_visits for each path in a single HTTP request.
+	 * All paths × windows ride a single Matomo `API.getBulkRequest` HTTP roundtrip.
+	 * For 100 paths and two windows that's one request with 200 sub-queries instead
+	 * of two requests with 100 each.
 	 *
-	 * @param array  $paths      Array of URL paths (e.g., ['/some-post/', '/category/news/']).
-	 * @param string $start_date Start date in 'Y-m-d' format.
-	 * @param string $end_date   End date in 'Y-m-d' format.
+	 * Why not period=range:
+	 *   Many Matomo installs — including those without on-the-fly archiving
+	 *   enabled, the default for self-hosted setups — return `[]` for
+	 *   `period=range` queries that span more than the pre-archived window. This
+	 *   was learned the hard way in the pre-bundle Mai Publisher class-views.php,
+	 *   whose source carried this comment:
 	 *
-	 * @return array Associative array of path => view count. Missing paths are omitted.
+	 *       "Testing with Matomo showed month/year were not getting values,
+	 *        while weeks were. Idk if it's a Matomo thing or not, but this works."
+	 *
+	 * What works reliably (per-window):
+	 *   - Non-empty start_date (trending) → period=day, date=lastN where N is
+	 *     the number of days in the requested range.
+	 *   - Empty start_date  (all-time)    → period=week, date=last{years*52}
+	 *     where `years` comes from the mai_analytics_views_years filter
+	 *     (default 5). Five years of weekly archives is a practical proxy for
+	 *     "all-time" on publishing sites and uses Matomo's pre-built weekly
+	 *     archives, which respond promptly even on cron-only setups.
+	 *
+	 * Sub-query ordering inside the bulk request follows the caller's `$windows`
+	 * order. The pre-bundle code put trending first in the bulk request with
+	 * the comment "Add trending first incase views times out" — callers should
+	 * preserve that intent by passing trending-style windows before all-time.
+	 *
+	 * SiteKit and Jetpack interpret an empty start_date natively and are not
+	 * affected by this translation, which is local to the Matomo provider.
+	 *
+	 * @param array<string>                            $paths   URL paths.
+	 * @param array<string, array{0:string,1:string}>  $windows Map of window name to [start, end].
+	 *
+	 * @return array<string, array<string, int>> Map of path => (window name => view count).
 	 */
-	public function get_views( array $paths, string $start_date, string $end_date ): array {
+	public function get_views( array $paths, array $windows ): array {
 		$matomo_url = Settings::get( 'matomo_url' );
 		$site_id    = Settings::get( 'matomo_site_id' );
 		$token      = Settings::get( 'matomo_token' );
 
-		// Bail if settings are incomplete.
 		if ( ! ( $matomo_url && $site_id && $token ) ) {
-			error_log( '[Mai Analytics] Matomo provider missing required settings.' );
+			self::set_last_error( __( 'Matomo provider missing required settings.', 'mai-analytics' ) );
 			return [];
 		}
 
-		// Build the API endpoint URL.
-		$api_url = trailingslashit( $matomo_url ) . 'index.php';
+		if ( ! $paths || ! $windows ) {
+			return [];
+		}
 
-		// Build bulk request body with a urls[] entry per path.
+		$api_url      = trailingslashit( $matomo_url ) . 'index.php';
+		$path_list    = array_values( $paths );
+		$window_names = array_keys( $windows );
+		$window_count = count( $window_names );
+
+		// Pre-translate windows once. The translation depends only on the date
+		// range, not the path, so doing it here avoids running it
+		// (paths × windows) times in the inner loop.
+		$years      = (int) Settings::get( 'views_years' );
+		$translated = [];
+
+		foreach ( $windows as $name => $range ) {
+			[ $start_date, $end_date ] = $range;
+
+			if ( '' === $start_date ) {
+				$translated[ $name ] = [ 'period' => 'week', 'date' => 'last' . max( 1, $years * 52 ) ];
+			} else {
+				$days = (int) round( ( strtotime( $end_date ) - strtotime( $start_date ) ) / DAY_IN_SECONDS );
+				$translated[ $name ] = [ 'period' => 'day', 'date' => 'last' . max( 1, $days ) ];
+			}
+		}
+
+		// Bulk request body. The urls[] ordering is paths × windows: for each
+		// path we append one sub-query per window in caller-provided order.
+		// Index mapping on the response side: index = path_index * window_count + window_index.
 		$body = [
 			'module'     => 'API',
 			'method'     => 'API.getBulkRequest',
@@ -113,20 +164,31 @@ class Matomo implements WebViewProvider {
 			'urls'       => [],
 		];
 
-		foreach ( $paths as $path ) {
-			$body['urls'][] = http_build_query(
-				[
-					'method'      => 'Actions.getPageUrl',
-					'pageUrl'     => $path,
-					'period'      => 'range',
-					'date'        => $start_date . ',' . $end_date,
-					'hideColumns' => 'label',
-					'showColumns' => 'nb_visits',
-				]
-			);
+		foreach ( $path_list as $path ) {
+			// Matomo records full URLs against pageUrl, so expand the path-only
+			// argument here. SiteKit (GA4 pagePath) and Jetpack handle paths
+			// directly, so the upstream contract stays path-based.
+			//
+			// rawurldecode() normalizes percent-encoded characters so URLs that
+			// arrive pre-encoded match Matomo's stored form. Specifically calls
+			// out a real-world bug seen on OnTapSports where Unicode dashes
+			// (–, —) in slugs broke URL matching in Matomo lookups.
+			$page_url = rawurldecode( home_url( $path ) );
+
+			foreach ( $translated as $t ) {
+				$body['urls'][] = http_build_query(
+					[
+						'method'      => 'Actions.getPageUrl',
+						'pageUrl'     => $page_url,
+						'period'      => $t['period'],
+						'date'        => $t['date'],
+						'hideColumns' => 'label',
+						'showColumns' => 'nb_visits',
+					]
+				);
+			}
 		}
 
-		// Send a POST request to the Matomo API.
 		$response = wp_remote_post( $api_url, [
 			'headers' => [
 				'Content-Type' => 'application/x-www-form-urlencoded',
@@ -136,51 +198,51 @@ class Matomo implements WebViewProvider {
 			'timeout' => 30,
 		] );
 
-		// Check for WP error.
 		if ( is_wp_error( $response ) ) {
-			error_log( '[Mai Analytics] Matomo API request failed: ' . $response->get_error_message() );
+			self::set_last_error( 'Matomo API request failed: ' . $response->get_error_message() );
 			return [];
 		}
 
-		// Check for successful HTTP status.
 		$code = wp_remote_retrieve_response_code( $response );
 
 		if ( 200 !== $code ) {
-			error_log( '[Mai Analytics] Matomo API returned HTTP ' . $code . ': ' . wp_remote_retrieve_response_message( $response ) );
+			self::set_last_error( 'Matomo API returned HTTP ' . $code . ': ' . wp_remote_retrieve_response_message( $response ) );
 			return [];
 		}
 
-		// Decode response body.
 		$body_raw = wp_remote_retrieve_body( $response );
 		$data     = json_decode( $body_raw, true );
 
 		if ( ! $data || ! is_array( $data ) ) {
-			error_log( '[Mai Analytics] Matomo API returned empty or invalid JSON response.' );
+			self::set_last_error( __( 'Matomo API returned empty or invalid JSON response.', 'mai-analytics' ) );
 			return [];
 		}
 
-		// Check for Matomo-level error.
 		if ( isset( $data['result'] ) && 'error' === $data['result'] ) {
-			$message = $data['message'] ?? 'Unknown Matomo API error.';
-			error_log( '[Mai Analytics] Matomo API error: ' . $message );
+			$message = $data['message'] ?? __( 'Unknown Matomo API error.', 'mai-analytics' );
+			self::set_last_error( 'Matomo API error: ' . $message );
 			return [];
 		}
 
-		// Parse response: each index corresponds to the path at the same index.
-		// Each entry is an array of period rows, each containing objects with nb_visits.
+		// Map response indexes back to (path, window). Each $data[$i] is the
+		// response for the i-th urls[] sub-query, in the same order we built it.
+		// We sum nb_visits across the period buckets returned (weekly buckets
+		// for an all-time query, daily buckets for trending).
 		$results = [];
 
 		foreach ( $data as $index => $row ) {
-			// Skip if this index doesn't correspond to a requested path.
-			if ( ! isset( $paths[ $index ] ) ) {
+			$path_index   = intdiv( (int) $index, $window_count );
+			$window_index = (int) $index % $window_count;
+
+			if ( ! isset( $path_list[ $path_index ], $window_names[ $window_index ] ) ) {
 				continue;
 			}
 
-			$path   = $paths[ $index ];
+			$path        = $path_list[ $path_index ];
+			$window_name = $window_names[ $window_index ];
+
 			$visits = 0;
 
-			// For 'range' period, the response is typically a single-element array,
-			// but we sum across all entries for robustness.
 			if ( is_array( $row ) ) {
 				foreach ( $row as $values ) {
 					// Each entry may be an array of objects or a single object.
@@ -193,10 +255,30 @@ class Matomo implements WebViewProvider {
 			}
 
 			if ( $visits > 0 ) {
-				$results[ $path ] = $visits;
+				$results[ $path ][ $window_name ] = $visits;
 			}
 		}
 
+		// Clear any stale error on a successful round-trip so the admin
+		// "Sync Now" health check (which reads this transient) reflects the
+		// current request, not a previous failure.
+		delete_transient( 'mai_analytics_provider_error' );
+
 		return $results;
+	}
+
+	/**
+	 * Stores the last provider error for display in the admin UI and for the
+	 * AdminRestApi `sync_now` health check, which decides success/failure by
+	 * reading this transient. Mirrors `SiteKit::set_last_error()` so all three
+	 * providers surface failures the same way.
+	 *
+	 * @param string $message The error message.
+	 *
+	 * @return void
+	 */
+	private static function set_last_error( string $message ): void {
+		error_log( '[Mai Analytics] ' . $message );
+		set_transient( 'mai_analytics_provider_error', $message, HOUR_IN_SECONDS );
 	}
 }

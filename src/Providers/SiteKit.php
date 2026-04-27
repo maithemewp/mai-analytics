@@ -105,25 +105,43 @@ class SiteKit implements WebViewProvider {
 	}
 
 	/**
-	 * Fetches pageview counts for the given URL paths within a date range.
+	 * Fetches pageview counts for the given URL paths across one or more named windows.
 	 *
-	 * Dispatches an internal REST request to the Site Kit Analytics 4 report endpoint,
-	 * impersonating the configured sync user for OAuth context. Parses the response
-	 * rows and returns an associative array of path => view count.
+	 * Dispatches one internal REST request per window to the Site Kit Analytics 4
+	 * report endpoint. Each window is a single-range GA4 query; we issue them
+	 * sequentially because Site Kit's REST controller accepts a singular
+	 * `startDate`/`endDate` pair and we don't want to silently rely on whether
+	 * a given Site Kit version forwards GA4's native `dateRanges` parameter to
+	 * runReport.
 	 *
-	 * @param array  $paths      Array of URL paths (e.g., ['/some-post/', '/category/news/']).
-	 * @param string $start_date Start date in 'Y-m-d' format.
-	 * @param string $end_date   End date in 'Y-m-d' format.
+	 * The OAuth-context user switch is performed once for the whole call, not
+	 * once per window — fewer impersonation/restore cycles than the old
+	 * separate-call pattern.
 	 *
-	 * @return array Associative array of path => view count. Missing paths are omitted.
+	 * Future optimization: when we're confident every supported Site Kit
+	 * version forwards `dateRanges` cleanly, replace the per-window loop with
+	 * a single GA4 report carrying multiple `dateRanges` and synthetic
+	 * dateRange dimension parsing. That would collapse this to one REST call.
+	 *
+	 * Empty start_date semantics: an empty start in a window means "all-time".
+	 * Per commit f5199c6, we omit `startDate`/`endDate` entirely for that
+	 * window so GA4 returns data since property creation; we do not reintroduce
+	 * a hardcoded floor.
+	 *
+	 * Failure semantics: all-or-nothing per call. If any window errors, we set
+	 * the provider error transient and return `[]` so ProviderSync preserves
+	 * existing meta rather than overwriting the missing window's column with 0.
+	 *
+	 * @param array<string>                            $paths   URL paths.
+	 * @param array<string, array{0:string,1:string}>  $windows Map of window name to [start, end].
+	 *
+	 * @return array<string, array<string, int>> Map of path => (window name => view count).
 	 */
-	public function get_views( array $paths, string $start_date, string $end_date ): array {
-		if ( ! $paths ) {
+	public function get_views( array $paths, array $windows ): array {
+		if ( ! $paths || ! $windows ) {
 			return [];
 		}
 
-		// Switch to the Site Kit owner user for OAuth context.
-		// Site Kit stores the authenticated owner in googlesitekit_owner_id.
 		$owner_id    = (int) get_option( 'googlesitekit_owner_id', 0 );
 		$previous_id = get_current_user_id();
 
@@ -139,19 +157,14 @@ class SiteKit implements WebViewProvider {
 
 		wp_set_current_user( $owner_id );
 
-		// Build the internal REST request.
-		$request = new WP_REST_Request( 'GET', '/google-site-kit/v1/modules/analytics-4/data/report' );
+		$results       = [];
+		$any_success   = false;
+		$any_error_msg = '';
 
-		$params = [
-			'metrics'          => [
-				[ 'name' => 'screenPageViews' ],
-			],
-			'dimensions'       => [
-				[ 'name' => 'pagePath' ],
-			],
-			'dimensionFilters' => [
-				'pagePath' => array_values( $paths ),
-			],
+		$base_params = [
+			'metrics'          => [ [ 'name' => 'screenPageViews' ] ],
+			'dimensions'       => [ [ 'name' => 'pagePath' ] ],
+			'dimensionFilters' => [ 'pagePath' => array_values( $paths ) ],
 			'orderby'          => [
 				[
 					'metric' => [ 'metricName' => 'screenPageViews' ],
@@ -161,48 +174,69 @@ class SiteKit implements WebViewProvider {
 			'limit'            => count( $paths ),
 		];
 
-		// Only include date range if provided. Omitting returns all available data.
-		if ( $start_date && $end_date ) {
-			$params['startDate'] = $start_date;
-			$params['endDate']   = $end_date;
-		}
+		foreach ( $windows as $window_name => $range ) {
+			[ $start_date, $end_date ] = $range;
 
-		$request->set_query_params( $params );
+			$request = new WP_REST_Request( 'GET', '/google-site-kit/v1/modules/analytics-4/data/report' );
 
-		$response = rest_do_request( $request );
+			// Empty start_date means "all-time" per the caller's contract.
+			// Per commit f5199c6: omit startDate/endDate entirely so GA4 returns
+			// all data since the property was created. The hardcoded floor we
+			// previously used was rejected by that commit ("No hardcoded start
+			// date needed") and is intentionally not reintroduced here.
+			$params = $base_params;
+			if ( '' !== $start_date && '' !== $end_date ) {
+				$params['startDate'] = $start_date;
+				$params['endDate']   = $end_date;
+			}
 
-		// Restore the previous user.
-		wp_set_current_user( $previous_id );
+			$request->set_query_params( $params );
 
-		// Handle errors.
-		if ( $response->is_error() ) {
-			$error = $response->as_error();
-			self::set_last_error( $error->get_error_message() );
-			return [];
-		}
+			$response = rest_do_request( $request );
 
-		$data = $response->get_data();
+			if ( $response->is_error() ) {
+				$any_error_msg = $response->as_error()->get_error_message();
+				continue;
+			}
 
-		if ( empty( $data['rows'] ) ) {
-			return [];
-		}
+			$data = $response->get_data();
 
-		// Parse rows into path => views associative array.
-		$views = [];
+			if ( empty( $data['rows'] ) ) {
+				continue;
+			}
 
-		foreach ( $data['rows'] as $row ) {
-			$path  = $row['dimensionValues'][0]['value'] ?? '';
-			$count = (int) ( $row['metricValues'][0]['value'] ?? 0 );
+			$any_success = true;
 
-			if ( $path ) {
-				$views[ $path ] = $count;
+			foreach ( $data['rows'] as $row ) {
+				$path  = $row['dimensionValues'][0]['value'] ?? '';
+				$count = (int) ( $row['metricValues'][0]['value'] ?? 0 );
+
+				if ( '' === $path || $count <= 0 ) {
+					continue;
+				}
+
+				$results[ $path ][ (string) $window_name ] = $count;
 			}
 		}
 
-		// Clear any previous error on success.
-		delete_transient( 'mai_analytics_provider_error' );
+		wp_set_current_user( $previous_id );
 
-		return $views;
+		// All-or-nothing failure semantics: if any window errored, return [] so
+		// ProviderSync's `empty( $web_views )` check trips and existing meta is
+		// preserved. Returning a partial result would let the caller's
+		// `$web_views[$path][$missing_window] ?? 0` fall through to 0 and
+		// silently overwrite the failed column with zero. The transient still
+		// surfaces the error to the admin UI either way.
+		if ( '' !== $any_error_msg ) {
+			self::set_last_error( $any_error_msg );
+			return [];
+		}
+
+		if ( $any_success ) {
+			delete_transient( 'mai_analytics_provider_error' );
+		}
+
+		return $results;
 	}
 
 	/**

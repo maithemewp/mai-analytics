@@ -71,8 +71,10 @@ class Plugin {
 	/**
 	 * Applies migrated filter defaults from Mai Publisher.
 	 *
-	 * Mai Publisher stored trending_days and views_interval as DB options.
-	 * Mai Analytics uses filters. This bridges the gap for migrated sites.
+	 * Mai Publisher stored trending_days, views_interval, and views_years as DB
+	 * options. Mai Analytics uses filters. This bridges the gap for migrated
+	 * sites by registering each migrated value as the default for its filter at
+	 * priority 5, so site-specific filters at priority 10 still win.
 	 *
 	 * @return void
 	 */
@@ -92,6 +94,12 @@ class Plugin {
 		if ( ! empty( $defaults['sync_interval'] ) ) {
 			add_filter( 'mai_analytics_sync_interval', function() use ( $defaults ) {
 				return (int) $defaults['sync_interval'];
+			}, 5 );
+		}
+
+		if ( ! empty( $defaults['views_years'] ) ) {
+			add_filter( 'mai_analytics_views_years', function() use ( $defaults ) {
+				return (int) $defaults['views_years'];
 			}, 5 );
 		}
 	}

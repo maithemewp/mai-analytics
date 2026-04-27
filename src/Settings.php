@@ -8,7 +8,7 @@ class Settings {
 	 * Gets a plugin setting value. All settings are filterable with sensible defaults.
 	 *
 	 * Settings are sourced from two places:
-	 * - Filter-only: retention, sync_interval, exclude_bots
+	 * - Filter-only: retention, sync_interval, exclude_bots, views_years
 	 * - DB-backed: data_source, sync_user, trending_window, matomo_url, matomo_site_id, matomo_token
 	 *
 	 * All settings can be overridden via `mai_analytics_{$key}` filter.
@@ -20,9 +20,10 @@ class Settings {
 	public static function get( string $key ): mixed {
 		// Filter-only settings with defaults.
 		$filter_defaults = [
-			'retention'   => apply_filters( 'mai_analytics_retention', 14 ),
+			'retention'     => apply_filters( 'mai_analytics_retention', 14 ),
 			'sync_interval' => apply_filters( 'mai_analytics_sync_interval', 5 ),
 			'exclude_bots'  => apply_filters( 'mai_analytics_exclude_bots', true ),
+			'views_years'   => apply_filters( 'mai_analytics_views_years', 5 ),
 		];
 
 		if ( isset( $filter_defaults[ $key ] ) ) {
@@ -66,6 +67,7 @@ class Settings {
 			'retention'       => self::get( 'retention' ),
 			'sync_interval'   => self::get( 'sync_interval' ),
 			'exclude_bots'    => self::get( 'exclude_bots' ),
+			'views_years'     => self::get( 'views_years' ),
 		];
 	}
 

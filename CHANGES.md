@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+Fix Matomo provider returning empty data so `mai_views` and `mai_trending` write real counts instead of `0` on Matomo-backed sites. The provider now expands paths to full URLs via `home_url()` (with `rawurldecode()` for Unicode-dash slug safety) and uses `period=day` / `period=week` against pre-built archives instead of `period=range`, mirroring the proven strategy from pre-bundle Mai Publisher's views class. Adds a `mai_analytics_views_years` filter (default `5`) for the all-time window and migrates the matching value from the `mai_publisher` option. Refactors `WebViewProvider::get_views()` to take an array of named windows and return per-window per-path counts, collapsing ProviderSync's two calls per batch into one bulk request (Matomo `API.getBulkRequest`, SiteKit per-window loop with single user-switch, Jetpack window loop over the cached per-post dataset). The admin Warm Stats button is now cursor-based and processes one batch per request so large-site warms no longer hit Cloudflare's 524 timeout. See #5.
+
 ## 1.0.4
 
 Skip provider-unavailable admin notice when view tracking is set to disabled.

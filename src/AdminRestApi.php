@@ -171,6 +171,20 @@ class AdminRestApi {
 			'methods'             => 'POST',
 			'callback'            => [ $this, 'warm' ],
 			'permission_callback' => $admin_permission,
+			'args'                => [
+				'cursor' => [
+					'type'              => 'integer',
+					'default'           => 0,
+					'minimum'           => 0,
+					'sanitize_callback' => 'absint',
+				],
+				'total_updated' => [
+					'type'              => 'integer',
+					'default'           => 0,
+					'minimum'           => 0,
+					'sanitize_callback' => 'absint',
+				],
+			],
 		] );
 
 		register_rest_route( self::NAMESPACE, '/admin/health', [
@@ -731,7 +745,9 @@ class AdminRestApi {
 		}
 
 		// Quick health check: try a small provider query to verify auth works.
-		$test = $provider->get_views( [ '/' ], gmdate( 'Y-m-d' ), gmdate( 'Y-m-d' ) );
+		// Result is intentionally discarded — we only need to populate (or not)
+		// the mai_analytics_provider_error transient that the next read consults.
+		$test  = $provider->get_views( [ '/' ], [ 'check' => [ gmdate( 'Y-m-d' ), gmdate( 'Y-m-d' ) ] ] );
 		$error = get_transient( 'mai_analytics_provider_error' );
 
 		if ( $error ) {
@@ -760,35 +776,86 @@ class AdminRestApi {
 	}
 
 	/**
-	 * Triggers a warm/seed operation for all objects via the active provider.
+	 * Processes ONE batch of a warm operation, returning progress for the client.
+	 *
+	 * Why cursor-based progressive REST instead of one synchronous request:
+	 *   The previous implementation iterated `ProviderSync::warm()` to completion
+	 *   inside a single REST request, which on large sites (~18K posts) exceeded
+	 *   Cloudflare's 100-second gateway timeout (524). This endpoint processes
+	 *   one batch per request via `ProviderSync::warm_batch()`, so the client
+	 *   drives the loop. No new infrastructure required (no Action Scheduler,
+	 *   no WP-cron, no background processes).
+	 *
+	 * Partial-progress survival: per-batch meta writes commit independently
+	 * inside `ProviderSync::warm_batch()`, so if a request fails mid-loop the
+	 * already-warmed posts retain their values and the client can resume from
+	 * `next_cursor`.
+	 *
+	 * Wire shape:
+	 *   Request : POST /mai-analytics/v1/admin/warm
+	 *             { cursor?: int (default 0), total_updated?: int (default 0) }
+	 *   Response: { batch, total, updated, total_updated, done, next_cursor, message? }
 	 *
 	 * @param WP_REST_Request $request The incoming request.
 	 *
-	 * @return WP_REST_Response Status message with counts.
+	 * @return WP_REST_Response Progress payload for the client to act on.
 	 */
 	public function warm( WP_REST_Request $request ): WP_REST_Response {
 		if ( 'self_hosted' === Settings::get( 'data_source' ) ) {
 			return new WP_REST_Response( [ 'message' => 'Warm is only available in provider mode.' ], 400 );
 		}
 
-		delete_transient( 'mai_analytics_provider_error' );
+		$cursor        = (int) $request->get_param( 'cursor' );
+		$total_updated = (int) $request->get_param( 'total_updated' );
 
-		$total_updated = 0;
+		// Clear stale error only on the first batch — once mid-run, the error
+		// transient may legitimately reflect a per-batch failure we want to keep.
+		if ( 0 === $cursor ) {
+			delete_transient( 'mai_analytics_provider_error' );
+		}
 
-		foreach ( ProviderSync::warm() as $progress ) {
-			$total_updated += $progress['updated'] ?? 0;
+		$progress = ProviderSync::warm_batch( $cursor );
+
+		if ( null === $progress ) {
+			$error = get_transient( 'mai_analytics_provider_error' );
+
+			$payload = [
+				'done'          => true,
+				'total_updated' => $total_updated,
+				'message'       => $error
+					? $error
+					: sprintf( 'Warm complete. Updated %d objects.', $total_updated ),
+			];
+
+			return new WP_REST_Response( $payload, $error ? 500 : 200 );
+		}
+
+		$batch_updated  = (int) ( $progress['updated'] ?? 0 );
+		$total_updated += $batch_updated;
+		$total_batches  = (int) ( $progress['total'] ?? 0 );
+		$done           = $cursor + 1 >= $total_batches;
+
+		$payload = [
+			'batch'         => $cursor + 1,
+			'total'         => $total_batches,
+			'updated'       => $batch_updated,
+			'total_updated' => $total_updated,
+			'done'          => $done,
+			'next_cursor'   => $cursor + 1,
+		];
+
+		if ( $done ) {
+			$payload['message'] = sprintf( 'Warm complete. Updated %d objects.', $total_updated );
 		}
 
 		$error = get_transient( 'mai_analytics_provider_error' );
 
 		if ( $error ) {
-			return new WP_REST_Response( [ 'message' => $error ], 500 );
+			$payload['message'] = $error;
+			return new WP_REST_Response( $payload, 500 );
 		}
 
-		return new WP_REST_Response( [
-			'message' => sprintf( 'Warm complete. Updated %d objects.', $total_updated ),
-			'updated' => $total_updated,
-		] );
+		return new WP_REST_Response( $payload );
 	}
 
 	/**

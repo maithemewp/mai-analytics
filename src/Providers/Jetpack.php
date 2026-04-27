@@ -9,7 +9,12 @@ class Jetpack implements WebViewProvider {
 
 	/**
 	 * Cached raw Jetpack Stats responses keyed by post ID.
-	 * Prevents redundant API calls when get_views() is called twice (all-time + trending).
+	 *
+	 * Dedupes API calls when the same post appears under multiple paths within
+	 * one batch — that's rare but free. Under the bulk get_views() shape both
+	 * windows for a single path are computed from the same cached dataset, so
+	 * the cache no longer dedupes "all-time vs trending" calls (those are now
+	 * the same call); it dedupes across paths within a single batch.
 	 *
 	 * @var array<int, array|null>
 	 */
@@ -88,26 +93,25 @@ class Jetpack implements WebViewProvider {
 	}
 
 	/**
-	 * Fetches pageview counts for the given URL paths within a date range.
+	 * Fetches pageview counts for the given URL paths across one or more named windows.
 	 *
-	 * Converts paths to post IDs via url_to_postid(), then queries the Jetpack Stats API.
-	 * Only posts are supported — paths for terms, users, or archives return no data.
+	 * Jetpack Stats has no bulk API — one HTTP call per post regardless. The
+	 * win from the multi-window interface here is that both windows for a
+	 * single post are computed from the same cached `fetch_post_views()`
+	 * result: an empty start_date reads `data['views']` (all-time field);
+	 * a non-empty start_date sums the daily array via `sum_trending()`.
 	 *
-	 * @param array  $paths      Array of URL paths (e.g., ['/some-post/']).
-	 * @param string $start_date Start date in 'Y-m-d' format. Empty for all-time.
-	 * @param string $end_date   End date in 'Y-m-d' format.
+	 * Only posts are supported — paths for terms, users, or archives return
+	 * no data because Jetpack Stats indexes by post ID.
 	 *
-	 * @return array Associative array of path => view count.
+	 * @param array<string>                            $paths   URL paths.
+	 * @param array<string, array{0:string,1:string}>  $windows Map of window name to [start, end].
+	 *
+	 * @return array<string, array<string, int>> Map of path => (window name => view count).
 	 */
-	public function get_views( array $paths, string $start_date, string $end_date ): array {
-		if ( ! $paths ) {
+	public function get_views( array $paths, array $windows ): array {
+		if ( ! $paths || ! $windows ) {
 			return [];
-		}
-
-		$trending_days = 0;
-
-		if ( $start_date ) {
-			$trending_days = (int) round( ( strtotime( $end_date ) - strtotime( $start_date ) ) / DAY_IN_SECONDS );
 		}
 
 		$views = [];
@@ -126,16 +130,23 @@ class Jetpack implements WebViewProvider {
 				continue;
 			}
 
-			if ( ! $start_date ) {
-				// All-time: use the total views field.
-				$views[ $path ] = (int) ( $data['views'] ?? 0 );
-			} else {
-				// Trending: sum views from the last N days.
-				$views[ $path ] = $this->sum_trending( $data, $trending_days );
+			// Every window for this path comes out of the same raw dataset.
+			foreach ( $windows as $window_name => $range ) {
+				[ $start_date, $end_date ] = $range;
+
+				if ( '' === $start_date ) {
+					$count = (int) ( $data['views'] ?? 0 );
+				} else {
+					$days  = (int) round( ( strtotime( $end_date ) - strtotime( $start_date ) ) / DAY_IN_SECONDS );
+					$count = $this->sum_trending( $data, max( 1, $days ) );
+				}
+
+				if ( $count > 0 ) {
+					$views[ $path ][ (string) $window_name ] = $count;
+				}
 			}
 		}
 
-		// Clear any previous error on success if we got results.
 		if ( $views ) {
 			delete_transient( 'mai_analytics_provider_error' );
 		}

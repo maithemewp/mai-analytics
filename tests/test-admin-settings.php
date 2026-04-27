@@ -51,7 +51,7 @@ class Test_Admin_Settings extends WP_UnitTestCase {
 				public function is_available(): bool { return true; }
 				public function get_batch_size(): int { return 50; }
 				public function get_settings_fields(): array { return []; }
-				public function get_views( array $paths, string $start_date, string $end_date ): array { return []; }
+				public function get_views( array $paths, array $windows ): array { return []; }
 			} ];
 		} );
 

@@ -9,7 +9,7 @@
 
 	document.addEventListener('DOMContentLoaded', function () {
 		bindButton('mai-analytics-sync-now', 'sync-now', 'Syncing...');
-		bindButton('mai-analytics-warm', 'warm', 'Warming stats...');
+		bindWarmButton('mai-analytics-warm');
 		bindHealthCheck();
 	});
 
@@ -43,6 +43,87 @@
 					showStatus(statusEl, 'Request failed.', '#d63638');
 					btn.disabled = false;
 				});
+		});
+	}
+
+	/**
+	 * Warm Stats button polling loop.
+	 *
+	 * The /admin/warm endpoint processes one ProviderSync::warm() batch per
+	 * request and returns progress + a next_cursor. The client drives the loop
+	 * here so each request finishes well within Cloudflare's 100-second 524
+	 * gateway window. On error we abort the loop and surface the message;
+	 * partial progress is preserved server-side because per-batch meta writes
+	 * commit independently inside ProviderSync::warm().
+	 */
+	function bindWarmButton(btnId) {
+		var btn = document.getElementById(btnId);
+
+		if (!btn) {
+			return;
+		}
+
+		var statusEl = btn.parentNode.querySelector('.mai-analytics-btn-status');
+
+		btn.addEventListener('click', async function () {
+			btn.disabled = true;
+			showStatus(statusEl, 'Warming stats...', '#666');
+
+			var cursor = 0;
+			var totalUpdated = 0;
+			// Defensive safety bound: more than 10k batches is almost certainly a
+			// server bug, not a real workload.
+			var maxIterations = 10000;
+			var iterations = 0;
+
+			try {
+				while (iterations++ < maxIterations) {
+					var res = await fetch(maiAnalyticsSettings.restBase + 'warm', {
+						method: 'POST',
+						headers: {
+							'X-WP-Nonce': maiAnalyticsSettings.nonce,
+							'Content-Type': 'application/json',
+						},
+						body: JSON.stringify({ cursor: cursor, total_updated: totalUpdated }),
+					});
+
+					var data = await res.json();
+
+					if (!res.ok) {
+						showStatus(statusEl, data.message || 'Warm failed.', '#d63638');
+						btn.disabled = false;
+						return;
+					}
+
+					totalUpdated = data.total_updated || totalUpdated;
+
+					if (data.done) {
+						showStatus(
+							statusEl,
+							data.message || ('Warm complete. Updated ' + totalUpdated + ' objects.'),
+							'#00a32a'
+						);
+						btn.disabled = false;
+						return;
+					}
+
+					if (data.total) {
+						showStatus(
+							statusEl,
+							'Batch ' + data.batch + ' of ' + data.total + ' · ' + totalUpdated + ' updated',
+							'#666'
+						);
+					}
+
+					cursor = data.next_cursor;
+				}
+
+				showStatus(statusEl, 'Warm aborted: too many iterations.', '#d63638');
+				btn.disabled = false;
+			} catch (e) {
+				showStatus(statusEl, 'Request failed.', '#d63638');
+				btn.disabled = false;
+			}
 		});
 	}
 
