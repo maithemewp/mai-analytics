@@ -1,5 +1,9 @@
 # Plan: Mai Analytics 1.1.0 follow-ups
 
+## Approval status
+
+All five items below were walked through and explicitly approved by the user via the `plan-approval` skill on 2026-04-27. A future session picking this up does **not** need to re-confirm each step — execute them in the order under "Sequencing" below. The release sequencing at the bottom of this doc (commit, push, verify, vbump, merge to main, mai-publisher constraint flip) **does** still need explicit confirmation as you reach those gates, per the user's durable instructions about pushing to main.
+
 ## Context
 
 `mai-analytics` `1.1.0` shipped (commit `c9613c6` on `main`) bundling four big things: Matomo zero-views fix, named-windows provider interface, chunked admin Warm Stats endpoint, and recent-first warm ordering. Verified end-to-end on `ontapsportsnet.com` (Matomo) and on a separate Mai Pub site (Site Kit / GA4).
