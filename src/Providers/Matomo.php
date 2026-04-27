@@ -192,6 +192,45 @@ class Matomo implements WebViewProvider {
 			}
 		}
 
+		// Enforce the math invariant: any window with an empty start_date
+		// (the caller's "all-time" signal) must be at least as large as any
+		// bounded-range window for the same path. Trending is by definition
+		// a strict subset of all-time, so all_time >= trending must always
+		// hold. Without this floor, Matomo reports all_time < trending for
+		// very recent posts whose only views are in the current incomplete
+		// week — Matomo's `period=week, date=last260` query relies on weekly
+		// archives, and the current week's archive is computed on-demand or
+		// by cron. Installs without browser archiving (which is the case
+		// here, since `period=range` queries also fail) won't have the
+		// current week's archive ready, so all-time underreports while
+		// trending (which uses daily archives) sees today's views fine.
+		// Flooring at the max bounded value keeps reported totals
+		// math-consistent. Pre-bundle Mai Publisher had the same gap; it
+		// just went unnoticed because the per-post AJAX flow hit one post
+		// at a time and nobody happened to spot a "trending > all_time"
+		// inconsistency on a brand-new post.
+		foreach ( $results as $path => &$counts ) {
+			$bounded_max = 0;
+
+			foreach ( $windows as $window_name => $range ) {
+				if ( '' !== $range[0] && isset( $counts[ $window_name ] ) ) {
+					$bounded_max = max( $bounded_max, $counts[ $window_name ] );
+				}
+			}
+
+			if ( $bounded_max > 0 ) {
+				foreach ( $windows as $window_name => $range ) {
+					if ( '' === $range[0] ) {
+						$current = $counts[ $window_name ] ?? 0;
+						if ( $current < $bounded_max ) {
+							$counts[ $window_name ] = $bounded_max;
+						}
+					}
+				}
+			}
+		}
+		unset( $counts );
+
 		if ( $any_chunk_ok ) {
 			delete_transient( 'mai_analytics_provider_error' );
 		}

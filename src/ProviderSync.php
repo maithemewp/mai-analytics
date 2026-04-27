@@ -184,17 +184,11 @@ class ProviderSync {
 			$path = self::get_object_path( $obj );
 
 			// Only overwrite when the provider succeeded; otherwise leave existing meta intact.
+			// Providers are responsible for enforcing the math invariant
+			// `all_time >= trending` per path before returning — see
+			// Matomo::get_views() for the rationale.
 			$web_total    = ( ! $provider_failed && $path ) ? (int) ( $web_views[ $path ][ self::WINDOW_ALL_TIME ] ?? 0 ) : null;
 			$web_trending = ( ! $provider_failed && $path ) ? (int) ( $web_views[ $path ][ self::WINDOW_TRENDING ] ?? 0 ) : null;
-
-			// Trending is a strict subset of all-time, so all_time >= trending
-			// must hold. Matomo's weekly archives can omit the current
-			// incomplete week, which makes very recent posts report all_time=0
-			// while trending shows real numbers from daily archives. Floor
-			// all_time at trending to keep displayed totals math-consistent.
-			if ( null !== $web_total && null !== $web_trending && $web_total < $web_trending ) {
-				$web_total = $web_trending;
-			}
 
 			// App views: count new buffer rows since last sync.
 			$app_new = (int) $wpdb->get_var(
@@ -500,15 +494,10 @@ class ProviderSync {
 				$type = $obj->object_type;
 				$key  = $obj->object_key;
 
+				// Providers enforce all_time >= trending themselves — see
+				// Matomo::get_views() — so we just read what they returned.
 				$web_total    = $provider_failed ? null : (int) ( $web_views[ $path ][ self::WINDOW_ALL_TIME ] ?? 0 );
 				$web_trending = $provider_failed ? null : (int) ( $web_views[ $path ][ self::WINDOW_TRENDING ] ?? 0 );
-
-				// Trending ⊆ all-time, so all_time >= trending must hold. See
-				// process_batch() for the rationale (current-week omission in
-				// Matomo's weekly archives).
-				if ( null !== $web_total && null !== $web_trending && $web_total < $web_trending ) {
-					$web_total = $web_trending;
-				}
 
 				$app_trending = (int) $wpdb->get_var(
 					$wpdb->prepare(
