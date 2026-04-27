@@ -80,6 +80,7 @@
 
 			var cursor = 0;
 			var totalUpdated = 0;
+			var totalIterated = 0;
 			// Defensive safety bound: more than 10k batches is almost certainly a
 			// server bug, not a real workload.
 			var maxIterations = 10000;
@@ -93,7 +94,11 @@
 							'X-WP-Nonce': maiAnalyticsSettings.nonce,
 							'Content-Type': 'application/json',
 						},
-						body: JSON.stringify({ cursor: cursor, total_updated: totalUpdated }),
+						body: JSON.stringify({
+							cursor: cursor,
+							total_updated: totalUpdated,
+							total_iterated: totalIterated,
+						}),
 					});
 
 					var data = await res.json();
@@ -106,6 +111,7 @@
 					}
 
 					totalUpdated = data.total_updated || totalUpdated;
+					totalIterated = data.total_iterated || totalIterated;
 
 					if (data.done) {
 						showStatus(
@@ -119,9 +125,17 @@
 					}
 
 					if (data.total) {
+						// Show "N updated" when every iterated object got fresh
+						// data; switch to "N updated of M" when a batch failed
+						// (provider error preserved meta on M-N of them) so the
+						// admin sees the gap rather than fake-honest progress.
+						var progress = totalIterated > totalUpdated
+							? totalUpdated + ' updated of ' + totalIterated
+							: totalUpdated + ' updated';
+
 						showStatus(
 							statusEl,
-							'Batch ' + data.batch + ' of ' + data.total + ' · ' + totalUpdated + ' updated · Leave this window open',
+							'Batch ' + data.batch + ' of ' + data.total + ' · ' + progress + ' · Leave this window open',
 							'#666'
 						);
 					}

@@ -568,21 +568,45 @@ class CLI {
 
 		WP_CLI::log( 'Warming stats from provider...' );
 
+		$total_iterated = 0;
+
 		foreach ( ProviderSync::warm( $warm_args ) as $progress ) {
-			$total_updated += $progress['updated'] ?? 0;
+			$batch_updated   = (int) ( $progress['updated'] ?? 0 );
+			$batch_iterated  = (int) ( $progress['iterated'] ?? $batch_updated );
+			$total_updated  += $batch_updated;
+			$total_iterated += $batch_iterated;
 
 			if ( $verbose ) {
-				WP_CLI::log( sprintf(
-					'  Batch %d/%d: updated %d %s objects',
-					$progress['batch'],
-					$progress['total'],
-					$progress['updated'],
-					$progress['type']
-				) );
+				// Only mention iterated when it diverges from updated — the
+				// gap reveals provider failures preserving meta on objects
+				// the batch walked over. When they match (the common case),
+				// the simpler line stays readable.
+				$line = $batch_iterated > $batch_updated
+					? sprintf(
+						'  Batch %d/%d: updated %d of %d %s objects',
+						$progress['batch'],
+						$progress['total'],
+						$batch_updated,
+						$batch_iterated,
+						$progress['type']
+					)
+					: sprintf(
+						'  Batch %d/%d: updated %d %s objects',
+						$progress['batch'],
+						$progress['total'],
+						$batch_updated,
+						$progress['type']
+					);
+
+				WP_CLI::log( $line );
 			}
 		}
 
-		WP_CLI::success( sprintf( 'Warm complete. Updated %d objects.', $total_updated ) );
+		$summary = $total_iterated > $total_updated
+			? sprintf( 'Warm complete. Updated %d of %d objects.', $total_updated, $total_iterated )
+			: sprintf( 'Warm complete. Updated %d objects.', $total_updated );
+
+		WP_CLI::success( $summary );
 	}
 
 	/**

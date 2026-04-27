@@ -331,7 +331,12 @@ class ProviderSync {
 	 * @param array $args Optional filters: 'type' (post|term|user|archive), 'ids' (int[]),
 	 *                    'post_type' (string), 'taxonomy' (string).
 	 *
-	 * @return \Generator Yields arrays: ['batch' => int, 'total' => int, 'updated' => int, 'type' => string].
+	 * @return \Generator Yields arrays: ['batch' => int, 'total' => int, 'updated' => int,
+	 *                    'iterated' => int, 'type' => string]. `iterated` counts every
+	 *                    object the batch walked over; `updated` counts only those for
+	 *                    which the provider returned data and we wrote new web meta.
+	 *                    They diverge when a batch's provider call fails — meta is
+	 *                    preserved and `iterated > updated` reflects the gap.
 	 */
 	public static function warm( array $args = [] ): \Generator {
 		$state = self::prepare_warm_state( $args );
@@ -464,13 +469,14 @@ class ProviderSync {
 	 * @param int   $batch_index Zero-indexed batch position within $state['batches'].
 	 * @param array $batch       The batch's flat list of buffer-style objects to process.
 	 *
-	 * @return array Progress payload with keys: batch, total, updated, type.
+	 * @return array Progress payload with keys: batch, total, updated, iterated, type.
 	 */
 	private static function process_warm_batch( array &$state, int $batch_index, array $batch ): array {
 		global $wpdb;
 
 		$table        = Database::get_table_name();
 		$path_map     = [];
+		$iterated     = 0;
 		$updated      = 0;
 		$current_type = $state['type_batches'][ $batch_index ][0] ?? 'unknown';
 
@@ -537,15 +543,26 @@ class ProviderSync {
 					Sync::update_meta( $id, $type, 'mai_trending', 'replace', $effective_web_trending + $app_trending );
 				}
 
-				$updated++;
+				$iterated++;
+
+				// Only count this object as "updated" when the provider
+				// actually returned data for the batch. When the provider
+				// call fails ($web_total === null), we preserve existing
+				// meta — the right correctness behavior — but reporting it
+				// as "updated" misled the admin status text into showing
+				// honest progress where there was none.
+				if ( null !== $web_total ) {
+					$updated++;
+				}
 			}
 		}
 
 		return [
-			'batch'   => $batch_index + 1,
-			'total'   => count( $state['batches'] ),
-			'updated' => $updated,
-			'type'    => $current_type,
+			'batch'    => $batch_index + 1,
+			'total'    => count( $state['batches'] ),
+			'updated'  => $updated,
+			'iterated' => $iterated,
+			'type'     => $current_type,
 		];
 	}
 

@@ -184,6 +184,12 @@ class AdminRestApi {
 					'minimum'           => 0,
 					'sanitize_callback' => 'absint',
 				],
+				'total_iterated' => [
+					'type'              => 'integer',
+					'default'           => 0,
+					'minimum'           => 0,
+					'sanitize_callback' => 'absint',
+				],
 			],
 		] );
 
@@ -793,8 +799,17 @@ class AdminRestApi {
 	 *
 	 * Wire shape:
 	 *   Request : POST /mai-analytics/v1/admin/warm
-	 *             { cursor?: int (default 0), total_updated?: int (default 0) }
-	 *   Response: { batch, total, updated, total_updated, done, next_cursor, message? }
+	 *             { cursor?: int (default 0),
+	 *               total_updated?: int (default 0),
+	 *               total_iterated?: int (default 0) }
+	 *   Response: { batch, total, updated, iterated, total_updated,
+	 *               total_iterated, done, next_cursor, message? }
+	 *
+	 * `iterated` and `updated` diverge when a batch's provider call fails:
+	 * iterated still counts the objects walked over, updated only counts
+	 * those for which the provider returned data. Surfacing both lets the
+	 * client report honest progress instead of treating preserved-meta
+	 * batches as successes.
 	 *
 	 * @param WP_REST_Request $request The incoming request.
 	 *
@@ -805,8 +820,9 @@ class AdminRestApi {
 			return new WP_REST_Response( [ 'message' => 'Warm is only available in provider mode.' ], 400 );
 		}
 
-		$cursor        = (int) $request->get_param( 'cursor' );
-		$total_updated = (int) $request->get_param( 'total_updated' );
+		$cursor         = (int) $request->get_param( 'cursor' );
+		$total_updated  = (int) $request->get_param( 'total_updated' );
+		$total_iterated = (int) $request->get_param( 'total_iterated' );
 
 		// Clear stale error only on the first batch — once mid-run, the error
 		// transient may legitimately reflect a per-batch failure we want to keep.
@@ -820,9 +836,10 @@ class AdminRestApi {
 			$error = get_transient( 'mai_analytics_provider_error' );
 
 			$payload = [
-				'done'          => true,
-				'total_updated' => $total_updated,
-				'message'       => $error
+				'done'           => true,
+				'total_updated'  => $total_updated,
+				'total_iterated' => $total_iterated,
+				'message'        => $error
 					? $error
 					: sprintf( 'Warm complete. Updated %d objects.', $total_updated ),
 			];
@@ -830,18 +847,22 @@ class AdminRestApi {
 			return new WP_REST_Response( $payload, $error ? 500 : 200 );
 		}
 
-		$batch_updated  = (int) ( $progress['updated'] ?? 0 );
-		$total_updated += $batch_updated;
-		$total_batches  = (int) ( $progress['total'] ?? 0 );
-		$done           = $cursor + 1 >= $total_batches;
+		$batch_updated   = (int) ( $progress['updated'] ?? 0 );
+		$batch_iterated  = (int) ( $progress['iterated'] ?? $batch_updated );
+		$total_updated  += $batch_updated;
+		$total_iterated += $batch_iterated;
+		$total_batches   = (int) ( $progress['total'] ?? 0 );
+		$done            = $cursor + 1 >= $total_batches;
 
 		$payload = [
-			'batch'         => $cursor + 1,
-			'total'         => $total_batches,
-			'updated'       => $batch_updated,
-			'total_updated' => $total_updated,
-			'done'          => $done,
-			'next_cursor'   => $cursor + 1,
+			'batch'          => $cursor + 1,
+			'total'          => $total_batches,
+			'updated'        => $batch_updated,
+			'iterated'       => $batch_iterated,
+			'total_updated'  => $total_updated,
+			'total_iterated' => $total_iterated,
+			'done'           => $done,
+			'next_cursor'    => $cursor + 1,
 		];
 
 		if ( $done ) {
