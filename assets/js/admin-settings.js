@@ -75,7 +75,7 @@
 
 		btn.addEventListener('click', async function () {
 			btn.disabled = true;
-			showStatus(statusEl, 'Warming stats... · Leave this window open', '#666');
+			showStatus(statusEl, 'Warming stats... (leave this window open)', '#666');
 			window.addEventListener('beforeunload', beforeUnloadHandler);
 
 			var cursor = 0;
@@ -135,7 +135,7 @@
 
 						showStatus(
 							statusEl,
-							'Batch ' + data.batch + ' of ' + data.total + ' · ' + progress + ' · Leave this window open',
+							'Batch ' + data.batch + ' of ' + data.total + ' · ' + progress + ' (leave this window open)',
 							'#666'
 						);
 					}
