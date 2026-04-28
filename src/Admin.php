@@ -196,34 +196,25 @@ class Admin {
 
 		<!-- Filters -->
 		<div class="mai-analytics-filters">
-			<select id="mai-analytics-post-type" class="mai-analytics-filter-posts">
-				<option value=""><?php esc_html_e( 'All Post Types', 'mai-analytics' ); ?></option>
-			</select>
-			<select id="mai-analytics-taxonomy" class="mai-analytics-filter-posts mai-analytics-filter-terms">
-				<option value=""><?php esc_html_e( 'All Taxonomies', 'mai-analytics' ); ?></option>
-			</select>
-			<select id="mai-analytics-term" class="mai-analytics-tom-select" style="display:none;" placeholder="<?php esc_attr_e( 'Search terms...', 'mai-analytics' ); ?>" multiple></select>
-			<select id="mai-analytics-author" class="mai-analytics-filter-posts">
-				<option value=""><?php esc_html_e( 'All Authors', 'mai-analytics' ); ?></option>
-			</select>
-			<select id="mai-analytics-published-days" class="mai-analytics-filter-posts">
-				<option value=""><?php esc_html_e( 'All Publish Dates', 'mai-analytics' ); ?></option>
-				<option value="3"><?php esc_html_e( '3 days', 'mai-analytics' ); ?></option>
-				<option value="7"><?php esc_html_e( '7 days (1 week)', 'mai-analytics' ); ?></option>
-				<option value="14"><?php esc_html_e( '14 days (2 weeks)', 'mai-analytics' ); ?></option>
-				<option value="21"><?php esc_html_e( '21 days (3 weeks)', 'mai-analytics' ); ?></option>
-				<option value="28"><?php esc_html_e( '28 days (4 weeks)', 'mai-analytics' ); ?></option>
-				<option value="60"><?php esc_html_e( '60 days (2 months)', 'mai-analytics' ); ?></option>
-				<option value="90"><?php esc_html_e( '90 days (3 months)', 'mai-analytics' ); ?></option>
-				<option value="custom"><?php esc_html_e( 'Custom Days', 'mai-analytics' ); ?></option>
-			</select>
-			<span class="mai-analytics-custom-days" style="display:none;">
-				<input type="number" id="mai-analytics-custom-days" min="1" max="365" placeholder="<?php esc_attr_e( 'Days', 'mai-analytics' ); ?>">
-			</span>
+			<select id="mai-analytics-post-type" class="mai-analytics-filters__field mai-analytics-filters__field--posts" placeholder="<?php esc_attr_e( 'All Post Types', 'mai-analytics' ); ?>"></select>
+			<select id="mai-analytics-taxonomy" class="mai-analytics-filters__field mai-analytics-filters__field--posts mai-analytics-filters__field--terms" placeholder="<?php esc_attr_e( 'All Taxonomies', 'mai-analytics' ); ?>"></select>
+			<select id="mai-analytics-term" class="mai-analytics-filters__field mai-analytics-filters__field--posts" placeholder="<?php esc_attr_e( 'Search terms...', 'mai-analytics' ); ?>" multiple></select>
+			<select id="mai-analytics-author" class="mai-analytics-filters__field mai-analytics-filters__field--posts" placeholder="<?php esc_attr_e( 'All Authors', 'mai-analytics' ); ?>" multiple></select>
+			<div class="mai-analytics-filters__field mai-analytics-filters__field--posts mai-analytics-filters__published">
+				<select id="mai-analytics-published-days" placeholder="<?php esc_attr_e( 'All Publish Dates', 'mai-analytics' ); ?>">
+					<option value="" hidden></option>
+					<option value="3"><?php esc_html_e( '3 days', 'mai-analytics' ); ?></option>
+					<option value="7"><?php esc_html_e( '7 days (1 week)', 'mai-analytics' ); ?></option>
+					<option value="14"><?php esc_html_e( '14 days (2 weeks)', 'mai-analytics' ); ?></option>
+					<option value="21"><?php esc_html_e( '21 days (3 weeks)', 'mai-analytics' ); ?></option>
+					<option value="28"><?php esc_html_e( '28 days (4 weeks)', 'mai-analytics' ); ?></option>
+					<option value="60"><?php esc_html_e( '60 days (2 months)', 'mai-analytics' ); ?></option>
+					<option value="90"><?php esc_html_e( '90 days (3 months)', 'mai-analytics' ); ?></option>
+					<option value="custom"><?php esc_html_e( 'Custom Days', 'mai-analytics' ); ?></option>
+				</select>
+				<input type="number" id="mai-analytics-custom-days" class="mai-analytics-filters__custom-days" min="1" max="365" placeholder="<?php esc_attr_e( 'Days', 'mai-analytics' ); ?>">
+			</div>
 		</div>
-
-		<!-- Active Filters -->
-		<div class="mai-analytics-active-filters" style="display:none;"></div>
 
 		<!-- Table Controls -->
 		<div class="mai-analytics-table-controls">

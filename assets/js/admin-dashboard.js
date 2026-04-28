@@ -13,9 +13,15 @@
 	var currentOrder   = 'desc';
 	var searchQuery   = '';
 	var searchTimer   = null;
-	var publishedDays = 0;
 	var filtersData   = null;
-	var termSelect    = null;
+
+	// Tom Select instances. Every filter dropdown is a Tom Select for visual
+	// uniformity; ajaxFilters use remote search, staticFilters use a fixed list.
+	var ptSelect            = null;
+	var taxSelect           = null;
+	var termSelect          = null;
+	var authorSelect        = null;
+	var publishedDaysFilter = null;
 
 	/**
 	 * Initialize on DOM ready.
@@ -43,9 +49,8 @@
 				currentOrderby = 'views';
 				currentOrder   = 'desc';
 				searchQuery    = '';
-				publishedDays  = 0;
 				document.getElementById('mai-analytics-search').value = '';
-				clearPublishedDaysUI();
+				if (publishedDaysFilter) publishedDaysFilter.clear();
 				updateFilterVisibility();
 				loadTable();
 
@@ -56,22 +61,10 @@
 			});
 		});
 
-		// Filter changes.
-		document.getElementById('mai-analytics-post-type').addEventListener('change', function () {
-			currentPage = 1;
-			loadTable();
-		});
-
-		document.getElementById('mai-analytics-taxonomy').addEventListener('change', function () {
-			currentPage = 1;
-			updateTermDropdown();
-			loadTable();
-		});
-
-		document.getElementById('mai-analytics-author').addEventListener('change', function () {
-			currentPage = 1;
-			loadTable();
-		});
+		// Filter changes are wired via Tom Select onChange in initSelects() —
+		// post-type, taxonomy, author, and published-days all dispatch through
+		// their TomSelect instance, so no native `change` listeners are needed
+		// for those filters here.
 
 		// Per-page selector.
 		document.getElementById('mai-analytics-per-page').addEventListener('change', function () {
@@ -99,54 +92,115 @@
 			}, 300);
 		});
 
-		// Published-within select.
-		var publishedSelect = document.getElementById('mai-analytics-published-days');
-		var customDaysInput = document.getElementById('mai-analytics-custom-days');
-		var customDaysWrap  = document.querySelector('.mai-analytics-custom-days');
-		var customTimer     = null;
-
-		publishedSelect.addEventListener('change', function () {
-			var val = this.value;
-
-			if (val === 'custom') {
-				customDaysWrap.style.display = '';
-				customDaysInput.focus();
-				return;
-			}
-
-			customDaysWrap.style.display = 'none';
-			customDaysInput.value = '';
-			publishedDays = val ? parseInt(val, 10) : 0;
-			currentPage   = 1;
-			loadTable();
-		});
-
-		customDaysInput.addEventListener('input', function () {
-			clearTimeout(customTimer);
-			var input = this;
-
-			customTimer = setTimeout(function () {
-				var val = parseInt(input.value, 10);
-				if (val > 365) { val = 365; input.value = 365; }
-				publishedDays = val > 0 ? val : 0;
-				currentPage   = 1;
-				loadTable();
-			}, 400);
-		});
-
 	}
 
 	/**
-	 * Initialize Tom Select instances.
+	 * Initialize Tom Select instances on every filter dropdown so the row of
+	 * controls is visually uniform (same height, border, chevron). Static
+	 * single-selects (post type, taxonomy, publish dates) get options added by
+	 * loadFilters(); ajax multi-selects (term, author) load on focus/search.
 	 */
 	function initSelects() {
-		termSelect = initTomSelect('mai-analytics-term', 'term', function () {
-			return { taxonomy: document.getElementById('mai-analytics-taxonomy').value };
+		ptSelect = initTomSelectStatic('mai-analytics-post-type', function () {
+			currentPage = 1;
+			loadTable();
 		});
 
-		// Hide term select wrapper initially (no taxonomy selected).
+		taxSelect = initTomSelectStatic('mai-analytics-taxonomy', function () {
+			currentPage = 1;
+			updateTermDropdown();
+			updateFilterVisibility();
+			loadTable();
+		});
+
+		publishedDaysFilter = new PublishedDaysFilter(
+			document.querySelector('.mai-analytics-filters__published'),
+			function () { currentPage = 1; loadTable(); }
+		);
+
+		termSelect = initTomSelect('mai-analytics-term', 'term', function () {
+			return { taxonomy: taxSelect ? taxSelect.getValue() : '' };
+		});
+
+		authorSelect = initTomSelect('mai-analytics-author', 'author', function () {
+			return {};
+		});
+
+		// Term wrapper is hidden until a taxonomy is selected.
 		termSelect.wrapper.style.display = 'none';
 	}
+
+	/**
+	 * Encapsulates the "Publish Dates" filter — the only filter with real
+	 * internal state (preset → "Custom Days" → debounced number input). Owns
+	 * its Tom Select, its sub-input, the `is-custom` class toggle, and the
+	 * resolved day count. Consumers read via getValue() / clear().
+	 *
+	 * @param {HTMLElement} rootEl   The .mai-analytics-filters__published cell.
+	 * @param {Function}    onChange Fires after value is committed.
+	 */
+	function PublishedDaysFilter(rootEl, onChange) {
+		var self = this;
+
+		this.root         = rootEl;
+		this.selectEl     = rootEl.querySelector('select');
+		this.customInput  = rootEl.querySelector('.mai-analytics-filters__custom-days');
+		this.value        = 0;
+		this.onChange     = onChange || function () {};
+		this._customTimer = null;
+
+		var placeholder = this.selectEl.getAttribute('placeholder') || '';
+
+		this.tomSelect = new TomSelect(this.selectEl, {
+			placeholder:  placeholder,
+			plugins:      ['clear_button'],
+			// Eight presets — search is noise. Click/arrow-keys still work.
+			controlInput: null,
+			onChange:     function () { self._handleSelectChange(); },
+		});
+
+		if (placeholder) {
+			this.tomSelect.control.setAttribute('data-placeholder', placeholder);
+		}
+
+		this.customInput.addEventListener('input', function () {
+			clearTimeout(self._customTimer);
+			var input = this;
+
+			self._customTimer = setTimeout(function () {
+				var val = parseInt(input.value, 10);
+				if (val > 365) { val = 365; input.value = 365; }
+				self.value = val > 0 ? val : 0;
+				self.onChange();
+			}, 400);
+		});
+	}
+
+	PublishedDaysFilter.prototype._handleSelectChange = function () {
+		var val = this.tomSelect.getValue();
+
+		if ('custom' === val) {
+			this.root.classList.add('is-custom');
+			this.customInput.focus();
+			return;
+		}
+
+		this.root.classList.remove('is-custom');
+		this.customInput.value = '';
+		this.value             = val ? parseInt(val, 10) : 0;
+		this.onChange();
+	};
+
+	PublishedDaysFilter.prototype.getValue = function () {
+		return this.value;
+	};
+
+	PublishedDaysFilter.prototype.clear = function () {
+		this.tomSelect.setValue('', true);
+		this.customInput.value = '';
+		this.root.classList.remove('is-custom');
+		this.value = 0;
+	};
 
 	/**
 	 * Fetch summary data and populate cards.
@@ -167,20 +221,15 @@
 		apiFetch('filters').then(function (data) {
 			filtersData = data;
 
-			var ptSelect = document.getElementById('mai-analytics-post-type');
 			data.post_types.forEach(function (pt) {
-				ptSelect.add(new Option(pt.label, pt.slug));
+				ptSelect.addOption({ value: pt.slug, text: pt.label });
 			});
+			ptSelect.refreshOptions(false);
 
-			var taxSelect = document.getElementById('mai-analytics-taxonomy');
 			data.taxonomies.forEach(function (tax) {
-				taxSelect.add(new Option(tax.label, tax.slug));
+				taxSelect.addOption({ value: tax.slug, text: tax.label });
 			});
-
-			var authorSelect = document.getElementById('mai-analytics-author');
-			data.authors.forEach(function (author) {
-				authorSelect.add(new Option(author.name, author.id));
-			});
+			taxSelect.refreshOptions(false);
 
 			updateFilterVisibility();
 			updateTermDropdown();
@@ -190,11 +239,6 @@
 	/**
 	 * Reset the published-within filter UI without changing state.
 	 */
-	function clearPublishedDaysUI() {
-		document.getElementById('mai-analytics-published-days').value = '';
-		document.getElementById('mai-analytics-custom-days').value = '';
-		document.querySelector('.mai-analytics-custom-days').style.display = 'none';
-	}
 
 	/**
 	 * Fetch table data based on active tab and filters.
@@ -209,18 +253,19 @@
 		});
 
 		if (activeTab === 'posts') {
-			var pt     = document.getElementById('mai-analytics-post-type').value;
-			var tax    = document.getElementById('mai-analytics-taxonomy').value;
-			var terms  = termSelect ? termSelect.getValue() : [];
-			var author = document.getElementById('mai-analytics-author').value;
+			var pt      = ptSelect      ? ptSelect.getValue()      : '';
+			var tax     = taxSelect     ? taxSelect.getValue()     : '';
+			var terms   = termSelect    ? termSelect.getValue()    : [];
+			var authors = authorSelect  ? authorSelect.getValue()  : [];
 
-			if (pt)              params.set('post_type', pt);
-			if (tax)             params.set('taxonomy', tax);
-			if (terms.length)    params.set('term_id', terms.join(','));
-			if (author)          params.set('author', author);
-			if (publishedDays > 0) params.set('published_days', publishedDays);
+			if (pt)                params.set('post_type', pt);
+			if (tax)               params.set('taxonomy', tax);
+			if (terms.length)      params.set('term_id', terms.join(','));
+			if (authors.length)    params.set('author', authors.join(','));
+			var pubDays = publishedDaysFilter ? publishedDaysFilter.getValue() : 0;
+			if (pubDays > 0) params.set('published_days', pubDays);
 		} else if (activeTab === 'terms') {
-			var tax2 = document.getElementById('mai-analytics-taxonomy').value;
+			var tax2 = taxSelect ? taxSelect.getValue() : '';
 			if (tax2) params.set('taxonomy', tax2);
 		}
 
@@ -233,7 +278,6 @@
 		apiFetch(endpoint + '?' + params.toString()).then(function (data) {
 			renderTable(data);
 			renderPagination(data.total, data.pages);
-			updateActiveFilters();
 			showLoading(false);
 			document.querySelector('.mai-analytics-search-spinner').style.display = 'none';
 		}).catch(function () {
@@ -445,44 +489,44 @@
 	}
 
 	/**
-	 * Show/hide filters based on active tab.
+	 * Show/hide each filter cell based on whether it carries the
+	 * `--<activeTab>` BEM modifier. Conditional sub-rules (term needs a
+	 * taxonomy, custom-days needs the "Custom Days" option) layer on top.
 	 */
 	function updateFilterVisibility() {
-		var showPosts = (activeTab === 'posts');
-		var showTerms = (activeTab === 'terms' || activeTab === 'posts');
+		var modifier = 'mai-analytics-filters__field--' + activeTab;
+		var fields   = document.querySelectorAll('.mai-analytics-filters__field');
 
-		// Tom Select wraps elements in .ts-wrapper — target those for Tom Select elements.
-		document.querySelectorAll('.mai-analytics-filter-posts').forEach(function (el) {
-			var target = el.closest('.ts-wrapper') || el;
-			target.style.display = showPosts ? '' : 'none';
+		fields.forEach(function (field) {
+			var target  = field.closest('.ts-wrapper') || field;
+			var inTab   = field.classList.contains(modifier);
+
+			if (!inTab) {
+				target.style.display = 'none';
+				return;
+			}
+
+			// Term: only when a taxonomy is selected.
+			if (field.id === 'mai-analytics-term') {
+				var taxonomy = taxSelect ? taxSelect.getValue() : '';
+				target.style.display = taxonomy ? '' : 'none';
+				return;
+			}
+
+			target.style.display = '';
 		});
-
-		document.querySelectorAll('.mai-analytics-filter-terms').forEach(function (el) {
-			var target = el.closest('.ts-wrapper') || el;
-			target.style.display = showTerms ? '' : 'none';
-		});
-
-		// Hide all filters for authors and archives tabs.
-		if (activeTab === 'authors' || activeTab === 'archives') {
-			document.querySelectorAll('.mai-analytics-filters').forEach(function (wrap) {
-				Array.prototype.forEach.call(wrap.children, function (el) {
-					el.style.display = 'none';
-				});
-			});
-		}
 	}
 
 	/**
 	 * Update the term dropdown based on selected taxonomy.
 	 */
 	function updateTermDropdown() {
-		var taxonomy = document.getElementById('mai-analytics-taxonomy').value;
-
 		if (!termSelect) {
 			return;
 		}
 
-		var wrapper = termSelect.wrapper;
+		var taxonomy = taxSelect ? taxSelect.getValue() : '';
+		var wrapper  = termSelect.wrapper;
 
 		if (!taxonomy) {
 			wrapper.style.display = 'none';
@@ -498,74 +542,32 @@
 	}
 
 	/**
-	 * Build and display active filter tags.
+	 * Initialize a Tom Select on a static single-select with a fixed list of
+	 * options. Keeps "All X" as the empty-value option (allowEmptyOption).
+	 * The caller supplies the change handler so each filter can layer in its
+	 * own side effects (e.g. the taxonomy filter resetting the term list).
 	 */
-	function updateActiveFilters() {
-		var wrap = document.querySelector('.mai-analytics-active-filters');
+	function initTomSelectStatic(elementId, onChange) {
+		var el          = document.getElementById(elementId);
+		var placeholder = el.getAttribute('placeholder') || '';
 
-		while (wrap.firstChild) wrap.removeChild(wrap.firstChild);
-
-		var filters = [];
-
-		// Post type.
-		var ptSelect = document.getElementById('mai-analytics-post-type');
-		if (ptSelect.value && (activeTab === 'posts')) {
-			filters.push(ptSelect.options[ptSelect.selectedIndex].text);
-		}
-
-		// Taxonomy.
-		var taxSelect = document.getElementById('mai-analytics-taxonomy');
-		if (taxSelect.value && (activeTab === 'posts' || activeTab === 'terms')) {
-			filters.push(taxSelect.options[taxSelect.selectedIndex].text);
-		}
-
-		// Terms (Tom Select multi).
-		if (termSelect && termSelect.getValue().length && (activeTab === 'posts')) {
-			termSelect.getValue().forEach(function (val) {
-				var item = termSelect.getItem(val);
-				if (item) filters.push(item.textContent);
-			});
-		}
-
-		// Author.
-		var authorEl = document.getElementById('mai-analytics-author');
-		if (authorEl.value && (activeTab === 'posts')) {
-			filters.push(authorEl.options[authorEl.selectedIndex].text);
-		}
-
-		// Published within.
-		if (publishedDays > 0 && activeTab === 'posts') {
-			var pdSelect = document.getElementById('mai-analytics-published-days');
-			if (pdSelect.value === 'custom') {
-				filters.push('Published within ' + publishedDays + (publishedDays === 1 ? ' day' : ' days'));
-			} else {
-				filters.push('Published within ' + pdSelect.options[pdSelect.selectedIndex].text);
-			}
-		}
-
-		// Search query.
-		if (searchQuery) {
-			filters.push('Search: "' + searchQuery + '"');
-		}
-
-		if (!filters.length) {
-			wrap.style.display = 'none';
-			return;
-		}
-
-		wrap.style.display = '';
-
-		var label       = document.createElement('span');
-		label.className = 'mai-analytics-active-filters__label';
-		label.textContent = 'Filtered by: ';
-		wrap.appendChild(label);
-
-		filters.forEach(function (text) {
-			var tag       = document.createElement('span');
-			tag.className = 'mai-analytics-active-filters__tag';
-			tag.textContent = text;
-			wrap.appendChild(tag);
+		var ts = new TomSelect(el, {
+			placeholder:  placeholder,
+			plugins:      ['clear_button'],
+			// Static lists are short (typically < 10) — search is more noise
+			// than help. Click + arrow-key navigation still work.
+			controlInput: null,
+			onChange:     onChange,
 		});
+
+		// Tom Select normally renders the placeholder on its control input;
+		// with controlInput disabled there's nothing to render it. Stash the
+		// text on the control so our CSS can surface it via ::before.
+		if (placeholder) {
+			ts.control.setAttribute('data-placeholder', placeholder);
+		}
+
+		return ts;
 	}
 
 	/**

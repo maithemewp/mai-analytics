@@ -731,16 +731,24 @@ class AdminRestApi {
 		$has_search = strlen( $search ) >= 2;
 
 		if ( 'author' === $type ) {
-			$where = "um.meta_key = 'mai_views' AND CAST(um.meta_value AS UNSIGNED) > 0";
+			// Match get_filters() — surface authors of viewed posts, not authors
+			// whose own /author/ archive was tracked (often empty in practice).
+			$public_types = get_post_types( [ 'public' => true ] );
+			$type_list    = implode( "','", array_map( 'esc_sql', $public_types ) );
+			$where        = "pm.meta_key = 'mai_views'
+			                 AND CAST(pm.meta_value AS UNSIGNED) > 0
+			                 AND p.post_status = 'publish'
+			                 AND p.post_type IN ('{$type_list}')";
 
 			if ( $has_search ) {
 				$where .= $wpdb->prepare( ' AND u.display_name LIKE %s', '%' . $wpdb->esc_like( $search ) . '%' );
 			}
 
 			$results = $wpdb->get_results(
-				"SELECT u.ID as id, u.display_name as name
+				"SELECT DISTINCT u.ID as id, u.display_name as name
 				 FROM $wpdb->users u
-				 INNER JOIN $wpdb->usermeta um ON u.ID = um.user_id
+				 INNER JOIN $wpdb->posts p ON u.ID = p.post_author
+				 INNER JOIN $wpdb->postmeta pm ON p.ID = pm.post_id
 				 WHERE {$where}
 				 ORDER BY u.display_name ASC
 				 LIMIT 50"

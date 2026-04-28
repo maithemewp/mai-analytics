@@ -52,28 +52,51 @@
 	cursor: pointer;
 }
 
-/* Filters */
+/* Filters — auto-fit grid so cells share width and wrap naturally.
+ * Fixed row height + stretch alignment so every control fills the cell. */
 .mai-analytics-filters {
-	display: flex;
+	--mai-analytics-filters-row-height: 32px;
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+	grid-auto-rows: minmax(var(--mai-analytics-filters-row-height), auto);
 	gap: 8px;
 	padding: 12px 0;
-	flex-wrap: wrap;
-	align-items: center;
+	align-items: stretch;
 }
 
 .mai-analytics-filters select {
-	max-width: 200px;
+	width: 100%;
 }
 
-/* Published Within Filter — custom days input */
-.mai-analytics-custom-days input {
-	width: 70px;
-	padding: 4px 8px;
+/* Published-within filter — select + custom-days input share one grid cell. */
+.mai-analytics-filters__published {
+	display: flex;
+	gap: 4px;
+	min-width: 0;
+	height: 100%;
+}
+
+.mai-analytics-filters__published > .ts-wrapper {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.mai-analytics-filters__custom-days {
+	flex: 0 0 80px;
+	display: none;
+	width: 80px;
+	height: 100%;
+	padding: 0 6px;
 	border: 1px solid #8c8f94;
 	border-radius: 3px;
-	font-size: 13px;
-	height: 30px;
+	font-size: 14px;
 	background: #fff;
+	box-sizing: border-box;
+	color: #2c3338;
+}
+
+.mai-analytics-filters__published.is-custom .mai-analytics-filters__custom-days {
+	display: inline-block;
 }
 
 /* Table Controls */
@@ -86,17 +109,59 @@
 }
 
 
-/* Tom Select — flexible sizing and height matching */
+/* Tom Select — match the WP-admin <select> it sits next to so it reads as
+ * "a select you can also search." Stretches to fill the grid cell, with
+ * matching border/radius/chevron. */
 .mai-analytics-filters .ts-wrapper {
-	min-width: 180px;
-	max-width: 400px;
-	flex: 1 1 auto;
+	width: 100%;
+	height: 100%;
 }
 
 .mai-analytics-filters .ts-wrapper .ts-control {
-	min-height: 30px;
-	padding: 2px 8px;
-	border-color: #8c8f94;
+	min-height: 0;
+	height: 100%;
+	padding: 0 24px 0 8px;
+	border: 1px solid #8c8f94;
+	border-radius: 3px;
+	background-color: #fff;
+	background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'><path d='M5 6l5 5 5-5 2 1-7 7-7-7z' fill='%23646970'/></svg>");
+	background-repeat: no-repeat;
+	background-position: right 5px top 55%;
+	background-size: 16px 16px;
+	font-size: 14px;
+	line-height: 1;
+	color: #2c3338;
+	box-shadow: none;
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+}
+
+.mai-analytics-filters .ts-wrapper .ts-control > input {
+	font-size: 14px;
+	line-height: inherit;
+	margin: 0;
+}
+
+/* Static (search-disabled) Tom Selects have no control input to host the
+ * placeholder. Surface the data-placeholder we stashed in JS via ::before. */
+.mai-analytics-filters .ts-wrapper:not(.has-items) .ts-control[data-placeholder]::before {
+	content: attr(data-placeholder);
+	color: #757575;
+	pointer-events: none;
+}
+
+/* Clear-button × replaces the chevron as the right-edge affordance when an
+ * item is selected, so hide the background chevron to avoid overlap. */
+.mai-analytics-filters .ts-wrapper.has-items .ts-control {
+	background-image: none;
+}
+
+.mai-analytics-filters .ts-wrapper.focus .ts-control,
+.mai-analytics-filters .ts-wrapper .ts-control:focus-within {
+	border-color: #2271b1;
+	box-shadow: 0 0 0 1px #2271b1;
+	outline: 2px solid transparent;
 }
 
 /* Spinners */
@@ -127,31 +192,6 @@
 
 @keyframes mai-spin {
 	to { transform: translateY(-50%) rotate(360deg); }
-}
-
-/* Active Filters */
-.mai-analytics-active-filters {
-	display: flex;
-	align-items: center;
-	gap: 6px;
-	padding: 8px 0;
-	font-size: 13px;
-	flex-wrap: wrap;
-}
-
-.mai-analytics-active-filters__label {
-	color: #646970;
-	font-weight: 600;
-}
-
-.mai-analytics-active-filters__tag {
-	display: inline-block;
-	background: #f0f0f1;
-	border: 1px solid #c3c4c7;
-	border-radius: 3px;
-	padding: 2px 8px;
-	font-size: 12px;
-	color: #1d2327;
 }
 
 /* Table */
@@ -261,18 +301,6 @@
 @media screen and (max-width: 782px) {
 	.mai-analytics-cards {
 		grid-template-columns: repeat(2, 1fr);
-	}
-
-	.mai-analytics-filters {
-		flex-direction: column;
-		align-items: stretch;
-	}
-
-	.mai-analytics-filters select,
-	.mai-analytics-filters .ts-wrapper {
-		width: 100%;
-		max-width: none;
-		flex: 1 1 100%;
 	}
 
 	.mai-analytics-table-controls {
