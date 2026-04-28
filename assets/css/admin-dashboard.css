@@ -43,20 +43,6 @@
 	margin-top: 2px;
 }
 
-/* Chart Section */
-.mai-analytics-chart-section {
-	background: #fff;
-	border: 1px solid #c3c4c7;
-	border-radius: 4px;
-	padding: 16px 20px;
-	margin-bottom: 20px;
-}
-
-.mai-analytics-chart-wrap {
-	position: relative;
-	max-height: 400px;
-}
-
 /* Tabs */
 .mai-analytics-tabs {
 	margin-top: 0;

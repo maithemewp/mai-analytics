@@ -4,9 +4,10 @@
 	var API     = maiAnalytics.restBase;
 	var headers = { 'X-WP-Nonce': maiAnalytics.nonce };
 
-	// State.
-	var activeTab      = 'posts';
-	var chartInstance  = null;
+	// State. Initial tab comes from server-rendered active class so ?subtab=
+	// deep-links land on the right table without a second render pass.
+	var initialTab     = document.querySelector('.mai-analytics-tabs .nav-tab-active');
+	var activeTab      = (initialTab && initialTab.dataset.tab) || 'posts';
 	var currentPage   = 1;
 	var currentOrderby = 'views';
 	var currentOrder   = 'desc';
@@ -35,7 +36,7 @@
 		document.querySelectorAll('.mai-analytics-tabs .nav-tab').forEach(function (tab) {
 			tab.addEventListener('click', function (e) {
 				e.preventDefault();
-				document.querySelector('.nav-tab-active').classList.remove('nav-tab-active');
+				document.querySelector('.mai-analytics-tabs .nav-tab-active').classList.remove('nav-tab-active');
 				this.classList.add('nav-tab-active');
 				activeTab      = this.dataset.tab;
 				currentPage    = 1;
@@ -47,6 +48,11 @@
 				clearPublishedDaysUI();
 				updateFilterVisibility();
 				loadTable();
+
+				// Reflect the active tab in the URL so it's bookmarkable / shareable.
+				if (this.href) {
+					window.history.replaceState({}, '', this.href);
+				}
 			});
 		});
 
@@ -155,80 +161,6 @@
 	}
 
 	/**
-	 * Update the bar chart from the current table data.
-	 */
-	function updateChart(items) {
-		if (typeof Chart === 'undefined') {
-			return;
-		}
-
-		var canvas = document.getElementById('mai-analytics-chart');
-		var ctx    = canvas.getContext('2d');
-		var section = document.querySelector('.mai-analytics-chart-section');
-
-		if (chartInstance) {
-			chartInstance.destroy();
-			chartInstance = null;
-		}
-
-		// Take top 10 items for the chart.
-		var top = items.slice(0, 10);
-
-		if (!top.length) {
-			section.style.display = 'none';
-			return;
-		}
-
-		section.style.display = '';
-
-		var labels = top.map(function (item) {
-			var label = decodeHtml(item.title || item.name || '(no title)');
-			return label.length > 30 ? label.substring(0, 27) + '...' : label;
-		});
-
-		var viewsData    = top.map(function (item) { return item.views || 0; });
-		var trendingData = top.map(function (item) { return item.trending || 0; });
-
-		chartInstance = new Chart(ctx, {
-			type: 'bar',
-			data: {
-				labels: labels,
-				datasets: [
-					{
-						label:           'Views',
-						data:            viewsData,
-						backgroundColor: '#2271b1',
-					},
-					{
-						label:           'Trending',
-						data:            trendingData,
-						backgroundColor: '#d63638',
-					},
-				],
-			},
-			options: {
-				indexAxis:           'y',
-				responsive:          true,
-				maintainAspectRatio: false,
-				scales: {
-					x: {
-						beginAtZero: true,
-						ticks: { callback: function (v) { return formatNumber(v); } },
-					},
-				},
-				plugins: {
-					legend: { position: 'top' },
-					tooltip: {
-						callbacks: {
-							label: function (ctx) { return ctx.dataset.label + ': ' + formatNumber(ctx.raw); },
-						},
-					},
-				},
-			},
-		});
-	}
-
-	/**
 	 * Fetch filter options and populate dropdowns.
 	 */
 	function loadFilters() {
@@ -301,7 +233,6 @@
 		apiFetch(endpoint + '?' + params.toString()).then(function (data) {
 			renderTable(data);
 			renderPagination(data.total, data.pages);
-			updateChart(data.items || []);
 			updateActiveFilters();
 			showLoading(false);
 			document.querySelector('.mai-analytics-search-spinner').style.display = 'none';

@@ -39,7 +39,7 @@ class Admin {
 	}
 
 	/**
-	 * Enqueues Chart.js, dashboard CSS, and dashboard JS on the analytics page only.
+	 * Enqueues dashboard CSS and JS on the analytics page only.
 	 *
 	 * @param string $hook The current admin page hook suffix.
 	 *
@@ -49,14 +49,6 @@ class Admin {
 		if ( ! str_contains( $hook, 'mai-analytics' ) ) {
 			return;
 		}
-
-		wp_enqueue_script(
-			'chartjs',
-			'https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js',
-			[],
-			'4.4.7',
-			true
-		);
 
 		wp_enqueue_style(
 			'tom-select',
@@ -86,7 +78,7 @@ class Admin {
 		wp_enqueue_script(
 			'mai-analytics-admin',
 			MAI_ANALYTICS_PLUGIN_URL . 'assets/js/admin-dashboard.js',
-			[ 'chartjs', 'tom-select' ],
+			[ 'tom-select' ],
 			MAI_ANALYTICS_VERSION . '.' . filemtime( $js_file ),
 			true
 		);
@@ -131,6 +123,9 @@ class Admin {
 	 */
 	public function render_page(): void {
 		$tab         = sanitize_key( $_GET['tab'] ?? 'dashboard' );
+		$subtab_raw  = sanitize_key( $_GET['subtab'] ?? 'posts' );
+		$valid_sub   = [ 'posts', 'terms', 'authors', 'archives' ];
+		$subtab      = in_array( $subtab_raw, $valid_sub, true ) ? $subtab_raw : 'posts';
 		$is_external = 'self_hosted' !== Settings::get( 'data_source' );
 		$base_url    = admin_url( 'admin.php?page=mai-analytics' );
 		?>
@@ -148,7 +143,7 @@ class Admin {
 			if ( 'settings' === $tab && current_user_can( 'manage_options' ) ) {
 				$this->render_settings_tab( $is_external );
 			} else {
-				$this->render_dashboard_tab( $is_external );
+				$this->render_dashboard_tab( $is_external, $subtab );
 			}
 			?>
 		</div>
@@ -158,11 +153,19 @@ class Admin {
 	/**
 	 * Renders the dashboard tab content.
 	 *
-	 * @param bool $is_external Whether an external provider is active.
+	 * @param bool   $is_external Whether an external provider is active.
+	 * @param string $subtab      The active sub-tab: posts|terms|authors|archives.
 	 *
 	 * @return void
 	 */
-	private function render_dashboard_tab( bool $is_external ): void {
+	private function render_dashboard_tab( bool $is_external, string $subtab = 'posts' ): void {
+		$base_url = admin_url( 'admin.php?page=mai-analytics' );
+		$subtabs  = [
+			'posts'    => __( 'Posts', 'mai-analytics' ),
+			'terms'    => __( 'Terms', 'mai-analytics' ),
+			'authors'  => __( 'Authors', 'mai-analytics' ),
+			'archives' => __( 'Archives', 'mai-analytics' ),
+		];
 		?>
 		<!-- Summary Cards -->
 		<div class="mai-analytics-cards">
@@ -184,19 +187,11 @@ class Admin {
 			</div>
 		</div>
 
-		<!-- Chart -->
-		<div class="mai-analytics-chart-section">
-			<div class="mai-analytics-chart-wrap">
-				<canvas id="mai-analytics-chart" height="250"></canvas>
-			</div>
-		</div>
-
 		<!-- Tabs -->
 		<nav class="nav-tab-wrapper mai-analytics-tabs">
-			<a href="#" class="nav-tab nav-tab-active" data-tab="posts"><?php esc_html_e( 'Posts', 'mai-analytics' ); ?></a>
-			<a href="#" class="nav-tab" data-tab="terms"><?php esc_html_e( 'Terms', 'mai-analytics' ); ?></a>
-			<a href="#" class="nav-tab" data-tab="authors"><?php esc_html_e( 'Authors', 'mai-analytics' ); ?></a>
-			<a href="#" class="nav-tab" data-tab="archives"><?php esc_html_e( 'Archives', 'mai-analytics' ); ?></a>
+			<?php foreach ( $subtabs as $slug => $label ) : ?>
+				<a href="<?php echo esc_url( $base_url . '&subtab=' . $slug ); ?>" class="nav-tab <?php echo $slug === $subtab ? 'nav-tab-active' : ''; ?>" data-tab="<?php echo esc_attr( $slug ); ?>"><?php echo esc_html( $label ); ?></a>
+			<?php endforeach; ?>
 		</nav>
 
 		<!-- Filters -->

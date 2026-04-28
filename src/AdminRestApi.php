@@ -610,40 +610,90 @@ class AdminRestApi {
 	/**
 	 * Returns filter options for the dashboard dropdowns.
 	 *
+	 * Each list is gated on "has views > 0" so we don't surface filters that
+	 * would yield empty tables. Wrapped in a 5-minute transient because filter
+	 * options change much more slowly than the views numbers themselves and
+	 * this endpoint fires on every dashboard page load.
+	 *
 	 * @param WP_REST_Request $request The incoming request.
 	 *
-	 * @return WP_REST_Response Available post types and taxonomies.
+	 * @return WP_REST_Response Available post types, taxonomies, and authors that have data.
 	 */
 	public function get_filters( WP_REST_Request $request ): WP_REST_Response {
+		$cached = get_transient( 'mai_analytics_admin_filters' );
+
+		if ( is_array( $cached ) ) {
+			return new WP_REST_Response( $cached );
+		}
+
 		global $wpdb;
 
-		// Public post types.
-		$post_types = [];
+		$public_types     = get_post_types( [ 'public' => true ] );
+		$public_taxonomies = get_taxonomies( [ 'public' => true ] );
+		$type_list        = implode( "','", array_map( 'esc_sql', $public_types ) );
+		$tax_list         = implode( "','", array_map( 'esc_sql', $public_taxonomies ) );
 
-		foreach ( get_post_types( [ 'public' => true ], 'objects' ) as $pt ) {
-			$post_types[] = [
-				'slug'  => $pt->name,
-				'label' => $pt->labels->name,
-			];
+		// Post types that have published posts with views > 0.
+		$post_types     = [];
+		$post_type_rows = $wpdb->get_col(
+			"SELECT DISTINCT p.post_type
+			 FROM $wpdb->posts p
+			 INNER JOIN $wpdb->postmeta pm ON p.ID = pm.post_id
+			 WHERE pm.meta_key = 'mai_views'
+			   AND CAST(pm.meta_value AS UNSIGNED) > 0
+			   AND p.post_status = 'publish'
+			   AND p.post_type IN ('{$type_list}')"
+		);
+
+		foreach ( $post_type_rows as $slug ) {
+			$pt = get_post_type_object( $slug );
+
+			if ( $pt ) {
+				$post_types[] = [
+					'slug'  => $pt->name,
+					'label' => $pt->labels->name,
+				];
+			}
 		}
 
-		// Public taxonomies.
-		$taxonomies = [];
+		// Taxonomies that have terms with views > 0. Shared by Posts and Terms
+		// tabs; "any term in this taxonomy has views" is a fair proxy for both.
+		$taxonomies     = [];
+		$taxonomy_rows  = $wpdb->get_col(
+			"SELECT DISTINCT tt.taxonomy
+			 FROM $wpdb->termmeta tm
+			 INNER JOIN $wpdb->term_taxonomy tt ON tm.term_id = tt.term_id
+			 WHERE tm.meta_key = 'mai_views'
+			   AND CAST(tm.meta_value AS UNSIGNED) > 0
+			   AND tt.taxonomy IN ('{$tax_list}')"
+		);
 
-		foreach ( get_taxonomies( [ 'public' => true ], 'objects' ) as $tax ) {
-			$taxonomies[] = [
-				'slug'  => $tax->name,
-				'label' => $tax->labels->name,
-			];
+		foreach ( $taxonomy_rows as $slug ) {
+			$tax = get_taxonomy( $slug );
+
+			if ( $tax ) {
+				$taxonomies[] = [
+					'slug'  => $tax->name,
+					'label' => $tax->labels->name,
+				];
+			}
 		}
 
-		// Authors with views.
-		$authors = [];
+		// Authors of posts with views. The Posts-tab filter narrows posts by
+		// their author, so the relevant set is "authors who have viewed posts"
+		// rather than "authors whose own /author/ archive was tracked" (often
+		// zero — author archives are rarely linked and often disabled by SEO
+		// plugins, plus tracking is skipped for visitors with edit_posts).
+		$authors     = [];
 		$author_rows = $wpdb->get_results(
-			"SELECT u.ID, u.display_name
+			"SELECT DISTINCT u.ID, u.display_name
 			 FROM $wpdb->users u
-			 INNER JOIN $wpdb->usermeta um ON u.ID = um.user_id
-			 WHERE um.meta_key = 'mai_views' AND CAST(um.meta_value AS UNSIGNED) > 0
+			 INNER JOIN $wpdb->posts p ON u.ID = p.post_author
+			 INNER JOIN $wpdb->postmeta pm ON p.ID = pm.post_id
+			 WHERE pm.meta_key = 'mai_views'
+			   AND CAST(pm.meta_value AS UNSIGNED) > 0
+			   AND p.post_status = 'publish'
+			   AND p.post_type IN ('{$type_list}')
 			 ORDER BY u.display_name ASC"
 		);
 
@@ -654,11 +704,15 @@ class AdminRestApi {
 			];
 		}
 
-		return new WP_REST_Response( [
+		$payload = [
 			'post_types' => $post_types,
 			'taxonomies' => $taxonomies,
 			'authors'    => $authors,
-		] );
+		];
+
+		set_transient( 'mai_analytics_admin_filters', $payload, 5 * MINUTE_IN_SECONDS );
+
+		return new WP_REST_Response( $payload );
 	}
 
 	/**
