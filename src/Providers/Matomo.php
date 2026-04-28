@@ -310,10 +310,15 @@ class Matomo implements WebViewProvider {
 
 		if ( 200 !== $code ) {
 			// Include a snippet of the response body so 500s actually tell us
-			// what Matomo (or the proxy in front of it) said. Strip tags and
-			// collapse whitespace so the transient stays readable; cap length
-			// so a full error page doesn't blow up the option_value column.
-			$snippet = trim( preg_replace( '/\s+/', ' ', wp_strip_all_tags( (string) wp_remote_retrieve_body( $response ) ) ) );
+			// what Matomo (or the proxy in front of it) said. Strip tags,
+			// decode HTML entities (Matomo error pages embed › « etc. as
+			// entities — leaving them encoded makes the transient and log
+			// lines look broken), collapse whitespace so the transient stays
+			// readable; cap length so a full error page doesn't blow up the
+			// option_value column.
+			$snippet = wp_strip_all_tags( (string) wp_remote_retrieve_body( $response ) );
+			$snippet = html_entity_decode( $snippet, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+			$snippet = trim( preg_replace( '/\s+/', ' ', $snippet ) );
 			$snippet = mb_substr( $snippet, 0, 500 );
 
 			$message = 'Matomo API returned HTTP ' . $code . ': ' . wp_remote_retrieve_response_message( $response );
