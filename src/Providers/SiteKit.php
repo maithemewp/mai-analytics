@@ -274,7 +274,7 @@ class SiteKit implements WebViewProvider {
 	 * @return void
 	 */
 	private static function set_last_error( string $message ): void {
-		error_log( '[Mai Analytics] Site Kit report error: ' . $message );
+		mai_analytics_logger()->error( 'Site Kit report error: ' . $message );
 		set_transient( 'mai_analytics_provider_error', $message, HOUR_IN_SECONDS );
 	}
 

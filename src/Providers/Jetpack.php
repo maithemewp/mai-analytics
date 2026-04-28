@@ -171,7 +171,7 @@ class Jetpack implements WebViewProvider {
 
 		if ( is_wp_error( $data ) || ! is_array( $data ) ) {
 			$message = is_wp_error( $data ) ? $data->get_error_message() : 'Invalid response from Jetpack Stats.';
-			error_log( '[Mai Analytics] Jetpack Stats error for post ' . $post_id . ': ' . $message );
+			mai_analytics_logger()->error( 'Jetpack Stats error for post ' . $post_id . ': ' . $message );
 			set_transient( 'mai_analytics_provider_error', $message, HOUR_IN_SECONDS );
 
 			$this->cache[ $post_id ] = null;

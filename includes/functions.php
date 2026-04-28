@@ -4,6 +4,20 @@
 defined( 'ABSPATH' ) || die;
 
 /**
+ * Gets the shared logger instance for this plugin.
+ *
+ * The Mai_Logger class itself is provided by the maithemewp/mai-logger
+ * Composer package, which negotiates the highest installed version
+ * across all active plugins on the site via Mai_Logger_Bootstrap.
+ *
+ * @return Mai_Logger
+ */
+function mai_analytics_logger(): Mai_Logger {
+	static $logger;
+	return $logger ??= new Mai_Logger( 'mai-analytics' );
+}
+
+/**
  * Gets formatted views HTML for display.
  *
  * Supports posts and terms. Uses the [mai_views] shortcode atts format.
