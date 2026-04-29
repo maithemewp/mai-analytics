@@ -202,7 +202,10 @@ class CLI {
 			WP_CLI::log( sprintf( 'Buffer table rows after sync:  %s', number_format( $count ) ) );
 		}
 
-		$last_sync = get_option( 'mai_analytics_synced', 0 );
+		// Self-hosted Sync writes to mai_analytics_synced; ProviderSync writes to
+		// mai_analytics_provider_last_sync. Read whichever the active mode updates.
+		$option_key = ( 'self_hosted' === $data_source ) ? 'mai_analytics_synced' : 'mai_analytics_provider_last_sync';
+		$last_sync  = (int) get_option( $option_key, 0 );
 		WP_CLI::success( sprintf( 'Sync complete. Last sync: %s', $last_sync ? wp_date( 'Y-m-d H:i:s', $last_sync ) : 'never' ) );
 	}
 
