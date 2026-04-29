@@ -67,7 +67,10 @@ class ProviderSync {
 
 		set_transient( 'mai_analytics_provider_syncing', 1, 15 * MINUTE_IN_SECONDS );
 
-		// Mark sync as started so fallback triggers don't re-fire while we're working.
+		// Capture the previous sync timestamp BEFORE overwriting, so the buffer
+		// boundary query below uses the actual last-sync time. Then mark sync
+		// as started so fallback triggers don't re-fire while we're working.
+		$last_sync = (int) get_option( 'mai_analytics_provider_last_sync', 0 );
 		update_option( 'mai_analytics_provider_last_sync', time(), false );
 
 		$provider = self::get_provider();
@@ -90,7 +93,6 @@ class ProviderSync {
 		global $wpdb;
 
 		$table          = Database::get_table_name();
-		$last_sync      = (int) get_option( 'mai_analytics_provider_last_sync', 0 );
 		$last_sync_date = $last_sync ? gmdate( 'Y-m-d H:i:s', $last_sync ) : '1970-01-01 00:00:00';
 		$trending_days  = (int) Settings::get( 'trending_window' );
 		$retention_days = (int) Settings::get( 'retention' );

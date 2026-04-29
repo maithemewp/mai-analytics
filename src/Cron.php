@@ -34,11 +34,16 @@ class Cron {
 			wp_schedule_event( time(), 'mai_analytics_15min', 'mai_analytics_cron_sync' );
 		}
 
-		if ( 'disabled' === Settings::get( 'data_source' ) ) {
+		$data_source = Settings::get( 'data_source' );
+
+		if ( 'disabled' === $data_source ) {
 			return;
 		}
 
-		$last_sync = (int) get_option( 'mai_analytics_synced', 0 );
+		// Self-hosted Sync writes to mai_analytics_synced; ProviderSync writes to
+		// mai_analytics_provider_last_sync. Read whichever the active mode updates.
+		$option_key = ( 'self_hosted' === $data_source ) ? 'mai_analytics_synced' : 'mai_analytics_provider_last_sync';
+		$last_sync  = (int) get_option( $option_key, 0 );
 
 		// If sync has never run or hasn't run in 30+ minutes, force it now.
 		if ( ! $last_sync || ( time() - $last_sync ) > 30 * MINUTE_IN_SECONDS ) {
@@ -56,11 +61,16 @@ class Cron {
 	 * @return void
 	 */
 	public function maybe_fallback_sync(): void {
-		if ( 'disabled' === Settings::get( 'data_source' ) ) {
+		$data_source = Settings::get( 'data_source' );
+
+		if ( 'disabled' === $data_source ) {
 			return;
 		}
 
-		$last_sync = (int) get_option( 'mai_analytics_synced', 0 );
+		// Self-hosted Sync writes to mai_analytics_synced; ProviderSync writes to
+		// mai_analytics_provider_last_sync. Read whichever the active mode updates.
+		$option_key = ( 'self_hosted' === $data_source ) ? 'mai_analytics_synced' : 'mai_analytics_provider_last_sync';
+		$last_sync  = (int) get_option( $option_key, 0 );
 
 		if ( $last_sync && ( time() - $last_sync ) < HOUR_IN_SECONDS ) {
 			return;
