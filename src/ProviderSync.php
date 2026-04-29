@@ -67,11 +67,16 @@ class ProviderSync {
 
 		set_transient( 'mai_analytics_provider_syncing', 1, 15 * MINUTE_IN_SECONDS );
 
-		// Capture the previous sync timestamp BEFORE overwriting, so the buffer
-		// boundary query below uses the actual last-sync time. Then mark sync
-		// as started so fallback triggers don't re-fire while we're working.
-		$last_sync = (int) get_option( 'mai_analytics_provider_last_sync', 0 );
-		update_option( 'mai_analytics_provider_last_sync', time(), false );
+		// Capture both timestamps once. $last_sync is the previous boundary so
+		// the buffer query picks up the right rows. $started_at is written to
+		// the option at start AND at finish: writing it at start keeps fallback
+		// staleness checks quiet during the run, and writing the SAME value at
+		// finish closes the race window where buffer rows inserted during sync
+		// would otherwise fall behind a "now-at-finish" boundary and never be
+		// processed by future syncs.
+		$started_at = time();
+		$last_sync  = (int) get_option( 'mai_analytics_provider_last_sync', 0 );
+		update_option( 'mai_analytics_provider_last_sync', $started_at, false );
 
 		$provider = self::get_provider();
 
@@ -106,18 +111,17 @@ class ProviderSync {
 		$objects = Database::get_distinct_objects_since( $last_sync_date );
 
 		if ( ! $objects ) {
-			self::finish_sync( $wpdb, $table, $retention_days );
+			self::finish_sync( $wpdb, $table, $retention_days, $started_at );
 			return;
 		}
 
 		$batch_size = $provider->get_batch_size();
 		$batches    = array_chunk( $objects, $batch_size );
-		$start_time = time();
 		$processed  = 0;
 
 		foreach ( $batches as $batch ) {
 			// Stop if we've been running for 10 minutes.
-			if ( ( time() - $start_time ) >= 600 ) {
+			if ( ( time() - $started_at ) >= 600 ) {
 				break;
 			}
 
@@ -130,7 +134,7 @@ class ProviderSync {
 			wp_schedule_single_event( time() + 60, 'mai_analytics_provider_catchup' );
 		}
 
-		self::finish_sync( $wpdb, $table, $retention_days );
+		self::finish_sync( $wpdb, $table, $retention_days, $started_at );
 	}
 
 	/**
@@ -281,10 +285,12 @@ class ProviderSync {
 	 * @param \wpdb  $wpdb           The WordPress database instance.
 	 * @param string $table          The buffer table name.
 	 * @param int    $retention_days Number of days to retain app buffer rows.
+	 * @param int    $started_at     Unix timestamp captured at sync start, written
+	 *                               here as the boundary the next sync will use.
 	 *
 	 * @return void
 	 */
-	private static function finish_sync( \wpdb $wpdb, string $table, int $retention_days ): void {
+	private static function finish_sync( \wpdb $wpdb, string $table, int $retention_days, int $started_at ): void {
 		// Prune old app buffer rows beyond retention.
 		$wpdb->query(
 			$wpdb->prepare(
@@ -293,7 +299,10 @@ class ProviderSync {
 			)
 		);
 
-		update_option( 'mai_analytics_provider_last_sync', time(), false );
+		// Write the START timestamp (not time() at finish), so any buffer row
+		// inserted during this run is on the "after boundary" side of the next
+		// sync's query and gets picked up rather than stranded.
+		update_option( 'mai_analytics_provider_last_sync', $started_at, false );
 		delete_transient( 'mai_analytics_provider_syncing' );
 	}
 

@@ -20,9 +20,15 @@ class Sync {
 
 		set_transient( 'mai_analytics_syncing', 1, 5 * MINUTE_IN_SECONDS );
 
-		// Mark sync as started so other triggers don't re-fire while we're working.
-		$last_sync = get_option( 'mai_analytics_synced', 0 );
-		update_option( 'mai_analytics_synced', time(), false );
+		// Capture both timestamps once. $last_sync is the previous boundary so
+		// the buffer query picks up the right rows. $started_at is written to
+		// the option at start AND at finish: writing it at start keeps fallback
+		// staleness checks quiet during the run, and writing the SAME value at
+		// finish closes the race window where buffer rows inserted during sync
+		// would otherwise fall behind a "now-at-finish" boundary and be missed.
+		$started_at = time();
+		$last_sync  = (int) get_option( 'mai_analytics_synced', 0 );
+		update_option( 'mai_analytics_synced', $started_at, false );
 
 		global $wpdb;
 
@@ -146,8 +152,10 @@ class Sync {
 			)
 		);
 
-		// 4. Record sync time and release lock.
-		update_option( 'mai_analytics_synced', time(), false );
+		// 4. Record sync time and release lock. Write $started_at (not time()
+		// at finish) so any buffer row inserted during this run is on the
+		// "after boundary" side of the next sync's query.
+		update_option( 'mai_analytics_synced', $started_at, false );
 		delete_transient( 'mai_analytics_syncing' );
 	}
 
