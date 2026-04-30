@@ -152,13 +152,13 @@ class Admin {
 
 	/**
 	 * Renders a dismissible admin notice when the most recent provider sync
-	 * stored an error in the `mai_analytics_provider_error` transient. Shows
+	 * stored an error in the `mai_analytics_provider_error` option. Shows
 	 * the captured timestamp as a relative age so the operator can tell at a
 	 * glance whether they're looking at a fresh failure or stale residue.
 	 *
 	 * Hidden for users without `manage_options` (only admins should see
 	 * provider failure detail). Dismiss button calls the REST endpoint that
-	 * deletes the transient.
+	 * deletes the option.
 	 *
 	 * @return void
 	 */

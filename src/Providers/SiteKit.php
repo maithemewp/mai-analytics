@@ -261,16 +261,16 @@ class SiteKit implements WebViewProvider {
 		}
 
 		if ( $any_success ) {
-			delete_transient( 'mai_analytics_provider_error' );
+			Sync::clear_provider_error();
 		}
 
 		return $results;
 	}
 
 	/**
-	 * Stores the last provider error for display in the admin UI. Stores the
-	 * message alongside its capture time as JSON so dashboard/CLI surfaces
-	 * can show relative age without guessing whether the error is fresh.
+	 * Logs the error with a Site Kit prefix and records it for surfaces
+	 * that read provider state. Storage shape lives in
+	 * `Sync::set_provider_error()`.
 	 *
 	 * @param string $message The error message.
 	 *
@@ -278,8 +278,7 @@ class SiteKit implements WebViewProvider {
 	 */
 	private static function set_last_error( string $message ): void {
 		mai_analytics_logger()->error( 'Site Kit report error: ' . $message );
-		$payload = wp_json_encode( [ 'message' => $message, 'time' => time() ] );
-		set_transient( 'mai_analytics_provider_error', $payload, HOUR_IN_SECONDS );
+		Sync::set_provider_error( $message );
 	}
 
 	/**

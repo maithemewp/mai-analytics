@@ -65,6 +65,15 @@ class ProviderSync {
 			return;
 		}
 
+		// Circuit breaker: skip this run rather than hammer a recently-failed
+		// provider. Bail BEFORE setting the concurrency lock and BEFORE
+		// updating `mai_analytics_provider_last_sync` — otherwise the next
+		// cron tick would see "fresh sync" and skip the buffer rebuild even
+		// after the provider recovers.
+		if ( Sync::is_provider_error_fresh() ) {
+			return;
+		}
+
 		set_transient( 'mai_analytics_provider_syncing', 1, 15 * MINUTE_IN_SECONDS );
 
 		// Capture both timestamps once. $last_sync is the previous boundary so
@@ -448,6 +457,14 @@ class ProviderSync {
 			return null;
 		}
 
+		$force = ! empty( $args['force'] );
+
+		// Circuit breaker — same rule as `sync()`. `force => true` bypasses
+		// so admins clicking "Force re-warm" can verify recovery.
+		if ( ! $force && Sync::is_provider_error_fresh() ) {
+			return null;
+		}
+
 		// Provider handles its own API auth. We just need a user context for
 		// meta writes during cron.
 		if ( ! get_current_user_id() ) {
@@ -463,7 +480,6 @@ class ProviderSync {
 
 		// Skip-recent: filter to 0 disables; `force => true` bypasses entirely.
 		$threshold   = (int) apply_filters( 'mai_analytics_warm_skip_threshold', HOUR_IN_SECONDS );
-		$force       = ! empty( $args['force'] );
 		$skip_cutoff = ( $threshold > 0 && ! $force ) ? ( time() - $threshold ) : null;
 
 		$object_groups = self::collect_warm_objects(

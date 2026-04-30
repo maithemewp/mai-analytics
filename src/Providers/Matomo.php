@@ -3,6 +3,7 @@
 namespace Mai\Analytics\Providers;
 
 use Mai\Analytics\Settings;
+use Mai\Analytics\Sync;
 use Mai\Analytics\WebViewProvider;
 
 class Matomo implements WebViewProvider {
@@ -235,7 +236,7 @@ class Matomo implements WebViewProvider {
 		unset( $counts );
 
 		if ( $any_chunk_ok ) {
-			delete_transient( 'mai_analytics_provider_error' );
+			Sync::clear_provider_error();
 		}
 
 		return $results;
@@ -388,12 +389,10 @@ class Matomo implements WebViewProvider {
 	}
 
 	/**
-	 * Stores the last provider error for display in the admin UI and for the
-	 * AdminRestApi `sync_now` health check, which decides success/failure by
-	 * reading this transient. Mirrors `SiteKit::set_last_error()` so all three
-	 * providers surface failures the same way. Stores the message alongside
-	 * its capture time as JSON so dashboard/CLI surfaces can show
-	 * "N minutes ago" without guessing whether the error is fresh.
+	 * Logs the error and records it for surfaces that read provider state
+	 * (admin notice, Health, AdminRestApi `sync_now`, circuit breaker).
+	 * Storage shape lives in `Sync::set_provider_error()`; this method just
+	 * adds Matomo-specific logger formatting on top.
 	 *
 	 * @param string $message The error message.
 	 *
@@ -401,7 +400,6 @@ class Matomo implements WebViewProvider {
 	 */
 	private static function set_last_error( string $message ): void {
 		mai_analytics_logger()->error( $message );
-		$payload = wp_json_encode( [ 'message' => $message, 'time' => time() ] );
-		set_transient( 'mai_analytics_provider_error', $payload, HOUR_IN_SECONDS );
+		Sync::set_provider_error( $message );
 	}
 }

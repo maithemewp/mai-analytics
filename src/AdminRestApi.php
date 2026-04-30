@@ -212,14 +212,14 @@ class AdminRestApi {
 	}
 
 	/**
-	 * Clears the `mai_analytics_provider_error` transient so the dashboard
-	 * notice disappears. The transient will repopulate on the next provider
-	 * failure if one occurs.
+	 * Clears the stored provider error so the dashboard notice disappears
+	 * and the circuit breaker re-opens. The error will repopulate on the
+	 * next provider failure if one occurs.
 	 *
 	 * @return WP_REST_Response
 	 */
 	public function dismiss_provider_error(): WP_REST_Response {
-		delete_transient( 'mai_analytics_provider_error' );
+		Sync::clear_provider_error();
 		return new WP_REST_Response( [ 'dismissed' => true ] );
 	}
 
@@ -865,7 +865,7 @@ class AdminRestApi {
 
 		// Quick health check: try a small provider query to verify auth works.
 		// Result is intentionally discarded — we only need to populate (or not)
-		// the mai_analytics_provider_error transient that the next read consults.
+		// the mai_analytics_provider_error option that the next read consults.
 		$test  = $provider->get_views( [ '/' ], [ 'check' => [ gmdate( 'Y-m-d' ), gmdate( 'Y-m-d' ) ] ] );
 		$error = Sync::get_last_error()['message'];
 
@@ -881,7 +881,7 @@ class AdminRestApi {
 			return new WP_REST_Response( [ 'message' => __( 'Provider connected. No pages in the queue. Try "Warm Stats" to fetch all stats.', 'mai-analytics' ) ] );
 		}
 
-		delete_transient( 'mai_analytics_provider_error' );
+		Sync::clear_provider_error();
 
 		ProviderSync::sync();
 
@@ -938,10 +938,10 @@ class AdminRestApi {
 		$total_iterated = (int) $request->get_param( 'total_iterated' );
 		$force          = (bool) $request->get_param( 'force' );
 
-		// Clear stale error only on the first batch — once mid-run, the error
-		// transient may legitimately reflect a per-batch failure we want to keep.
+		// Clear stale error only on the first batch — once mid-run, a fresh
+		// error from a per-batch failure is meaningful and should be kept.
 		if ( 0 === $cursor ) {
-			delete_transient( 'mai_analytics_provider_error' );
+			Sync::clear_provider_error();
 		}
 
 		$progress = ProviderSync::warm_batch( $cursor, [ 'force' => $force ] );

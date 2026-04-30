@@ -17,10 +17,12 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 		delete_option( 'mai_analytics_post_type_views_app' );
 		delete_option( 'mai_analytics_post_type_trending' );
 		delete_option( 'mai_analytics_post_type_views_synced_at' );
+		delete_option( 'mai_analytics_provider_error' );
 
 		// Remove any previously registered provider filters.
 		remove_all_filters( 'mai_analytics_providers' );
 		remove_all_filters( 'mai_analytics_warm_skip_threshold' );
+		remove_all_filters( 'mai_analytics_provider_error_backoff' );
 	}
 
 	public function tearDown(): void {
@@ -29,6 +31,7 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 		delete_transient( 'mai_analytics_provider_syncing' );
 		remove_all_filters( 'mai_analytics_providers' );
 		remove_all_filters( 'mai_analytics_warm_skip_threshold' );
+		remove_all_filters( 'mai_analytics_provider_error_backoff' );
 		delete_option( 'mai_analytics_settings' );
 		delete_option( 'mai_analytics_provider_last_sync' );
 		delete_option( 'mai_analytics_post_type_views' );
@@ -36,6 +39,7 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 		delete_option( 'mai_analytics_post_type_views_app' );
 		delete_option( 'mai_analytics_post_type_trending' );
 		delete_option( 'mai_analytics_post_type_views_synced_at' );
+		delete_option( 'mai_analytics_provider_error' );
 		parent::tearDown();
 	}
 
@@ -361,5 +365,86 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 		// And a follow-up warm should still process the object — not skip it.
 		$retry = $this->drain_warm( ProviderSync::warm( [ 'type' => 'post' ] ) );
 		$this->assertGreaterThanOrEqual( 1, $retry );
+	}
+
+	public function test_provider_error_round_trip_via_helpers(): void {
+		Sync::set_provider_error( 'boom' );
+
+		$decoded = Sync::get_last_error();
+
+		$this->assertSame( 'boom', $decoded['message'] );
+		$this->assertGreaterThan( 0, $decoded['time'] );
+
+		Sync::clear_provider_error();
+
+		$this->assertSame( '', Sync::get_last_error()['message'] );
+	}
+
+	public function test_provider_error_survives_transient_clear(): void {
+		Sync::set_provider_error( 'persistent' );
+
+		// Transients live in the same wp_options table as options but under
+		// `_transient_<name>` keys. Verify our error survives a transient
+		// nuke — that's the whole reason for moving off transient storage.
+		delete_transient( 'mai_analytics_provider_error' );
+
+		$this->assertSame( 'persistent', Sync::get_last_error()['message'] );
+	}
+
+	public function test_sync_short_circuits_within_backoff_window(): void {
+		$this->register_mock_provider( 100 );
+
+		$post_id = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+		Database::insert_view( $post_id, 'post', 'web' );
+
+		// Pre-seed a fresh error: sync() should bail without touching the
+		// provider AND without updating mai_analytics_provider_last_sync
+		// (so the next cron tick still attempts the work after recovery).
+		Sync::set_provider_error( 'just failed' );
+		$last_sync_before = (int) get_option( 'mai_analytics_provider_last_sync', 0 );
+
+		ProviderSync::sync();
+
+		// Provider would have written 100 views had it run.
+		$this->assertSame( 0, (int) get_post_meta( $post_id, 'mai_views_web', true ) );
+		$this->assertSame( $last_sync_before, (int) get_option( 'mai_analytics_provider_last_sync', 0 ) );
+	}
+
+	public function test_warm_short_circuits_within_backoff_window(): void {
+		$this->register_mock_provider( 100 );
+		Sync::set_provider_error( 'just failed' );
+
+		self::factory()->post->create( [ 'post_status' => 'publish' ] );
+
+		$iterated = $this->drain_warm( ProviderSync::warm( [ 'type' => 'post' ] ) );
+
+		$this->assertSame( 0, $iterated );
+	}
+
+	public function test_warm_force_bypasses_circuit_breaker(): void {
+		$this->register_mock_provider( 100 );
+		Sync::set_provider_error( 'just failed' );
+
+		self::factory()->post->create( [ 'post_status' => 'publish' ] );
+
+		// Force should override the breaker — admin clicked "Force re-warm"
+		// knowing the provider may still be sick.
+		$iterated = $this->drain_warm( ProviderSync::warm( [ 'type' => 'post', 'force' => true ] ) );
+
+		$this->assertGreaterThanOrEqual( 1, $iterated );
+	}
+
+	public function test_provider_error_backoff_filter_zero_disables_breaker(): void {
+		$this->register_mock_provider( 100 );
+		Sync::set_provider_error( 'just failed' );
+		add_filter( 'mai_analytics_provider_error_backoff', fn() => 0 );
+
+		self::factory()->post->create( [ 'post_status' => 'publish' ] );
+
+		// Filter to 0 disables the breaker entirely — warm proceeds despite
+		// the recent error.
+		$iterated = $this->drain_warm( ProviderSync::warm( [ 'type' => 'post' ] ) );
+
+		$this->assertGreaterThanOrEqual( 1, $iterated );
 	}
 }

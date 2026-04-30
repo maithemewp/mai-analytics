@@ -3,6 +3,7 @@
 namespace Mai\Analytics\Providers;
 
 use Mai\Analytics\Settings;
+use Mai\Analytics\Sync;
 use Mai\Analytics\WebViewProvider;
 
 class Jetpack implements WebViewProvider {
@@ -148,7 +149,7 @@ class Jetpack implements WebViewProvider {
 		}
 
 		if ( $views ) {
-			delete_transient( 'mai_analytics_provider_error' );
+			Sync::clear_provider_error();
 		}
 
 		return $views;
@@ -172,8 +173,7 @@ class Jetpack implements WebViewProvider {
 		if ( is_wp_error( $data ) || ! is_array( $data ) ) {
 			$message = is_wp_error( $data ) ? $data->get_error_message() : 'Invalid response from Jetpack Stats.';
 			mai_analytics_logger()->error( 'Jetpack Stats error for post ' . $post_id . ': ' . $message );
-			$payload = wp_json_encode( [ 'message' => $message, 'time' => time() ] );
-			set_transient( 'mai_analytics_provider_error', $payload, HOUR_IN_SECONDS );
+			Sync::set_provider_error( $message );
 
 			$this->cache[ $post_id ] = null;
 			return null;

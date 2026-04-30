@@ -166,17 +166,20 @@ class Sync {
 	}
 
 	/**
-	 * Decodes the `mai_analytics_provider_error` transient into its message
-	 * and capture time. Providers store errors as JSON `{message, time}` so
-	 * surfaces (admin notice, Health tab, CLI) can show how fresh the error
-	 * is. Falls back to treating a plain-string transient as a legacy entry
-	 * with `time = 0`, so upgrades don't break while an old transient is
-	 * still in flight.
+	 * Decodes the `mai_analytics_provider_error` option into its message and
+	 * capture time. Stored as JSON `{message, time}` so surfaces (admin
+	 * notice, Health tab, CLI) can show how fresh the error is.
+	 *
+	 * Storage moved from a transient to a regular option so error state
+	 * survives `wp transient delete-all` / cache flushes / plugin activity
+	 * that routinely nukes transients on production sites. Without this,
+	 * the dashboard error notice could silently disappear while the
+	 * provider was still broken.
 	 *
 	 * @return array{message:string,time:int}
 	 */
 	public static function get_last_error(): array {
-		$raw = get_transient( 'mai_analytics_provider_error' );
+		$raw = get_option( 'mai_analytics_provider_error', '' );
 
 		if ( ! $raw ) {
 			return [ 'message' => '', 'time' => 0 ];
@@ -191,8 +194,62 @@ class Sync {
 			];
 		}
 
-		// Legacy plain-string transient still in flight after upgrade.
-		return [ 'message' => (string) $raw, 'time' => 0 ];
+		return [ 'message' => '', 'time' => 0 ];
+	}
+
+	/**
+	 * Stores a provider error message with the current timestamp so the
+	 * dashboard notice, Health tab, and circuit breaker can read it.
+	 *
+	 * Single owner of the error-state shape (option name, JSON encoding,
+	 * autoload flag) so providers and admin endpoints don't drift. The
+	 * `autoload=false` matters: error state is read on cron and admin
+	 * requests, not every page load.
+	 *
+	 * @param string $message The error message to store.
+	 *
+	 * @return void
+	 */
+	public static function set_provider_error( string $message ): void {
+		update_option(
+			'mai_analytics_provider_error',
+			wp_json_encode( [ 'message' => $message, 'time' => time() ] ),
+			false
+		);
+	}
+
+	/**
+	 * Clears the stored provider error so the dashboard notice disappears
+	 * and the circuit breaker re-opens. Called by providers on a successful
+	 * call and by the admin "dismiss" endpoint.
+	 *
+	 * @return void
+	 */
+	public static function clear_provider_error(): void {
+		delete_option( 'mai_analytics_provider_error' );
+	}
+
+	/**
+	 * Whether the most recent provider error is recent enough that
+	 * `ProviderSync::sync()` and `prepare_warm_state()` should short-circuit
+	 * rather than hammer a known-broken provider.
+	 *
+	 * Threshold is filterable via `mai_analytics_provider_error_backoff`
+	 * (default 5 * MINUTE_IN_SECONDS); set to 0 to disable the breaker
+	 * entirely.
+	 *
+	 * @return bool
+	 */
+	public static function is_provider_error_fresh(): bool {
+		$backoff = (int) apply_filters( 'mai_analytics_provider_error_backoff', 5 * MINUTE_IN_SECONDS );
+
+		if ( $backoff <= 0 ) {
+			return false;
+		}
+
+		$last = self::get_last_error();
+
+		return ! empty( $last['message'] ) && ( time() - (int) $last['time'] ) < $backoff;
 	}
 
 	/**
