@@ -190,6 +190,11 @@ class AdminRestApi {
 					'minimum'           => 0,
 					'sanitize_callback' => 'absint',
 				],
+				'force' => [
+					'type'              => 'boolean',
+					'default'           => false,
+					'sanitize_callback' => 'rest_sanitize_boolean',
+				],
 			],
 		] );
 
@@ -931,6 +936,7 @@ class AdminRestApi {
 		$cursor         = (int) $request->get_param( 'cursor' );
 		$total_updated  = (int) $request->get_param( 'total_updated' );
 		$total_iterated = (int) $request->get_param( 'total_iterated' );
+		$force          = (bool) $request->get_param( 'force' );
 
 		// Clear stale error only on the first batch — once mid-run, the error
 		// transient may legitimately reflect a per-batch failure we want to keep.
@@ -938,7 +944,7 @@ class AdminRestApi {
 			delete_transient( 'mai_analytics_provider_error' );
 		}
 
-		$progress = ProviderSync::warm_batch( $cursor );
+		$progress = ProviderSync::warm_batch( $cursor, [ 'force' => $force ] );
 
 		if ( null === $progress ) {
 			$error = Sync::get_last_error()['message'];

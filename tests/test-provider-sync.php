@@ -16,9 +16,11 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 		delete_option( 'mai_analytics_post_type_views_web' );
 		delete_option( 'mai_analytics_post_type_views_app' );
 		delete_option( 'mai_analytics_post_type_trending' );
+		delete_option( 'mai_analytics_post_type_views_synced_at' );
 
 		// Remove any previously registered provider filters.
 		remove_all_filters( 'mai_analytics_providers' );
+		remove_all_filters( 'mai_analytics_warm_skip_threshold' );
 	}
 
 	public function tearDown(): void {
@@ -26,12 +28,14 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 		$wpdb->query( 'TRUNCATE TABLE ' . Database::get_table_name() );
 		delete_transient( 'mai_analytics_provider_syncing' );
 		remove_all_filters( 'mai_analytics_providers' );
+		remove_all_filters( 'mai_analytics_warm_skip_threshold' );
 		delete_option( 'mai_analytics_settings' );
 		delete_option( 'mai_analytics_provider_last_sync' );
 		delete_option( 'mai_analytics_post_type_views' );
 		delete_option( 'mai_analytics_post_type_views_web' );
 		delete_option( 'mai_analytics_post_type_views_app' );
 		delete_option( 'mai_analytics_post_type_trending' );
+		delete_option( 'mai_analytics_post_type_views_synced_at' );
 		parent::tearDown();
 	}
 
@@ -241,5 +245,121 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 			$this->assertEquals( 75, (int) get_post_meta( $pid, 'mai_views_web', true ) );
 			$this->assertEquals( 75, (int) get_post_meta( $pid, 'mai_views', true ) );
 		}
+	}
+
+	/**
+	 * Registers a mock provider that always returns an empty array from
+	 * get_views(), simulating a provider HTTP failure for skip-recent tests.
+	 *
+	 * @return void
+	 */
+	private function register_failing_provider(): void {
+		add_filter( 'mai_analytics_providers', function () {
+			return [ new class implements \Mai\Analytics\WebViewProvider {
+				public function get_slug(): string { return 'test_provider'; }
+				public function get_label(): string { return 'Test'; }
+				public function is_available(): bool { return true; }
+				public function get_batch_size(): int { return 50; }
+				public function get_settings_fields(): array { return []; }
+				public function get_views( array $paths, array $windows ): array { return []; }
+			} ];
+		} );
+
+		update_option( 'mai_analytics_settings', [
+			'data_source' => 'test_provider',
+			'sync_user'   => 1,
+		] );
+	}
+
+	/**
+	 * Drains a generator. Used by tests that don't care about per-batch
+	 * progress, just the side effects.
+	 *
+	 * @param \Generator $gen Generator to consume.
+	 *
+	 * @return int Total `iterated` count across all batches.
+	 */
+	private function drain_warm( \Generator $gen ): int {
+		$total = 0;
+
+		foreach ( $gen as $progress ) {
+			$total += (int) ( $progress['iterated'] ?? 0 );
+		}
+
+		return $total;
+	}
+
+	public function test_warm_writes_synced_at_timestamp(): void {
+		$this->register_mock_provider( 100 );
+
+		$post_id = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+
+		$before = time();
+		$this->drain_warm( ProviderSync::warm( [ 'type' => 'post' ] ) );
+		$after  = time();
+
+		$synced_at = (int) get_post_meta( $post_id, 'mai_views_synced_at', true );
+
+		$this->assertGreaterThanOrEqual( $before, $synced_at );
+		$this->assertLessThanOrEqual( $after, $synced_at );
+	}
+
+	public function test_warm_twice_skips_recent_objects_by_default(): void {
+		$this->register_mock_provider( 100 );
+
+		$post_id = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+
+		$first  = $this->drain_warm( ProviderSync::warm( [ 'type' => 'post' ] ) );
+		$second = $this->drain_warm( ProviderSync::warm( [ 'type' => 'post' ] ) );
+
+		// First pass warms the post; second pass should skip it because
+		// `mai_views_synced_at` is now within the default 1-hour threshold.
+		$this->assertGreaterThanOrEqual( 1, $first );
+		$this->assertSame( 0, $second );
+	}
+
+	public function test_warm_force_bypasses_skip_recent(): void {
+		$this->register_mock_provider( 100 );
+
+		self::factory()->post->create( [ 'post_status' => 'publish' ] );
+
+		$first  = $this->drain_warm( ProviderSync::warm( [ 'type' => 'post' ] ) );
+		$forced = $this->drain_warm( ProviderSync::warm( [ 'type' => 'post', 'force' => true ] ) );
+
+		$this->assertSame( $first, $forced );
+		$this->assertGreaterThanOrEqual( 1, $forced );
+	}
+
+	public function test_warm_skip_threshold_zero_disables_skip(): void {
+		$this->register_mock_provider( 100 );
+		add_filter( 'mai_analytics_warm_skip_threshold', fn() => 0 );
+
+		self::factory()->post->create( [ 'post_status' => 'publish' ] );
+
+		$first  = $this->drain_warm( ProviderSync::warm( [ 'type' => 'post' ] ) );
+		$second = $this->drain_warm( ProviderSync::warm( [ 'type' => 'post' ] ) );
+
+		// Threshold 0 disables skip entirely, so the second pass walks the
+		// same objects as the first.
+		$this->assertSame( $first, $second );
+	}
+
+	public function test_warm_does_not_mark_synced_on_provider_failure(): void {
+		$this->register_failing_provider();
+
+		$post_id = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+
+		$this->drain_warm( ProviderSync::warm( [ 'type' => 'post' ] ) );
+
+		// Provider returned [], so the batch is treated as failed: existing
+		// meta is preserved and no `mai_views_synced_at` row is written.
+		// Otherwise the next warm would silently skip this object, masking
+		// the failure. Use metadata_exists() rather than get_post_meta() to
+		// avoid the registered default (0) masquerading as a real value.
+		$this->assertFalse( metadata_exists( 'post', $post_id, 'mai_views_synced_at' ) );
+
+		// And a follow-up warm should still process the object — not skip it.
+		$retry = $this->drain_warm( ProviderSync::warm( [ 'type' => 'post' ] ) );
+		$this->assertGreaterThanOrEqual( 1, $retry );
 	}
 }

@@ -362,9 +362,13 @@ class Admin {
 					<button type="button" class="button" id="mai-analytics-warm">
 						<?php esc_html_e( 'Warm Stats', 'mai-analytics' ); ?>
 					</button>
+					<label style="margin-left:8px;">
+						<input type="checkbox" id="mai-analytics-warm-force">
+						<?php esc_html_e( 'Force re-warm even if recently checked', 'mai-analytics' ); ?>
+					</label>
 					<p class="mai-analytics-btn-status" style="display:none; margin:8px 0 0; font-weight:600;"></p>
 					<p class="description">
-						<?php esc_html_e( 'Fetch stats from the provider for all posts, terms, and authors, not just ones with recent traffic. Use this after switching providers, or to populate stats for pages that haven\'t been visited yet. Most-recent content is processed first; this may take a while on large sites.', 'mai-analytics' ); ?>
+						<?php esc_html_e( 'Fetch stats from the provider for all posts, terms, and authors, not just ones with recent traffic. Use this after switching providers, or to populate stats for pages that haven\'t been visited yet. Most-recent content is processed first; this may take a while on large sites. Objects synced within the last hour are skipped by default; check Force re-warm to bypass.', 'mai-analytics' ); ?>
 					</p>
 				</td>
 			</tr>

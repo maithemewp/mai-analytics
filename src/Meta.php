@@ -25,7 +25,7 @@ class Meta {
 			'sanitize_callback' => 'absint',
 		];
 
-		$keys = [ 'mai_views', 'mai_views_web', 'mai_views_app', 'mai_trending' ];
+		$keys = [ 'mai_views', 'mai_views_web', 'mai_views_app', 'mai_trending', 'mai_views_synced_at' ];
 
 		foreach ( $keys as $key ) {
 			register_post_meta( '', $key, $meta_args );

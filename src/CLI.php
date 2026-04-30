@@ -518,12 +518,19 @@ class CLI {
 	 * request without registering a `mai_analytics_matomo_bulk_chunk` filter
 	 * in a mu-plugin. Ignored by non-Matomo providers.
 	 *
+	 * [--force]
+	 * : Bypass the skip-recent filter and re-warm every object, even ones
+	 * synced within the last hour. Default behavior skips objects whose
+	 * `mai_views_synced_at` is newer than `time() - HOUR_IN_SECONDS`
+	 * (filterable via `mai_analytics_warm_skip_threshold`, set to 0 to disable).
+	 *
 	 * [--verbose]
 	 * : Show detailed per-batch output.
 	 *
 	 * ## EXAMPLES
 	 *
 	 *     wp mai-analytics warm
+	 *     wp mai-analytics warm --force
 	 *     wp mai-analytics warm --type=post --ids=1,2,3
 	 *     wp mai-analytics warm --type=term --taxonomy=category --verbose
 	 *     wp mai-analytics warm --chunk=25 --verbose
@@ -556,6 +563,10 @@ class CLI {
 
 		if ( isset( $assoc_args['taxonomy'] ) ) {
 			$warm_args['taxonomy'] = $assoc_args['taxonomy'];
+		}
+
+		if ( \WP_CLI\Utils\get_flag_value( $assoc_args, 'force', false ) ) {
+			$warm_args['force'] = true;
 		}
 
 		// Per-call override of the Matomo bulk chunk size. Registered as a

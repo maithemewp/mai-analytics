@@ -180,8 +180,15 @@ class ProviderSync {
 		$pt_views_web = get_option( 'mai_analytics_post_type_views_web', [] );
 		$pt_views_app = get_option( 'mai_analytics_post_type_views_app', [] );
 		$pt_trending  = get_option( 'mai_analytics_post_type_trending', [] );
+		$pt_synced    = get_option( 'mai_analytics_post_type_views_synced_at', [] );
 
 		$pt_options_dirty = false;
+
+		// Single timestamp shared by every write in this batch — clock drift
+		// inside one provider call is meaningless, and a uniform value makes
+		// the skip-recent semantics ("everything in this batch synced at T")
+		// easier to reason about.
+		$now = time();
 
 		foreach ( $batch as $obj ) {
 			$id   = (int) $obj->object_id;
@@ -239,6 +246,14 @@ class ProviderSync {
 				$pt_views[ $key ]     = ( $pt_views_web[ $key ] ?? 0 ) + ( $pt_views_app[ $key ] ?? 0 );
 				$pt_trending[ $key ]  = ( $web_trending ?? 0 ) + $app_trending;
 				$pt_options_dirty     = true;
+
+				// Only mark synced when the provider returned data. On failure
+				// we preserve existing meta but must NOT update the timestamp,
+				// otherwise the next warm's skip-recent filter would silently
+				// hide objects whose values are actually stale.
+				if ( null !== $web_total ) {
+					$pt_synced[ $key ] = $now;
+				}
 			} else {
 				// Posts, terms, users use meta.
 				if ( null !== $web_total ) {
@@ -258,6 +273,11 @@ class ProviderSync {
 				$current_app = (int) Sync::get_meta( $id, $type, 'mai_views_app' );
 				$total       = max( $current_web + $current_app, $new_trending );
 				Sync::update_meta( $id, $type, 'mai_views', 'replace', $total );
+
+				// See pt_synced comment above — only mark synced on real success.
+				if ( null !== $web_total ) {
+					Sync::update_meta( $id, $type, 'mai_views_synced_at', 'replace', $now );
+				}
 			}
 
 			// Delete processed web buffer rows for this object.
@@ -280,6 +300,7 @@ class ProviderSync {
 			update_option( 'mai_analytics_post_type_views_web', $pt_views_web, false );
 			update_option( 'mai_analytics_post_type_views_app', $pt_views_app, false );
 			update_option( 'mai_analytics_post_type_trending', $pt_trending, false );
+			update_option( 'mai_analytics_post_type_views_synced_at', $pt_synced, false );
 		}
 	}
 
@@ -344,7 +365,11 @@ class ProviderSync {
 	 * Yields progress arrays for each processed batch, suitable for CLI output or admin display.
 	 *
 	 * @param array $args Optional filters: 'type' (post|term|user|archive), 'ids' (int[]),
-	 *                    'post_type' (string), 'taxonomy' (string).
+	 *                    'post_type' (string), 'taxonomy' (string), 'force' (bool, default
+	 *                    false — when true, bypass the skip-recent filter and re-warm
+	 *                    everything; otherwise objects synced within
+	 *                    `mai_analytics_warm_skip_threshold` seconds — default 1 hour —
+	 *                    are skipped).
 	 *
 	 * @return \Generator Yields arrays: ['batch' => int, 'total' => int, 'updated' => int,
 	 *                    'iterated' => int, 'type' => string]. `iterated` counts every
@@ -436,11 +461,17 @@ class ProviderSync {
 		$trending_days = (int) Settings::get( 'trending_window' );
 		$batch_size    = $provider->get_batch_size();
 
+		// Skip-recent: filter to 0 disables; `force => true` bypasses entirely.
+		$threshold   = (int) apply_filters( 'mai_analytics_warm_skip_threshold', HOUR_IN_SECONDS );
+		$force       = ! empty( $args['force'] );
+		$skip_cutoff = ( $threshold > 0 && ! $force ) ? ( time() - $threshold ) : null;
+
 		$object_groups = self::collect_warm_objects(
 			$args['type']      ?? null,
 			$args['ids']       ?? [],
 			$args['post_type'] ?? null,
-			$args['taxonomy']  ?? null
+			$args['taxonomy']  ?? null,
+			$skip_cutoff
 		);
 
 		$all_objects  = [];
@@ -468,7 +499,9 @@ class ProviderSync {
 			'windows'       => self::build_default_windows( $trending_days, $today ),
 			'pt_views'      => get_option( 'mai_analytics_post_type_views', [] ),
 			'pt_views_web'  => get_option( 'mai_analytics_post_type_views_web', [] ),
+			'pt_views_app'  => get_option( 'mai_analytics_post_type_views_app', [] ),
 			'pt_trending'   => get_option( 'mai_analytics_post_type_trending', [] ),
+			'pt_synced'     => get_option( 'mai_analytics_post_type_views_synced_at', [] ),
 			'pt_dirty'      => false,
 		];
 	}
@@ -494,6 +527,7 @@ class ProviderSync {
 		$iterated     = 0;
 		$updated      = 0;
 		$current_type = $state['type_batches'][ $batch_index ][0] ?? 'unknown';
+		$now          = time();
 
 		foreach ( $batch as $obj ) {
 			$path = self::get_object_path( $obj );
@@ -540,10 +574,18 @@ class ProviderSync {
 					if ( null !== $web_total ) {
 						$state['pt_views_web'][ $key ] = $web_total;
 					}
-					$app_count                    = (int) ( get_option( 'mai_analytics_post_type_views_app', [] )[ $key ] ?? 0 );
+					$app_count                    = (int) ( $state['pt_views_app'][ $key ] ?? 0 );
 					$state['pt_views'][ $key ]    = ( $state['pt_views_web'][ $key ] ?? 0 ) + $app_count;
 					$state['pt_trending'][ $key ] = ( $web_trending ?? 0 ) + $app_trending;
 					$state['pt_dirty']            = true;
+
+					// Only mark synced when the provider returned data. On
+					// failure we preserve existing meta but must NOT advance
+					// the timestamp, otherwise the next warm's skip-recent
+					// filter would hide objects whose values are stale.
+					if ( null !== $web_total ) {
+						$state['pt_synced'][ $key ] = $now;
+					}
 				} else {
 					if ( null !== $web_total ) {
 						Sync::update_meta( $id, $type, 'mai_views_web', 'replace', $web_total );
@@ -560,6 +602,11 @@ class ProviderSync {
 					$current_app = (int) Sync::get_meta( $id, $type, 'mai_views_app' );
 					$total       = max( $current_web + $current_app, $new_trending );
 					Sync::update_meta( $id, $type, 'mai_views', 'replace', $total );
+
+					// See pt_synced comment above — only mark synced on real success.
+					if ( null !== $web_total ) {
+						Sync::update_meta( $id, $type, 'mai_views_synced_at', 'replace', $now );
+					}
 				}
 
 				$iterated++;
@@ -586,6 +633,55 @@ class ProviderSync {
 	}
 
 	/**
+	 * Builds the LEFT JOIN + WHERE fragment that excludes objects whose
+	 * `mai_views_synced_at` is newer than $skip_cutoff. NULL meta rows
+	 * (objects never synced) pass through.
+	 *
+	 * Returns ['', ''] when $skip_cutoff is null so callers can interpolate
+	 * the fragments unconditionally.
+	 *
+	 * Security: $meta_table, $meta_col, and $source_expr are interpolated
+	 * directly into SQL. Only the three known WP meta tables and their
+	 * matching join columns are accepted; anything else short-circuits to
+	 * `['', '']` so a future caller can't introduce SQL injection by
+	 * threading user input through these args. $source_expr is constrained
+	 * to a small allow-list of known column references for the same reason.
+	 * Only $skip_cutoff is prepared via `$wpdb->prepare`.
+	 *
+	 * @param int|null $skip_cutoff Unix timestamp; rows with meta_value >= this are excluded.
+	 * @param string   $meta_table  Meta table name, e.g. $wpdb->postmeta.
+	 * @param string   $meta_col    Meta-side join column: 'post_id', 'term_id', or 'user_id'.
+	 * @param string   $source_expr Source-side join expression, e.g. 'ID' or 't.term_id'.
+	 *
+	 * @return array{0:string,1:string} [join_sql, where_sql].
+	 */
+	private static function build_synced_filter( ?int $skip_cutoff, string $meta_table, string $meta_col, string $source_expr ): array {
+		if ( null === $skip_cutoff ) {
+			return [ '', '' ];
+		}
+
+		global $wpdb;
+
+		$allowed_tables  = [ $wpdb->postmeta, $wpdb->termmeta, $wpdb->usermeta ];
+		$allowed_cols    = [ 'post_id', 'term_id', 'user_id' ];
+		$allowed_sources = [ 'ID', 't.term_id', 'post_author' ];
+
+		if ( ! in_array( $meta_table, $allowed_tables, true )
+			|| ! in_array( $meta_col, $allowed_cols, true )
+			|| ! in_array( $source_expr, $allowed_sources, true ) ) {
+			return [ '', '' ];
+		}
+
+		$join  = " LEFT JOIN $meta_table synced ON synced.$meta_col = $source_expr AND synced.meta_key = 'mai_views_synced_at'";
+		$where = $wpdb->prepare(
+			' AND ( synced.meta_value IS NULL OR CAST(synced.meta_value AS UNSIGNED) < %d )',
+			$skip_cutoff
+		);
+
+		return [ $join, $where ];
+	}
+
+	/**
 	 * Persists the post_type archive option arrays from $state.
 	 *
 	 * @param array $state Shared state from prepare_warm_state().
@@ -596,6 +692,7 @@ class ProviderSync {
 		update_option( 'mai_analytics_post_type_views', $state['pt_views'], false );
 		update_option( 'mai_analytics_post_type_views_web', $state['pt_views_web'], false );
 		update_option( 'mai_analytics_post_type_trending', $state['pt_trending'], false );
+		update_option( 'mai_analytics_post_type_views_synced_at', $state['pt_synced'], false );
 	}
 
 	/**
@@ -608,11 +705,14 @@ class ProviderSync {
 	 * @param array       $ids_filter  Optional array of specific IDs to limit to.
 	 * @param string|null $post_type   Optional post type slug to filter posts or archives.
 	 * @param string|null $taxonomy    Optional taxonomy slug to filter terms.
+	 * @param int|null    $skip_cutoff When set, exclude objects whose `mai_views_synced_at`
+	 *                                 is >= this Unix timestamp. Filtered at the SQL level
+	 *                                 via LEFT JOIN so skipped rows never reach PHP.
 	 *
 	 * @return array Associative array keyed by type label, each containing arrays of stdClass objects
 	 *               with object_id, object_type, and object_key properties.
 	 */
-	private static function collect_warm_objects( ?string $type_filter, array $ids_filter, ?string $post_type, ?string $taxonomy ): array {
+	private static function collect_warm_objects( ?string $type_filter, array $ids_filter, ?string $post_type, ?string $taxonomy, ?int $skip_cutoff = null ): array {
 		global $wpdb;
 
 		$groups = [];
@@ -632,12 +732,15 @@ class ProviderSync {
 					$where       .= $wpdb->prepare( " AND ID IN ($placeholders)", ...$ids_filter );
 				}
 
+				[ $synced_join, $synced_where ] = self::build_synced_filter( $skip_cutoff, $wpdb->postmeta, 'post_id', 'ID' );
+				$where                         .= $synced_where;
+
 				// DESC so the most-recent posts (highest IDs) get processed
 				// first. On publishing sites the recent posts are the ones the
 				// user cares about seeing populated quickly; the long tail of
 				// older posts can backfill over time.
 				$posts = $wpdb->get_results(
-					"SELECT ID FROM {$wpdb->posts} $where ORDER BY ID DESC"
+					"SELECT ID FROM {$wpdb->posts} $synced_join $where ORDER BY ID DESC"
 				);
 
 				foreach ( $posts as $row ) {
@@ -666,10 +769,14 @@ class ProviderSync {
 					$where       .= $wpdb->prepare( " AND t.term_id IN ($placeholders)", ...$ids_filter );
 				}
 
+				[ $synced_join, $synced_where ] = self::build_synced_filter( $skip_cutoff, $wpdb->termmeta, 'term_id', 't.term_id' );
+				$where                         .= $synced_where;
+
 				$terms = $wpdb->get_results(
 					"SELECT t.term_id
 					 FROM {$wpdb->terms} t
 					 INNER JOIN {$wpdb->term_taxonomy} tt ON t.term_id = tt.term_id
+					 $synced_join
 					 $where
 					 ORDER BY t.term_id DESC"
 				);
@@ -694,9 +801,13 @@ class ProviderSync {
 				$where        = $wpdb->prepare( "AND post_author IN ($placeholders)", ...$ids_filter );
 			}
 
+			[ $synced_join, $synced_where ] = self::build_synced_filter( $skip_cutoff, $wpdb->usermeta, 'user_id', 'post_author' );
+			$where                         .= $synced_where;
+
 			$authors = $wpdb->get_results(
 				"SELECT DISTINCT post_author
 				 FROM {$wpdb->posts}
+				 $synced_join
 				 WHERE post_status = 'publish'
 				   AND post_type IN ('" . implode( "','", array_map( 'esc_sql', get_post_types( [ 'public' => true ] ) ) ) . "')
 				   $where
@@ -713,11 +824,22 @@ class ProviderSync {
 			}
 		}
 
-		// Post type archives.
+		// Post type archives. Stored in an option (no meta row to JOIN on)
+		// so the skip-recent filter is applied here in PHP — the candidate
+		// list is bounded by registered post types, which is small.
 		if ( ! $type_filter || 'archive' === $type_filter ) {
 			$archive_types = $post_type ? [ $post_type ] : get_post_types( [ 'public' => true, 'has_archive' => true ] );
+			$pt_synced_map = ( null !== $skip_cutoff ) ? get_option( 'mai_analytics_post_type_views_synced_at', [] ) : [];
 
 			foreach ( $archive_types as $pt ) {
+				if ( null !== $skip_cutoff ) {
+					$synced_at = (int) ( $pt_synced_map[ $pt ] ?? 0 );
+
+					if ( $synced_at >= $skip_cutoff ) {
+						continue;
+					}
+				}
+
 				$obj              = new \stdClass();
 				$obj->object_id   = 0;
 				$obj->object_type = 'post_type';

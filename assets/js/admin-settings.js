@@ -78,6 +78,13 @@
 			showStatus(statusEl, 'Warming stats... (leave this window open)', '#666');
 			window.addEventListener('beforeunload', beforeUnloadHandler);
 
+			var forceEl = document.getElementById('mai-analytics-warm-force');
+			// Capture the checkbox state once at click time. Toggling it
+			// mid-run shouldn't change which objects later batches see — the
+			// server-side candidate list is built fresh per request from the
+			// same flag, so a consistent value is what the user expects.
+			var force = !!(forceEl && forceEl.checked);
+
 			var cursor = 0;
 			var totalUpdated = 0;
 			var totalIterated = 0;
@@ -98,6 +105,7 @@
 							cursor: cursor,
 							total_updated: totalUpdated,
 							total_iterated: totalIterated,
+							force: force,
 						}),
 					});
 
