@@ -246,14 +246,18 @@ class ProviderSync {
 				}
 				Sync::update_meta( $id, $type, 'mai_views_app', 'increment', $app_new );
 
-				// Recompute total.
-				$current_web = (int) Sync::get_meta( $id, $type, 'mai_views_web' );
-				$current_app = (int) Sync::get_meta( $id, $type, 'mai_views_app' );
-				Sync::update_meta( $id, $type, 'mai_views', 'replace', $current_web + $current_app );
-
 				// Trending: only update web portion if provider succeeded.
 				$current_web_trending = ( null !== $web_trending ) ? $web_trending : (int) Sync::get_meta( $id, $type, 'mai_trending' );
-				Sync::update_meta( $id, $type, 'mai_trending', 'replace', $current_web_trending + $app_trending );
+				$new_trending         = $current_web_trending + $app_trending;
+				Sync::update_meta( $id, $type, 'mai_trending', 'replace', $new_trending );
+
+				// Recompute total. Floor at trending so the math invariant
+				// (total >= trending) holds even if the all-time number is
+				// momentarily stale (provider outage, between syncs, etc.).
+				$current_web = (int) Sync::get_meta( $id, $type, 'mai_views_web' );
+				$current_app = (int) Sync::get_meta( $id, $type, 'mai_views_app' );
+				$total       = max( $current_web + $current_app, $new_trending );
+				Sync::update_meta( $id, $type, 'mai_views', 'replace', $total );
 			}
 
 			// Delete processed web buffer rows for this object.
@@ -545,13 +549,17 @@ class ProviderSync {
 						Sync::update_meta( $id, $type, 'mai_views_web', 'replace', $web_total );
 					}
 
-					$current_web = (int) Sync::get_meta( $id, $type, 'mai_views_web' );
-					$current_app = (int) Sync::get_meta( $id, $type, 'mai_views_app' );
-					Sync::update_meta( $id, $type, 'mai_views', 'replace', $current_web + $current_app );
-
 					// Trending total — only update web portion if provider succeeded.
 					$effective_web_trending = ( null !== $web_trending ) ? $web_trending : (int) Sync::get_meta( $id, $type, 'mai_trending' );
-					Sync::update_meta( $id, $type, 'mai_trending', 'replace', $effective_web_trending + $app_trending );
+					$new_trending           = $effective_web_trending + $app_trending;
+					Sync::update_meta( $id, $type, 'mai_trending', 'replace', $new_trending );
+
+					// Recompute total. Floor at trending so the math invariant
+					// (total >= trending) holds even if all-time is stale.
+					$current_web = (int) Sync::get_meta( $id, $type, 'mai_views_web' );
+					$current_app = (int) Sync::get_meta( $id, $type, 'mai_views_app' );
+					$total       = max( $current_web + $current_app, $new_trending );
+					Sync::update_meta( $id, $type, 'mai_views', 'replace', $total );
 				}
 
 				$iterated++;

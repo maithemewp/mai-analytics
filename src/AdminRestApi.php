@@ -198,6 +198,24 @@ class AdminRestApi {
 			'callback'            => [ $this, 'run_health_check' ],
 			'permission_callback' => $admin_permission,
 		] );
+
+		register_rest_route( self::NAMESPACE, '/admin/dismiss-error', [
+			'methods'             => 'POST',
+			'callback'            => [ $this, 'dismiss_provider_error' ],
+			'permission_callback' => $admin_permission,
+		] );
+	}
+
+	/**
+	 * Clears the `mai_analytics_provider_error` transient so the dashboard
+	 * notice disappears. The transient will repopulate on the next provider
+	 * failure if one occurs.
+	 *
+	 * @return WP_REST_Response
+	 */
+	public function dismiss_provider_error(): WP_REST_Response {
+		delete_transient( 'mai_analytics_provider_error' );
+		return new WP_REST_Response( [ 'dismissed' => true ] );
 	}
 
 	/**
@@ -816,7 +834,7 @@ class AdminRestApi {
 		// Result is intentionally discarded — we only need to populate (or not)
 		// the mai_analytics_provider_error transient that the next read consults.
 		$test  = $provider->get_views( [ '/' ], [ 'check' => [ gmdate( 'Y-m-d' ), gmdate( 'Y-m-d' ) ] ] );
-		$error = get_transient( 'mai_analytics_provider_error' );
+		$error = Sync::get_last_error()['message'];
 
 		if ( $error ) {
 			return new WP_REST_Response( [ 'message' => $error ], 500 );
@@ -834,7 +852,7 @@ class AdminRestApi {
 
 		ProviderSync::sync();
 
-		$error = get_transient( 'mai_analytics_provider_error' );
+		$error = Sync::get_last_error()['message'];
 
 		if ( $error ) {
 			return new WP_REST_Response( [ 'message' => $error ], 500 );
@@ -895,7 +913,7 @@ class AdminRestApi {
 		$progress = ProviderSync::warm_batch( $cursor );
 
 		if ( null === $progress ) {
-			$error = get_transient( 'mai_analytics_provider_error' );
+			$error = Sync::get_last_error()['message'];
 
 			$payload = [
 				'done'           => true,
@@ -931,7 +949,7 @@ class AdminRestApi {
 			$payload['message'] = sprintf( 'Warm complete. Updated %d objects.', $total_updated );
 		}
 
-		$error = get_transient( 'mai_analytics_provider_error' );
+		$error = Sync::get_last_error()['message'];
 
 		if ( $error ) {
 			$payload['message'] = $error;

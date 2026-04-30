@@ -3,6 +3,7 @@
 namespace Mai\Analytics\Providers;
 
 use Mai\Analytics\Settings;
+use Mai\Analytics\Sync;
 use Mai\Analytics\WebViewProvider;
 use WP_REST_Request;
 
@@ -267,7 +268,9 @@ class SiteKit implements WebViewProvider {
 	}
 
 	/**
-	 * Stores the last provider error for display in the admin UI.
+	 * Stores the last provider error for display in the admin UI. Stores the
+	 * message alongside its capture time as JSON so dashboard/CLI surfaces
+	 * can show relative age without guessing whether the error is fresh.
 	 *
 	 * @param string $message The error message.
 	 *
@@ -275,15 +278,19 @@ class SiteKit implements WebViewProvider {
 	 */
 	private static function set_last_error( string $message ): void {
 		mai_analytics_logger()->error( 'Site Kit report error: ' . $message );
-		set_transient( 'mai_analytics_provider_error', $message, HOUR_IN_SECONDS );
+		$payload = wp_json_encode( [ 'message' => $message, 'time' => time() ] );
+		set_transient( 'mai_analytics_provider_error', $payload, HOUR_IN_SECONDS );
 	}
 
 	/**
-	 * Gets the last stored provider error, if any.
+	 * Gets the last stored provider error message, if any.
+	 *
+	 * Reads via the central decoder so legacy plain-string transients still
+	 * resolve correctly during the upgrade window.
 	 *
 	 * @return string The error message, or empty string if none.
 	 */
 	public static function get_last_error(): string {
-		return (string) get_transient( 'mai_analytics_provider_error' );
+		return Sync::get_last_error()['message'];
 	}
 }

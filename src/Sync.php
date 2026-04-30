@@ -74,10 +74,16 @@ class Sync {
 					// Increment source-specific meta.
 					self::update_meta( (int) $row->object_id, $row->object_type, $source_key, 'increment', $cnt );
 
-					// Recompute total.
-					$web = (int) self::get_meta( (int) $row->object_id, $row->object_type, 'mai_views_web' );
-					$app = (int) self::get_meta( (int) $row->object_id, $row->object_type, 'mai_views_app' );
-					self::update_meta( (int) $row->object_id, $row->object_type, 'mai_views', 'replace', $web + $app );
+					// Recompute total. Floor at the current trending value so
+					// the math invariant (total >= trending) holds even under
+					// edge cases (e.g., the trending recompute below could
+					// briefly leave trending > web+app if the buffer rebuilds
+					// older data than the lifetime counters reflect).
+					$web      = (int) self::get_meta( (int) $row->object_id, $row->object_type, 'mai_views_web' );
+					$app      = (int) self::get_meta( (int) $row->object_id, $row->object_type, 'mai_views_app' );
+					$trending = (int) self::get_meta( (int) $row->object_id, $row->object_type, 'mai_trending' );
+					$total    = max( $web + $app, $trending );
+					self::update_meta( (int) $row->object_id, $row->object_type, 'mai_views', 'replace', $total );
 				}
 			}
 
@@ -157,6 +163,36 @@ class Sync {
 		// "after boundary" side of the next sync's query.
 		update_option( 'mai_analytics_synced', $started_at, false );
 		delete_transient( 'mai_analytics_syncing' );
+	}
+
+	/**
+	 * Decodes the `mai_analytics_provider_error` transient into its message
+	 * and capture time. Providers store errors as JSON `{message, time}` so
+	 * surfaces (admin notice, Health tab, CLI) can show how fresh the error
+	 * is. Falls back to treating a plain-string transient as a legacy entry
+	 * with `time = 0`, so upgrades don't break while an old transient is
+	 * still in flight.
+	 *
+	 * @return array{message:string,time:int}
+	 */
+	public static function get_last_error(): array {
+		$raw = get_transient( 'mai_analytics_provider_error' );
+
+		if ( ! $raw ) {
+			return [ 'message' => '', 'time' => 0 ];
+		}
+
+		$decoded = is_string( $raw ) ? json_decode( $raw, true ) : null;
+
+		if ( is_array( $decoded ) && isset( $decoded['message'] ) ) {
+			return [
+				'message' => (string) $decoded['message'],
+				'time'    => (int) ( $decoded['time'] ?? 0 ),
+			];
+		}
+
+		// Legacy plain-string transient still in flight after upgrade.
+		return [ 'message' => (string) $raw, 'time' => 0 ];
 	}
 
 	/**

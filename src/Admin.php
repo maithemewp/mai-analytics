@@ -151,6 +151,65 @@ class Admin {
 	}
 
 	/**
+	 * Renders a dismissible admin notice when the most recent provider sync
+	 * stored an error in the `mai_analytics_provider_error` transient. Shows
+	 * the captured timestamp as a relative age so the operator can tell at a
+	 * glance whether they're looking at a fresh failure or stale residue.
+	 *
+	 * Hidden for users without `manage_options` (only admins should see
+	 * provider failure detail). Dismiss button calls the REST endpoint that
+	 * deletes the transient.
+	 *
+	 * @return void
+	 */
+	private function render_provider_error_notice(): void {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			return;
+		}
+
+		$err = Sync::get_last_error();
+
+		if ( '' === $err['message'] ) {
+			return;
+		}
+
+		$age = $err['time'] > 0
+			? sprintf( __( '%s ago', 'mai-analytics' ), human_time_diff( $err['time'], time() ) )
+			: __( 'unknown age', 'mai-analytics' );
+
+		$nonce       = wp_create_nonce( 'wp_rest' );
+		$dismiss_url = rest_url( 'mai-analytics/v1/admin/dismiss-error' );
+		?>
+		<div class="notice notice-error mai-analytics-provider-error" data-rest-url="<?php echo esc_url( $dismiss_url ); ?>" data-nonce="<?php echo esc_attr( $nonce ); ?>" style="display:flex;align-items:center;gap:1em;justify-content:space-between;">
+			<p style="margin:0.5em 0;">
+				<strong><?php esc_html_e( 'Provider error:', 'mai-analytics' ); ?></strong>
+				<?php echo esc_html( $err['message'] ); ?>
+				<em style="opacity:.7;">— <?php echo esc_html( $age ); ?></em>
+			</p>
+			<button type="button" class="button button-small mai-analytics-provider-error__dismiss"><?php esc_html_e( 'Dismiss', 'mai-analytics' ); ?></button>
+		</div>
+		<script>
+			(function(){
+				var el = document.currentScript.previousElementSibling;
+				while ( el && ! el.classList.contains( 'mai-analytics-provider-error' ) ) {
+					el = el.previousElementSibling;
+				}
+				if ( ! el ) { return; }
+				var btn = el.querySelector( '.mai-analytics-provider-error__dismiss' );
+				if ( ! btn ) { return; }
+				btn.addEventListener( 'click', function(){
+					var url   = el.getAttribute( 'data-rest-url' );
+					var nonce = el.getAttribute( 'data-nonce' );
+					btn.disabled = true;
+					fetch( url, { method: 'POST', headers: { 'X-WP-Nonce': nonce } } )
+						.finally( function(){ el.parentNode.removeChild( el ); } );
+				} );
+			})();
+		</script>
+		<?php
+	}
+
+	/**
 	 * Renders the dashboard tab content.
 	 *
 	 * @param bool   $is_external Whether an external provider is active.
@@ -166,6 +225,8 @@ class Admin {
 			'authors'  => __( 'Authors', 'mai-analytics' ),
 			'archives' => __( 'Archives', 'mai-analytics' ),
 		];
+
+		$this->render_provider_error_notice();
 		?>
 		<!-- Summary Cards -->
 		<div class="mai-analytics-cards">

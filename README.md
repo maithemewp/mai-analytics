@@ -241,6 +241,17 @@ When using an external provider, the buffer serves as a **signaling mechanism** 
 
 Web buffer rows are deduplicated (one per object per sync cycle) to keep the buffer small. App views are always counted from the buffer since external providers don't track app traffic.
 
+#### Matomo configuration notes
+
+The all-time window queries `Actions.getPageUrl` with `period=year, date=last5` (five pre-archived yearly buckets). Trending uses `period=day, date=lastN`. Both rely on Matomo's archiver having pre-built archives — if your Matomo install runs `console core:archive` daily (the recommended setup), responses are fast and memory usage is minimal. If you're seeing 5xx errors during sync:
+
+- **Raise PHP memory** for Matomo's PHP-FPM pool to **at least 512 MB** (`memory_limit = 512M` in `php.ini`). 256 MB is the historical default and isn't enough for high-traffic sites.
+- **Set `pm.max_requests`** in PHP-FPM to **100–200** so workers respawn periodically and reclaim memory rather than holding onto archive data across many requests.
+- **Lower the bulk chunk size** in **Mai Analytics > Settings > Bulk Chunk Size** if Matomo still struggles. Default is 10 URLs per bulk request (= 20 sub-queries with 2 windows). Drop to 5 or even 1 if your Matomo can't handle the default — the `mai_analytics_matomo_bulk_chunk` filter is also still available for code-level overrides.
+- **Make sure `console core:archive` runs daily.** Without it, every API call has to compute archives on-demand, which is slow and memory-intensive.
+
+When provider calls fail, the error is captured (with a timestamp) in the `mai_analytics_provider_error` transient and surfaced as a dismissible notice on the Mai Analytics dashboard, so you can tell at a glance whether you're looking at a fresh failure or hours-old residue.
+
 ### Sync reliability
 
 Three layers ensure sync always runs, even if WP-Cron fails:

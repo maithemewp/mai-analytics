@@ -153,6 +153,15 @@ class AdminSettings {
 		);
 
 		add_settings_field(
+			'matomo_bulk_chunk',
+			__( 'Bulk Chunk Size', 'mai-analytics' ),
+			[ $this, 'render_text_field' ],
+			'mai-analytics-settings',
+			'mai_analytics_data_source',
+			[ 'key' => 'matomo_bulk_chunk', 'type' => 'number', 'description' => __( 'URLs per Matomo bulk request. Default 10. Bump higher if your Matomo can handle it; drop to 5 or lower if you see 5xx errors.', 'mai-analytics' ), 'class' => 'mai-analytics-provider-matomo' ]
+		);
+
+		add_settings_field(
 			'trending_window',
 			__( 'Trending Window', 'mai-analytics' ),
 			[ $this, 'render_text_field' ],
@@ -196,11 +205,12 @@ class AdminSettings {
 		$sanitized['data_source']    = in_array( $input['data_source'] ?? '', $valid_sources, true )
 			? $input['data_source']
 			: 'self_hosted';
-		$sanitized['sync_user']        = get_current_user_id();
-		$sanitized['trending_window'] = max( 1, absint( $input['trending_window'] ?? 7 ) );
-		$sanitized['matomo_url']      = esc_url_raw( $input['matomo_url'] ?? '' );
-		$sanitized['matomo_site_id'] = absint( $input['matomo_site_id'] ?? 0 ) ?: '';
-		$sanitized['matomo_token']   = sanitize_text_field( $input['matomo_token'] ?? '' );
+		$sanitized['sync_user']         = get_current_user_id();
+		$sanitized['trending_window']   = max( 1, absint( $input['trending_window'] ?? 7 ) );
+		$sanitized['matomo_url']        = esc_url_raw( $input['matomo_url'] ?? '' );
+		$sanitized['matomo_site_id']    = absint( $input['matomo_site_id'] ?? 0 ) ?: '';
+		$sanitized['matomo_token']      = sanitize_text_field( $input['matomo_token'] ?? '' );
+		$sanitized['matomo_bulk_chunk'] = max( 1, min( 50, absint( $input['matomo_bulk_chunk'] ?? 10 ) ?: 10 ) );
 
 		return $sanitized;
 	}

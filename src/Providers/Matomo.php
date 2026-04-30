@@ -87,21 +87,19 @@ class Matomo implements WebViewProvider {
 	 * Why not period=range:
 	 *   Many Matomo installs — including those without on-the-fly archiving
 	 *   enabled, the default for self-hosted setups — return `[]` for
-	 *   `period=range` queries that span more than the pre-archived window. This
-	 *   was learned the hard way in the pre-bundle Mai Publisher class-views.php,
-	 *   whose source carried this comment:
+	 *   `period=range` queries that span more than the pre-archived window.
 	 *
-	 *       "Testing with Matomo showed month/year were not getting values,
-	 *        while weeks were. Idk if it's a Matomo thing or not, but this works."
-	 *
-	 * What works reliably (per-window):
+	 * Window translation (per-window):
 	 *   - Non-empty start_date (trending) → period=day, date=lastN where N is
 	 *     the number of days in the requested range.
-	 *   - Empty start_date  (all-time)    → period=week, date=last{years*52}
+	 *   - Empty start_date  (all-time)    → period=year, date=last{years}
 	 *     where `years` comes from the mai_analytics_views_years filter
-	 *     (default 5). Five years of weekly archives is a practical proxy for
-	 *     "all-time" on publishing sites and uses Matomo's pre-built weekly
-	 *     archives, which respond promptly even on cron-only setups.
+	 *     (default 5). Yearly archives are pre-built by Matomo's archiver
+	 *     (alongside daily/weekly/monthly) and aggregating 5 of them is
+	 *     ~50× cheaper memory-wise than the previous 260 weekly archives,
+	 *     which exhausted Matomo's PHP memory limit on bulk requests.
+	 *     Yearly totals also match Matomo's UI for "Last 5 years" exactly,
+	 *     where 260-bucket weekly sums lose ~13% to year-boundary drift.
 	 *
 	 * Sub-query ordering inside the bulk request follows the caller's `$windows`
 	 * order. The pre-bundle code put trending first in the bulk request with
@@ -145,7 +143,7 @@ class Matomo implements WebViewProvider {
 			[ $start_date, $end_date ] = $range;
 
 			if ( '' === $start_date ) {
-				$translated[ $name ] = [ 'period' => 'week', 'date' => 'last' . max( 1, $years * 52 ) ];
+				$translated[ $name ] = [ 'period' => 'year', 'date' => 'last' . max( 1, $years ) ];
 			} else {
 				$days = (int) round( ( strtotime( $end_date ) - strtotime( $start_date ) ) / DAY_IN_SECONDS );
 				$translated[ $name ] = [ 'period' => 'day', 'date' => 'last' . max( 1, $days ) ];
@@ -155,18 +153,23 @@ class Matomo implements WebViewProvider {
 		// Chunk paths into smaller bulk requests. ProviderSync hands us up to
 		// `Matomo::get_batch_size()` (100) paths at once, which becomes
 		// (paths × windows) sub-queries inside one urls[] body. Matomo enforces
-		// a server-side cap via `API_bulk_request_limit` (introduced in
-		// Matomo 5.8.0) — defaults are 10 for anonymous users without view,
-		// 50 for anonymous users with view, and the configured value otherwise.
-		// Hitting the cap returns HTTP 400 in vanilla Matomo, but proxies (e.g.
-		// Cloudflare) commonly wrap that as HTTP 500. Default chunk of 10
-		// (= 20 sub-queries with 2 windows) stays well under any plausible
-		// configuration. Operators with `API_bulk_request_limit = -1` (or a
-		// raised explicit cap) in Matomo's config.ini.php can scale back up
-		// via the `mai_analytics_matomo_bulk_chunk` filter. 0 / negative falls
-		// back to 10.
-		$chunk_size = (int) apply_filters( 'mai_analytics_matomo_bulk_chunk', 5 );
-		$chunk_size = $chunk_size > 0 ? $chunk_size : 5;
+		// a server-side cap via `API_bulk_request_limit` — defaults are 10
+		// for anonymous users without view, 50 for anonymous users with view,
+		// and the configured value otherwise. Hitting the cap returns HTTP 400
+		// in vanilla Matomo, but proxies (e.g. Cloudflare) commonly wrap that
+		// as HTTP 500.
+		//
+		// Default chunk of 10 (= 20 sub-queries with 2 windows) stays well
+		// under any plausible configuration and pairs with yearly all-time
+		// archives (5 yearly buckets per URL) for ~50 archive lookups per
+		// Matomo PHP request — far below the 1,300-lookup memory crash that
+		// motivated the original chunk reduction to 5. Settings UI exposes
+		// this as `matomo_bulk_chunk`; the filter below remains as the
+		// override path so existing mu-plugins keep working.
+		$settings_chunk = (int) Settings::get( 'matomo_bulk_chunk' );
+		$default_chunk  = $settings_chunk > 0 ? $settings_chunk : 10;
+		$chunk_size     = (int) apply_filters( 'mai_analytics_matomo_bulk_chunk', $default_chunk );
+		$chunk_size     = $chunk_size > 0 ? $chunk_size : 10;
 
 		$results        = [];
 		$path_chunks    = array_chunk( $path_list, $chunk_size );
@@ -388,7 +391,9 @@ class Matomo implements WebViewProvider {
 	 * Stores the last provider error for display in the admin UI and for the
 	 * AdminRestApi `sync_now` health check, which decides success/failure by
 	 * reading this transient. Mirrors `SiteKit::set_last_error()` so all three
-	 * providers surface failures the same way.
+	 * providers surface failures the same way. Stores the message alongside
+	 * its capture time as JSON so dashboard/CLI surfaces can show
+	 * "N minutes ago" without guessing whether the error is fresh.
 	 *
 	 * @param string $message The error message.
 	 *
@@ -396,6 +401,7 @@ class Matomo implements WebViewProvider {
 	 */
 	private static function set_last_error( string $message ): void {
 		mai_analytics_logger()->error( $message );
-		set_transient( 'mai_analytics_provider_error', $message, HOUR_IN_SECONDS );
+		$payload = wp_json_encode( [ 'message' => $message, 'time' => time() ] );
+		set_transient( 'mai_analytics_provider_error', $payload, HOUR_IN_SECONDS );
 	}
 }
