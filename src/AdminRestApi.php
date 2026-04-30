@@ -265,12 +265,40 @@ class AdminRestApi {
 			? get_option( 'mai_analytics_provider_last_sync', 0 )
 			: get_option( 'mai_analytics_synced', 0 );
 
+		// Whether the site has any app traffic at all. App-less sites
+		// (the vast majority) get the Web/App breakdown columns hidden in
+		// the dashboard since they'd just be `views, views, 0` repetition.
+		// Cached for 5 minutes to keep dashboard load fast on big sites.
+		$has_app = get_transient( 'mai_analytics_has_app' );
+
+		if ( false === $has_app ) {
+			$app_total  = 0;
+			$app_total += (int) $wpdb->get_var( "SELECT COALESCE(SUM(meta_value), 0) FROM $wpdb->postmeta WHERE meta_key = 'mai_views_app'" );
+
+			if ( 0 === $app_total ) {
+				$app_total += (int) $wpdb->get_var( "SELECT COALESCE(SUM(meta_value), 0) FROM $wpdb->termmeta WHERE meta_key = 'mai_views_app'" );
+			}
+
+			if ( 0 === $app_total ) {
+				$app_total += (int) $wpdb->get_var( "SELECT COALESCE(SUM(meta_value), 0) FROM $wpdb->usermeta WHERE meta_key = 'mai_views_app'" );
+			}
+
+			if ( 0 === $app_total ) {
+				$pt_app     = get_option( 'mai_analytics_post_type_views_app', [] );
+				$app_total += is_array( $pt_app ) ? (int) array_sum( $pt_app ) : 0;
+			}
+
+			$has_app = $app_total > 0 ? 1 : 0;
+			set_transient( 'mai_analytics_has_app', $has_app, 5 * MINUTE_IN_SECONDS );
+		}
+
 		return new WP_REST_Response( [
 			'total_views'    => $total_views,
 			'trending_views' => $trending_views,
 			'trending_count' => $trending_count,
 			'last_sync'      => $last_sync ? wp_date( 'Y-m-d H:i:s', $last_sync ) : null,
 			'data_source'    => $data_source,
+			'has_app'        => (bool) $has_app,
 		] );
 	}
 

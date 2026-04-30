@@ -14,6 +14,11 @@
 	var searchQuery   = '';
 	var searchTimer   = null;
 	var filtersData   = null;
+	// Whether the site has any app traffic. Driven by /admin/summary's
+	// has_app flag. When false, the Web and App columns are hidden from
+	// every tab — for the app-less common case, Views == Web == mai_views_web,
+	// so showing them is just `views, views, 0` repetition.
+	var hasApp        = false;
 
 	// Tom Select instances. Every filter dropdown is a Tom Select for visual
 	// uniformity; ajaxFilters use remote search, staticFilters use a fixed list.
@@ -211,6 +216,15 @@
 			setCardValue('trending_views', formatNumber(data.trending_views));
 			setCardValue('trending_count', formatNumber(data.trending_count));
 			setCardValue('last_sync', data.last_sync ? formatDate(data.last_sync) : '—');
+
+			// Toggle Web/App column visibility based on whether the site has
+			// any app traffic. We refresh the table in case it already
+			// rendered with the default-false value before summary returned.
+			var nextHasApp = !! data.has_app;
+			if ( nextHasApp !== hasApp ) {
+				hasApp = nextHasApp;
+				loadData();
+			}
 		});
 	}
 
@@ -426,7 +440,18 @@
 			],
 		};
 
-		return cols[activeTab] || [];
+		var list = cols[activeTab] || [];
+
+		// On app-less sites, drop the Web/App columns since Views == Web
+		// and App is always 0 — they're pure repetition. Sites with any
+		// app traffic see the full breakdown.
+		if ( ! hasApp ) {
+			list = list.filter( function ( col ) {
+				return col.key !== 'web' && col.key !== 'app';
+			} );
+		}
+
+		return list;
 	}
 
 	/**
