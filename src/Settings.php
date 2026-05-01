@@ -74,6 +74,90 @@ class Settings {
 	}
 
 	/**
+	 * Returns a normalized snapshot of analytics settings for external reporting
+	 * consumers (e.g. mai-publisher's /v1/seller endpoint). Read-only; does not mutate state.
+	 *
+	 * @return array {
+	 *     @type bool   $matomo_enabled True when data_source === 'matomo'.
+	 *     @type string $matomo_url     Matomo instance URL.
+	 *     @type int    $matomo_site_id Matomo site ID.
+	 *     @type string $data_source    The active provider key (disabled|self_hosted|matomo|site_kit|jetpack).
+	 *     @type int    $views_years    Years of view history retained.
+	 *     @type int    $sync_interval  Sync cadence in minutes.
+	 *     @type int    $trending_days  Trending window in days (mapped from trending_window).
+	 * }
+	 */
+	public static function get_reporting_snapshot(): array {
+		return [
+			'matomo_enabled' => 'matomo' === self::get( 'data_source' ),
+			'matomo_url'     => (string) self::get( 'matomo_url' ),
+			'matomo_site_id' => (int)    self::get( 'matomo_site_id' ),
+			'data_source'    => (string) self::get( 'data_source' ),
+			'views_years'    => (int)    self::get( 'views_years' ),
+			'sync_interval'  => (int)    self::get( 'sync_interval' ),
+			'trending_days'  => (int)    self::get( 'trending_window' ),
+		];
+	}
+
+	/**
+	 * Detects mismatches between Mai Publisher's client-side Matomo config and Mai
+	 * Analytics' server-side Matomo config. Used to render a warning notice on both
+	 * settings pages when the two configs drift apart.
+	 *
+	 * Returns an empty array when Mai Publisher is inactive, when either side is not
+	 * using Matomo, or when both sides match. Otherwise returns the list of mismatched
+	 * field keys: any of 'matomo_url', 'matomo_site_id', 'matomo_token'.
+	 *
+	 * Token mismatches are ignored when either side has an empty token (Mai Publisher
+	 * commonly leaves it empty since client-side tracking does not need it).
+	 *
+	 * @return array List of mismatched field keys.
+	 */
+	public static function detect_publisher_matomo_mismatch(): array {
+		if ( ! function_exists( 'maipub_get_option' ) ) {
+			return [];
+		}
+
+		if ( 'matomo' !== self::get( 'data_source' ) ) {
+			return [];
+		}
+
+		if ( ! maipub_get_option( 'matomo_enabled', false ) ) {
+			return [];
+		}
+
+		$analytics = [
+			'matomo_url'     => trailingslashit( trim( (string) self::get( 'matomo_url' ) ) ),
+			'matomo_site_id' => (string) self::get( 'matomo_site_id' ),
+			'matomo_token'   => trim( (string) self::get( 'matomo_token' ) ),
+		];
+
+		$publisher = [
+			'matomo_url'     => trailingslashit( trim( (string) maipub_get_option( 'matomo_url', '' ) ) ),
+			'matomo_site_id' => (string) maipub_get_option( 'matomo_site_id', '' ),
+			'matomo_token'   => trim( (string) maipub_get_option( 'matomo_token', '' ) ),
+		];
+
+		$mismatched = [];
+
+		foreach ( $analytics as $key => $value ) {
+			if ( 'matomo_token' === $key && ( '' === $value || '' === $publisher[ $key ] ) ) {
+				continue;
+			}
+
+			if ( '' === $value && '' === $publisher[ $key ] ) {
+				continue;
+			}
+
+			if ( $value !== $publisher[ $key ] ) {
+				$mismatched[] = $key;
+			}
+		}
+
+		return $mismatched;
+	}
+
+	/**
 	 * Updates DB-backed settings.
 	 *
 	 * @param array $values Key-value pairs to save.

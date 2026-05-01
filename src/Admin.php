@@ -13,12 +13,26 @@ class Admin {
 	}
 
 	/**
-	 * Registers the analytics submenu page under Mai Theme or Settings.
+	 * Registers the analytics submenu page. Parent menu is chosen based on which
+	 * companion plugin is active, in priority order:
+	 *
+	 * 1. Mai Publisher  → submenu under Mai Ads CPT
+	 * 2. Mai Engine     → submenu under Mai Theme
+	 * 3. Neither active → submenu under WordPress Settings
 	 *
 	 * @return void
 	 */
 	public function register_menu(): void {
-		if ( class_exists( 'Mai_Engine' ) ) {
+		if ( class_exists( 'Mai_Publisher_Plugin' ) ) {
+			add_submenu_page(
+				'edit.php?post_type=mai_ad',
+				__( 'Mai Analytics', 'mai-analytics' ),
+				__( 'Analytics', 'mai-analytics' ),
+				'edit_others_posts',
+				'mai-analytics',
+				[ $this, 'render_page' ]
+			);
+		} elseif ( class_exists( 'Mai_Engine' ) ) {
 			add_submenu_page(
 				'mai-theme',
 				__( 'Mai Analytics', 'mai-analytics' ),
@@ -127,7 +141,7 @@ class Admin {
 		$valid_sub   = [ 'posts', 'terms', 'authors', 'archives' ];
 		$subtab      = in_array( $subtab_raw, $valid_sub, true ) ? $subtab_raw : 'posts';
 		$is_external = 'self_hosted' !== Settings::get( 'data_source' );
-		$base_url    = admin_url( 'admin.php?page=mai-analytics' );
+		$base_url    = menu_page_url( 'mai-analytics', false );
 		?>
 		<div class="wrap mai-analytics-wrap">
 			<h1><?php printf( '%s (v%s)', esc_html__( 'Mai Analytics', 'mai-analytics' ), MAI_ANALYTICS_VERSION ); ?></h1>
@@ -218,7 +232,7 @@ class Admin {
 	 * @return void
 	 */
 	private function render_dashboard_tab( bool $is_external, string $subtab = 'posts' ): void {
-		$base_url = admin_url( 'admin.php?page=mai-analytics' );
+		$base_url = menu_page_url( 'mai-analytics', false );
 		$subtabs  = [
 			'posts'    => __( 'Posts', 'mai-analytics' ),
 			'terms'    => __( 'Terms', 'mai-analytics' ),

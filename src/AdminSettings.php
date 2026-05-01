@@ -23,7 +23,7 @@ class AdminSettings {
 	public function add_action_links( array $links ): array {
 		$settings_link = sprintf(
 			'<a href="%s">%s</a>',
-			admin_url( 'admin.php?page=mai-analytics&tab=settings' ),
+			menu_page_url( 'mai-analytics', false ) . '&tab=settings',
 			__( 'Settings', 'mai-analytics' )
 		);
 
@@ -85,7 +85,7 @@ class AdminSettings {
 			'<div class="notice notice-warning"><p><strong>%s</strong> %s <a href="%s">%s</a></p></div>',
 			esc_html__( 'Mai Analytics:', 'mai-analytics' ),
 			$message,
-			esc_url( admin_url( 'admin.php?page=mai-analytics&tab=settings' ) ),
+			esc_url( menu_page_url( 'mai-analytics', false ) . '&tab=settings' ),
 			esc_html__( 'Check settings', 'mai-analytics' )
 		);
 	}
@@ -162,6 +162,15 @@ class AdminSettings {
 		);
 
 		add_settings_field(
+			'publisher_cross_link',
+			'',
+			[ $this, 'render_publisher_cross_link' ],
+			'mai-analytics-settings',
+			'mai_analytics_data_source',
+			[ 'class' => 'mai-analytics-provider-matomo' ]
+		);
+
+		add_settings_field(
 			'trending_window',
 			__( 'Trending Window', 'mai-analytics' ),
 			[ $this, 'render_text_field' ],
@@ -172,12 +181,14 @@ class AdminSettings {
 
 		// Redirect back to our tab after settings save.
 		add_filter( 'wp_redirect', function( string $location ): string {
+			$target = menu_page_url( 'mai-analytics', false ) . '&tab=settings&settings-updated=true';
+
 			if ( str_contains( $location, 'page=mai-analytics-settings' ) ) {
-				return admin_url( 'admin.php?page=mai-analytics&tab=settings&settings-updated=true' );
+				return $target;
 			}
 
 			if ( str_contains( $location, 'settings-updated=true' ) && str_contains( $location, 'options.php' ) ) {
-				return admin_url( 'admin.php?page=mai-analytics&tab=settings&settings-updated=true' );
+				return $target;
 			}
 
 			return $location;
@@ -274,6 +285,52 @@ class AdminSettings {
 				esc_html( $last_error )
 			);
 		}
+	}
+
+	/**
+	 * Renders the cross-link to Mai Publisher's Matomo Tracking section, plus a
+	 * mismatch warning when the two plugins are configured for Matomo with different
+	 * credentials. Only outputs when Mai Publisher is active.
+	 *
+	 * @return void
+	 */
+	public function render_publisher_cross_link(): void {
+		if ( ! class_exists( 'Mai_Publisher_Plugin' ) ) {
+			return;
+		}
+
+		$publisher_url = admin_url( 'edit.php?post_type=mai_ad&page=settings#maipub_settings_matomo' );
+		$mismatched    = Settings::detect_publisher_matomo_mismatch();
+
+		if ( ! empty( $mismatched ) ) {
+			$labels = [
+				'matomo_url'     => __( 'URL', 'mai-analytics' ),
+				'matomo_site_id' => __( 'Site ID', 'mai-analytics' ),
+				'matomo_token'   => __( 'Token', 'mai-analytics' ),
+			];
+			$names = array_map( fn( $k ) => $labels[ $k ] ?? $k, $mismatched );
+			$list  = implode( ', ', $names );
+			?>
+			<div class="notice notice-warning inline" style="margin:0 0 12px;padding:8px 12px;">
+				<p style="margin:0;">
+					<strong><?php esc_html_e( 'Heads up:', 'mai-analytics' ); ?></strong>
+					<?php
+					printf(
+						/* translators: %s: comma-separated list of mismatched field names */
+						esc_html__( 'Mai Publisher\'s Matomo Tracking is configured with different credentials than Mai Analytics (mismatched: %s). Both should usually point to the same Matomo instance.', 'mai-analytics' ),
+						esc_html( $list )
+					);
+					?>
+				</p>
+			</div>
+			<?php
+		}
+		?>
+		<p class="description">
+			<?php esc_html_e( 'Looking for client-side Matomo tracking config (content tracking, PPID)?', 'mai-analytics' ); ?>
+			<a href="<?php echo esc_url( $publisher_url ); ?>"><?php esc_html_e( 'See Mai Publisher → Settings → Matomo Tracking', 'mai-analytics' ); ?></a>
+		</p>
+		<?php
 	}
 
 	/**

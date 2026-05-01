@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+* Added: Nest the admin page under Mai Ads when Mai Publisher is active. Falls back to Mai Theme (Mai Engine) and then to Settings.
+* Added: Cross-link to Mai Publisher's Matomo Tracking section from the Matomo settings, only visible when Mai Publisher is active.
+* Added: Warning notice when Mai Publisher and Mai Analytics are both configured for Matomo with mismatched URL, Site ID, or Token.
+* Added: [Developers] `Settings::detect_publisher_matomo_mismatch()` returns the list of mismatched Matomo field keys between Mai Publisher and Mai Analytics, or empty when in sync.
+* Added: [Developers] `Settings::get_reporting_snapshot()` returns a normalized array of analytics settings for external reporting consumers (e.g. Mai Publisher's `/v1/seller` REST endpoint).
+* Changed: Switched hardcoded `admin.php?page=mai-analytics` URLs to `menu_page_url()` so links remain correct regardless of which parent menu the page is nested under.
+
 ## 1.1.4 (5/1/26)
 
 * Added: Idempotent Warm Stats — objects synced within the last hour are skipped by default; check "Force re-warm even if recently checked" next to the Warm Stats button or pass `--force` to override.
