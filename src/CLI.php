@@ -158,16 +158,23 @@ class CLI {
 	 *
 	 * ## OPTIONS
 	 *
+	 * [--force]
+	 * : Bypass the circuit breaker and run even if a recent provider error
+	 * is on file. Without this flag, the command warns and exits cleanly
+	 * when the last error is fresher than `mai_analytics_provider_error_backoff`
+	 * (default 5 minutes).
+	 *
 	 * [--verbose]
 	 * : Show detailed output.
 	 *
 	 * ## EXAMPLES
 	 *
 	 *     wp mai-analytics sync
+	 *     wp mai-analytics sync --force
 	 *     wp mai-analytics sync --verbose
 	 *
 	 * @param array $args       Positional arguments (unused).
-	 * @param array $assoc_args Associative arguments: --verbose.
+	 * @param array $assoc_args Associative arguments.
 	 *
 	 * @return void
 	 */
@@ -181,6 +188,7 @@ class CLI {
 		}
 
 		$verbose = \WP_CLI\Utils\get_flag_value( $assoc_args, 'verbose', false );
+		$force   = (bool) \WP_CLI\Utils\get_flag_value( $assoc_args, 'force', false );
 		$table   = Database::get_table_name();
 
 		if ( $verbose ) {
@@ -193,8 +201,23 @@ class CLI {
 			WP_CLI::log( 'Running buffer sync...' );
 			Sync::sync();
 		} else {
+			// Warn-and-exit (not error-and-exit) when the breaker is fresh:
+			// `WP_CLI::warning` keeps exit code 0 so monitoring wrappers
+			// around `wp mai-analytics sync` aren't tripped by a transient
+			// breaker bail. `--force` bypasses for operators investigating.
+			if ( ! $force && Sync::is_provider_error_fresh() ) {
+				$last    = Sync::get_last_error();
+				$elapsed = max( 0, time() - (int) $last['time'] );
+				WP_CLI::warning( sprintf(
+					'Skipped: provider error %d seconds ago (%s). Pass --force to bypass, or wait for the backoff window to expire.',
+					$elapsed,
+					$last['message']
+				) );
+				return;
+			}
+
 			WP_CLI::log( sprintf( 'Running provider sync (%s)...', $data_source ) );
-			ProviderSync::sync();
+			ProviderSync::sync( $force );
 		}
 
 		if ( $verbose ) {

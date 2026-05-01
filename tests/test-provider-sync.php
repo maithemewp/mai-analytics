@@ -46,32 +46,52 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 	/**
 	 * Registers a mock provider with predictable view counts.
 	 *
-	 * @param int  $views_per_path Views returned per path.
-	 * @param bool $available      Whether the provider reports as available.
+	 * @param int           $views_per_path Views returned per path.
+	 * @param bool          $available      Whether the provider reports as available.
+	 * @param int           $batch_size     Provider's reported batch size.
+	 * @param \Closure|null $on_get_views   Optional override for `get_views(array $paths, array $windows)`.
+	 *                                      Receives the same args and its return value replaces the
+	 *                                      default per-path response. Useful for failure simulation
+	 *                                      and call-counting.
 	 *
 	 * @return void
 	 */
-	private function register_mock_provider( int $views_per_path = 100, bool $available = true ): void {
+	private function register_mock_provider(
+		int $views_per_path = 100,
+		bool $available = true,
+		int $batch_size = 50,
+		?\Closure $on_get_views = null
+	): void {
 		$mock_views = $views_per_path;
 		$mock_avail = $available;
+		$mock_size  = $batch_size;
+		$mock_call  = $on_get_views;
 
-		add_filter( 'mai_analytics_providers', function () use ( $mock_views, $mock_avail ) {
-			return [ new class( $mock_views, $mock_avail ) implements \Mai\Analytics\WebViewProvider {
+		add_filter( 'mai_analytics_providers', function () use ( $mock_views, $mock_avail, $mock_size, $mock_call ) {
+			return [ new class( $mock_views, $mock_avail, $mock_size, $mock_call ) implements \Mai\Analytics\WebViewProvider {
 				private int $views;
 				private bool $avail;
+				private int $size;
+				private ?\Closure $on_get_views;
 
-				public function __construct( int $views, bool $avail ) {
-					$this->views = $views;
-					$this->avail = $avail;
+				public function __construct( int $views, bool $avail, int $size, ?\Closure $on_get_views ) {
+					$this->views        = $views;
+					$this->avail        = $avail;
+					$this->size         = $size;
+					$this->on_get_views = $on_get_views;
 				}
 
 				public function get_slug(): string { return 'test_provider'; }
 				public function get_label(): string { return 'Test'; }
 				public function is_available(): bool { return $this->avail; }
-				public function get_batch_size(): int { return 50; }
+				public function get_batch_size(): int { return $this->size; }
 				public function get_settings_fields(): array { return []; }
 
 				public function get_views( array $paths, array $windows ): array {
+					if ( $this->on_get_views ) {
+						return ( $this->on_get_views )( $paths, $windows );
+					}
+
 					$out = [];
 					foreach ( $paths as $path ) {
 						foreach ( $windows as $name => $_range ) {
@@ -446,5 +466,76 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 		$iterated = $this->drain_warm( ProviderSync::warm( [ 'type' => 'post' ] ) );
 
 		$this->assertGreaterThanOrEqual( 1, $iterated );
+	}
+
+	public function test_sync_breaks_loop_when_breaker_trips_mid_run(): void {
+		// batch_size=1 so each buffer object is its own batch. The callback
+		// trips the breaker and returns [] (simulating provider failure)
+		// while counting invocations.
+		$count = 0;
+		$this->register_mock_provider(
+			100,
+			true,
+			1,
+			function () use ( &$count ) {
+				$count++;
+				Sync::set_provider_error( 'simulated batch failure' );
+				return [];
+			}
+		);
+
+		// 5 distinct posts → 5 batches at batch_size=1.
+		for ( $i = 0; $i < 5; $i++ ) {
+			$pid = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+			Database::insert_view( $pid, 'post', 'web' );
+		}
+
+		ProviderSync::sync();
+
+		// Without per-batch break: 5 calls. With it: exactly 1, then bail.
+		$this->assertSame( 1, $count );
+	}
+
+	public function test_sync_force_bypasses_breaker(): void {
+		$this->register_mock_provider( 100 );
+
+		// Pre-seed a fresh error so the top-level breaker would fire.
+		Sync::set_provider_error( 'previous failure' );
+
+		$post_id = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+		Database::insert_view( $post_id, 'post', 'web' );
+
+		ProviderSync::sync( true );
+
+		// Force bypassed the breaker, so the provider was called and meta
+		// was written despite the recent error.
+		$this->assertSame( 100, (int) get_post_meta( $post_id, 'mai_views_web', true ) );
+	}
+
+	public function test_sync_force_bypasses_per_batch_breaker(): void {
+		// Mock that fails on every call AND counts invocations. With the
+		// per-batch breaker active, only batch 1 would attempt; with force,
+		// every batch attempts despite the repeated failures.
+		$count = 0;
+		$this->register_mock_provider(
+			100,
+			true,
+			1,
+			function () use ( &$count ) {
+				$count++;
+				Sync::set_provider_error( 'simulated batch failure' );
+				return [];
+			}
+		);
+
+		for ( $i = 0; $i < 5; $i++ ) {
+			$pid = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+			Database::insert_view( $pid, 'post', 'web' );
+		}
+
+		ProviderSync::sync( true );
+
+		// Force pushes through every batch — 5 attempts, not 1.
+		$this->assertSame( 5, $count );
 	}
 }

@@ -57,9 +57,13 @@ class ProviderSync {
 	 * Fetches web views from the external provider for objects that have appeared in the
 	 * buffer since last sync, merges with app buffer counts, and writes totals to meta.
 	 *
+	 * @param bool $force When true, bypass the circuit breaker and run even
+	 *                    if a recent provider error is on file. Used by the
+	 *                    `wp mai-analytics sync --force` CLI flag.
+	 *
 	 * @return void
 	 */
-	public static function sync(): void {
+	public static function sync( bool $force = false ): void {
 		// Concurrency lock.
 		if ( get_transient( 'mai_analytics_provider_syncing' ) ) {
 			return;
@@ -69,9 +73,18 @@ class ProviderSync {
 		// provider. Bail BEFORE setting the concurrency lock and BEFORE
 		// updating `mai_analytics_provider_last_sync` — otherwise the next
 		// cron tick would see "fresh sync" and skip the buffer rebuild even
-		// after the provider recovers.
-		if ( Sync::is_provider_error_fresh() ) {
-			return;
+		// after the provider recovers. Schedule a catchup for shortly after
+		// the backoff window expires so recovery happens within minutes
+		// rather than waiting up to a full cron interval (~14 min).
+		if ( ! $force ) {
+			$remaining = Sync::seconds_until_provider_error_clear();
+
+			if ( $remaining > 0 ) {
+				if ( ! wp_next_scheduled( 'mai_analytics_provider_catchup' ) ) {
+					wp_schedule_single_event( time() + $remaining + 60, 'mai_analytics_provider_catchup' );
+				}
+				return;
+			}
 		}
 
 		set_transient( 'mai_analytics_provider_syncing', 1, 15 * MINUTE_IN_SECONDS );
@@ -136,6 +149,13 @@ class ProviderSync {
 
 			self::process_batch( $provider, $batch, $wpdb, $table, $last_sync_date, $trending_days );
 			$processed++;
+
+			// Bail mid-run if the batch we just ran tripped the breaker. The
+			// catchup scheduled below will re-enter sync() and hit the
+			// top-level breaker, retrying once the window passes.
+			if ( ! $force && Sync::is_provider_error_fresh() ) {
+				break;
+			}
 		}
 
 		// Schedule catchup if batches remain.

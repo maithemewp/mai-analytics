@@ -241,15 +241,34 @@ class Sync {
 	 * @return bool
 	 */
 	public static function is_provider_error_fresh(): bool {
+		return self::seconds_until_provider_error_clear() > 0;
+	}
+
+	/**
+	 * Seconds remaining before the circuit breaker re-opens. Returns 0
+	 * when no fresh error is on file or the breaker is disabled
+	 * (`mai_analytics_provider_error_backoff` filter set to 0). Used by
+	 * `ProviderSync::sync()` to schedule a catchup for shortly after the
+	 * window expires instead of waiting for the next 15-min cron tick.
+	 *
+	 * @return int
+	 */
+	public static function seconds_until_provider_error_clear(): int {
 		$backoff = (int) apply_filters( 'mai_analytics_provider_error_backoff', 5 * MINUTE_IN_SECONDS );
 
 		if ( $backoff <= 0 ) {
-			return false;
+			return 0;
 		}
 
 		$last = self::get_last_error();
 
-		return ! empty( $last['message'] ) && ( time() - (int) $last['time'] ) < $backoff;
+		if ( empty( $last['message'] ) ) {
+			return 0;
+		}
+
+		$elapsed = time() - (int) $last['time'];
+
+		return max( 0, $backoff - $elapsed );
 	}
 
 	/**
