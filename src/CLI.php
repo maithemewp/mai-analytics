@@ -205,7 +205,9 @@ class CLI {
 			// `WP_CLI::warning` keeps exit code 0 so monitoring wrappers
 			// around `wp mai-analytics sync` aren't tripped by a transient
 			// breaker bail. `--force` bypasses for operators investigating.
-			if ( ! $force && Sync::is_provider_error_fresh() ) {
+			$remaining = $force ? 0 : Sync::seconds_until_provider_error_clear();
+
+			if ( $remaining > 0 ) {
 				$last    = Sync::get_last_error();
 				$elapsed = max( 0, time() - (int) $last['time'] );
 				WP_CLI::warning( sprintf(

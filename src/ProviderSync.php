@@ -14,6 +14,12 @@ class ProviderSync {
 	private const WINDOW_ALL_TIME = 'all_time';
 
 	/**
+	 * Hook scheduled by `sync()` when batches remain or the breaker is open.
+	 * Handler lives in `Cron::maybe_provider_sync()` and re-enters `sync()`.
+	 */
+	private const CATCHUP_HOOK = 'mai_analytics_provider_catchup';
+
+	/**
 	 * Builds the default trending+all-time windows pair for a sync/warm pass.
 	 *
 	 * @param int    $trending_days How many days back the trending window covers.
@@ -74,17 +80,13 @@ class ProviderSync {
 		// updating `mai_analytics_provider_last_sync` — otherwise the next
 		// cron tick would see "fresh sync" and skip the buffer rebuild even
 		// after the provider recovers. Schedule a catchup for shortly after
-		// the backoff window expires so recovery happens within minutes
-		// rather than waiting up to a full cron interval (~14 min).
-		if ( ! $force ) {
-			$remaining = Sync::seconds_until_provider_error_clear();
+		// the window expires so recovery happens in minutes rather than at
+		// the next cron interval.
+		$remaining = $force ? 0 : Sync::seconds_until_provider_error_clear();
 
-			if ( $remaining > 0 ) {
-				if ( ! wp_next_scheduled( 'mai_analytics_provider_catchup' ) ) {
-					wp_schedule_single_event( time() + $remaining + 60, 'mai_analytics_provider_catchup' );
-				}
-				return;
-			}
+		if ( $remaining > 0 ) {
+			self::schedule_catchup( time() + $remaining + 60 );
+			return;
 		}
 
 		set_transient( 'mai_analytics_provider_syncing', 1, 15 * MINUTE_IN_SECONDS );
@@ -160,7 +162,7 @@ class ProviderSync {
 
 		// Schedule catchup if batches remain.
 		if ( $processed < count( $batches ) ) {
-			wp_schedule_single_event( time() + 60, 'mai_analytics_provider_catchup' );
+			self::schedule_catchup( time() + 60 );
 		}
 
 		self::finish_sync( $wpdb, $table, $retention_days, $started_at );
@@ -330,6 +332,22 @@ class ProviderSync {
 			update_option( 'mai_analytics_post_type_views_app', $pt_views_app, false );
 			update_option( 'mai_analytics_post_type_trending', $pt_trending, false );
 			update_option( 'mai_analytics_post_type_views_synced_at', $pt_synced, false );
+		}
+	}
+
+	/**
+	 * Schedules a catchup event, deduplicated against any already-pending
+	 * catchup. Used by both the post-window breaker bail and the mid-run
+	 * "batches remain" path so neither queues stacked events when sync()
+	 * is invoked back-to-back.
+	 *
+	 * @param int $timestamp Unix time for the catchup to fire.
+	 *
+	 * @return void
+	 */
+	private static function schedule_catchup( int $timestamp ): void {
+		if ( ! wp_next_scheduled( self::CATCHUP_HOOK ) ) {
+			wp_schedule_single_event( $timestamp, self::CATCHUP_HOOK );
 		}
 	}
 
