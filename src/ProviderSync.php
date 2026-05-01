@@ -16,8 +16,10 @@ class ProviderSync {
 	/**
 	 * Hook scheduled by `sync()` when batches remain or the breaker is open.
 	 * Handler lives in `Cron::maybe_provider_sync()` and re-enters `sync()`.
+	 * Public so `Cron::__construct()` and `uninstall.php` can reference the
+	 * same constant rather than re-spelling the string.
 	 */
-	private const CATCHUP_HOOK = 'mai_analytics_provider_catchup';
+	public const CATCHUP_HOOK = 'mai_analytics_provider_catchup';
 
 	/**
 	 * Builds the default trending+all-time windows pair for a sync/warm pass.

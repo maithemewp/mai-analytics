@@ -10,7 +10,7 @@ class Cron {
 	public function __construct() {
 		add_filter( 'cron_schedules', [ $this, 'add_schedule' ] );
 		add_action( 'mai_analytics_cron_sync', [ $this, 'maybe_sync' ] );
-		add_action( 'mai_analytics_provider_catchup', [ $this, 'maybe_provider_sync' ] );
+		add_action( ProviderSync::CATCHUP_HOOK, [ $this, 'maybe_provider_sync' ] );
 
 		// Self-heal: re-schedule cron if deleted, force sync if stale.
 		add_action( 'admin_init', [ $this, 'ensure_healthy' ] );
