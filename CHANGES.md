@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.1.5 (5/4/26)
 
 * Added: Nest the admin page under Mai Ads when Mai Publisher is active. Falls back to Mai Theme (Mai Engine) and then to Settings.
 * Added: Cross-link to Mai Publisher's Matomo Tracking section from the Matomo settings, only visible when Mai Publisher is active.
