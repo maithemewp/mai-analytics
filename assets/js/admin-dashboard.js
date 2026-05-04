@@ -29,9 +29,17 @@
 	var publishedDaysFilter = null;
 
 	/**
-	 * Initialize on DOM ready.
+	 * Initialize on DOM ready. Bail on the settings tab — admin-dashboard.js
+	 * is enqueued on every Mai Analytics page (Admin::enqueue_assets gates by
+	 * page hook, not tab) but the dashboard's required DOM only exists when
+	 * the Dashboard tab is rendered. Without this guard, initSelects() throws
+	 * on `null.getAttribute(...)` when its target select is absent.
 	 */
 	document.addEventListener('DOMContentLoaded', function () {
+		if (!document.getElementById('mai-analytics-post-type')) {
+			return;
+		}
+
 		initSelects();
 		loadSummary();
 		loadFilters();

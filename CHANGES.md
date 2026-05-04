@@ -8,6 +8,7 @@
 * Added: [Developers] `Settings::detect_publisher_matomo_mismatch()` returns the list of mismatched Matomo field keys between Mai Publisher and Mai Analytics, or empty when in sync.
 * Added: [Developers] `Settings::get_reporting_snapshot()` returns a normalized array of analytics settings for external reporting consumers (e.g. Mai Publisher's `/v1/seller` REST endpoint).
 * Changed: Switched hardcoded `admin.php?page=mai-analytics` URLs to `menu_page_url()` so links remain correct regardless of which parent menu the page is nested under.
+* Fixed: `admin-dashboard.js` no longer throws "Cannot read properties of null (reading 'getAttribute')" on the Settings tab. The script now early-returns when the dashboard's required select isn't present.
 
 ## 1.1.4 (5/1/26)
 
