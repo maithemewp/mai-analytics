@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.6 (5/6/26)
+
+* Added: ElasticPress integration — when EP 5.0+ is active, allowlists `mai_views`, `mai_views_web`, `mai_views_app`, and `mai_trending` post meta via `ep_prepare_meta_allowed_keys` so view/trending ordering keeps working on EP-integrated queries (e.g., when used alongside `mai-elasticpress`, which sets `ep_integrate => true` on Mai Post Grid queries). Run a full ElasticPress sync after upgrading. Term and user meta are not affected — EP indexes their public meta automatically.
+* Added: Health check surfacing whether `mai_views` / `mai_trending` are present in EP's allowlist (only shown when ElasticPress is active).
+
 ## 1.1.5 (5/4/26)
 
 * Added: Nest the admin page under Mai Ads when Mai Publisher is active. Falls back to Mai Theme (Mai Engine) and then to Settings.

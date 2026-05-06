@@ -35,6 +35,7 @@ class Plugin {
 		new Tracker();
 		new Cron();
 		new MaiGrid();
+		new ElasticPress();
 
 		// Register [mai_views] shortcode.
 		add_shortcode( 'mai_views', 'mai_analytics_get_views' );

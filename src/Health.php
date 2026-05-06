@@ -184,6 +184,13 @@ class Health {
 			wp_set_current_user( $previous_user );
 		}
 
+		// ── ElasticPress ──
+		if ( defined( 'EP_VERSION' ) ) {
+			$ep_keys = apply_filters( 'ep_prepare_meta_allowed_keys', [], new \WP_Post( (object) [] ) );
+			$has_ours = in_array( 'mai_views', (array) $ep_keys, true ) && in_array( 'mai_trending', (array) $ep_keys, true );
+			$check( 'ElasticPress', 'Meta keys allowlisted', $has_ours, $has_ours ? 'mai_views, mai_trending indexed (re-sync EP if just enabled)' : 'mai_views/mai_trending not in allowlist' );
+		}
+
 		// ── Mai Publisher Coexistence ──
 		$pub_active = class_exists( 'Mai_Publisher_Plugin' );
 		$check( 'Publisher', 'Mai Publisher', true, $pub_active ? 'active' : 'not active' );
