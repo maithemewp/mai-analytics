@@ -320,4 +320,22 @@ class Sync {
 
 		call_user_func( $func['update'], $object_id, $key, $value );
 	}
+
+	/**
+	 * Deletes a meta value for a post, term, or user.
+	 *
+	 * @param int    $object_id   The post, term, or user ID.
+	 * @param string $object_type The object type: 'post', 'term', or 'user'.
+	 * @param string $key         The meta key to delete.
+	 *
+	 * @return void
+	 */
+	public static function delete_meta( int $object_id, string $object_type, string $key ): void {
+		match ( $object_type ) {
+			'post' => delete_post_meta( $object_id, $key ),
+			'term' => delete_term_meta( $object_id, $key ),
+			'user' => delete_user_meta( $object_id, $key ),
+			default => null,
+		};
+	}
 }

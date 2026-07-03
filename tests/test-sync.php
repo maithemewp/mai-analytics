@@ -189,4 +189,13 @@ class Test_Sync extends WP_UnitTestCase {
 		// The 10-day-old view is outside the window.
 		$this->assertEquals( 2, $trending );
 	}
+
+	public function test_delete_meta_removes_post_meta(): void {
+		$post_id = self::factory()->post->create();
+		update_post_meta( $post_id, 'mai_trending', 42 );
+
+		\Mai\Analytics\Sync::delete_meta( $post_id, 'post', 'mai_trending' );
+
+		$this->assertFalse( metadata_exists( 'post', $post_id, 'mai_trending' ) );
+	}
 }
