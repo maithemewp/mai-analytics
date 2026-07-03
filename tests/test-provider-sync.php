@@ -357,6 +357,21 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 		$this->assertLessThanOrEqual( $after, $synced_at );
 	}
 
+	public function test_warm_deletes_trending_when_zero(): void {
+		$this->register_mock_provider( 0 ); // provider returns 0 for the trending window.
+
+		$post_id = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+		update_post_meta( $post_id, 'mai_trending', 99 ); // stale value that must be pruned.
+
+		$this->drain_warm( ProviderSync::warm( [ 'type' => 'post' ] ) );
+
+		// Warm must route through Stats::set_trending like process_batch does, so a
+		// computed 0 deletes the row instead of writing a 0 back (re-creating the
+		// meta bloat this branch fixes). Use metadata_exists() rather than
+		// get_post_meta() because mai_trending has a registered default of 0.
+		$this->assertFalse( metadata_exists( 'post', $post_id, 'mai_trending' ) );
+	}
+
 	public function test_warm_twice_skips_recent_objects_by_default(): void {
 		$this->register_mock_provider( 100 );
 

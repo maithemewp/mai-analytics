@@ -654,7 +654,10 @@ class ProviderSync {
 					// Trending total — only update web portion if provider succeeded.
 					$effective_web_trending = ( null !== $web_trending ) ? $web_trending : (int) Sync::get_meta( $id, $type, 'mai_trending' );
 					$new_trending           = $effective_web_trending + $app_trending;
-					Sync::update_meta( $id, $type, 'mai_trending', 'replace', $new_trending );
+
+					// Route through the store so 0 deletes the row instead of bloating the
+					// meta_value+0 sort. Mirrors the write in process_batch() above.
+					Stats::set_trending( $id, $type, $new_trending );
 
 					// Recompute total. Floor at trending so the math invariant
 					// (total >= trending) holds even if all-time is stale.
