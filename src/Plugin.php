@@ -34,6 +34,7 @@ class Plugin {
 		new AdminRestApi();
 		new Tracker();
 		new Cron();
+		Upgrade::maybe_upgrade();
 		new MaiGrid();
 		new ElasticPress();
 
