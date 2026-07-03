@@ -34,10 +34,13 @@ class Test_Stats extends WP_UnitTestCase {
 	}
 
 	public function test_prune_deletes_zero_rows(): void {
+		update_option( 'mai_analytics_settings', [ 'data_source' => 'self_hosted' ] );
 		$keep = self::factory()->post->create();
 		$zero = self::factory()->post->create();
 		update_post_meta( $keep, 'mai_trending', 5 );
 		update_post_meta( $zero, 'mai_trending', 0 );
+		// $keep is current: a recent windowed buffer view keeps it in the self-hosted set.
+		\Mai\Analytics\Database::insert_view( $keep, 'post' );
 
 		$deleted = Stats::prune_trending( 7 );
 
@@ -91,5 +94,28 @@ class Test_Stats extends WP_UnitTestCase {
 
 		$this->assertGreaterThanOrEqual( 1, $would );
 		$this->assertTrue( metadata_exists( 'post', $zero, 'mai_trending' ) ); // still there
+	}
+
+	public function test_prune_self_hosted_deletes_posts_not_in_window(): void {
+		update_option( 'mai_analytics_settings', [ 'data_source' => 'self_hosted' ] );
+		global $wpdb;
+		$table = \Mai\Analytics\Database::get_table_name();
+
+		$in_window  = self::factory()->post->create();
+		$out_window = self::factory()->post->create();
+		update_post_meta( $in_window, 'mai_trending', 3 );
+		update_post_meta( $out_window, 'mai_trending', 8 ); // stale, beyond retention (no buffer rows)
+
+		// in_window has a buffer view inside the 7-day window.
+		$wpdb->query( $wpdb->prepare(
+			"INSERT INTO $table (object_id, object_type, object_key, source, viewed_at)
+			 VALUES (%d, 'post', '', 'web', UTC_TIMESTAMP())",
+			$in_window
+		) );
+
+		Stats::prune_trending( 7 );
+
+		$this->assertSame( '3', get_post_meta( $in_window, 'mai_trending', true ) );
+		$this->assertFalse( metadata_exists( 'post', $out_window, 'mai_trending' ) );
 	}
 }

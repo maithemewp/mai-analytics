@@ -40,10 +40,11 @@ class Stats {
 	/**
 	 * Deletes stale and zero mai_trending rows so the trending index stays bounded.
 	 *
-	 * Zero rows are always deleted. Stale rows are mode-specific: in provider mode a
-	 * row is stale when its mai_views_synced_at predates the window, and only when the
-	 * provider circuit breaker is not fresh (an outage must never wipe trending). The
-	 * self-hosted branch is added in a later task.
+	 * Zero rows are always deleted. Stale rows are mode-specific: in self-hosted mode a
+	 * row is stale when the object has no view in the current trending-window buffer;
+	 * in provider mode a row is stale when its mai_views_synced_at predates the window,
+	 * and only when the provider circuit breaker is not fresh (an outage must never wipe
+	 * trending).
 	 *
 	 * @param int   $window_days Trending window in days.
 	 * @param array $opts        'dry_run' (bool), 'batch_size' (int).
@@ -62,8 +63,9 @@ class Stats {
 			// Always: zero rows.
 			$total += self::delete_trending_ids( $type, self::zero_trending_ids( $type ), $batch, $dry_run );
 
-			// Provider mode: stale-by-synced_at, only when the breaker is clear.
-			if ( 'self_hosted' !== $source && 0 === Sync::seconds_until_provider_error_clear() ) {
+			if ( 'self_hosted' === $source ) {
+				$total += self::delete_trending_ids( $type, self::self_hosted_stale_ids( $type, $window_days ), $batch, $dry_run );
+			} elseif ( 0 === Sync::seconds_until_provider_error_clear() ) {
 				$total += self::delete_trending_ids( $type, self::stale_provider_ids( $type, $window_days ), $batch, $dry_run );
 			}
 		}
@@ -107,6 +109,36 @@ class Stats {
 			   AND t.meta_value + 0 > 0
 			   AND ( s.meta_value IS NULL OR s.meta_value + 0 < %d )",
 			$cutoff
+		) ) );
+	}
+
+	/**
+	 * Self-hosted stale ids: objects with a mai_trending value that are NOT in the
+	 * current trending-window buffer set. The buffer is authoritative, so any trending
+	 * row without a windowed view is stale (this also catches beyond-retention posts
+	 * whose buffer rows were pruned, which the inline decay never sees).
+	 */
+	private static function self_hosted_stale_ids( string $type, int $window_days ): array {
+		global $wpdb;
+		[ $meta_table, $id_col ] = self::meta_table( $type );
+		if ( ! $meta_table ) {
+			return [];
+		}
+		$buffer = Database::get_table_name();
+
+		return array_map( 'intval', $wpdb->get_col( $wpdb->prepare(
+			"SELECT m.{$id_col}
+			 FROM {$meta_table} m
+			 WHERE m.meta_key = 'mai_trending'
+			   AND m.meta_value + 0 > 0
+			   AND m.{$id_col} NOT IN (
+			       SELECT DISTINCT b.object_id
+			       FROM {$buffer} b
+			       WHERE b.object_type = %s
+			         AND b.viewed_at > DATE_SUB(UTC_TIMESTAMP(), INTERVAL %d DAY)
+			   )",
+			$type,
+			$window_days
 		) ) );
 	}
 
