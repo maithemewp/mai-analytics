@@ -11,6 +11,7 @@ class Cron {
 		add_filter( 'cron_schedules', [ $this, 'add_schedule' ] );
 		add_action( 'mai_analytics_cron_sync', [ $this, 'maybe_sync' ] );
 		add_action( ProviderSync::CATCHUP_HOOK, [ $this, 'maybe_provider_sync' ] );
+		add_action( 'mai_analytics_prune_trending', [ $this, 'prune_trending' ] );
 
 		// Self-heal: re-schedule cron if deleted, force sync if stale.
 		add_action( 'admin_init', [ $this, 'ensure_healthy' ] );
@@ -32,6 +33,11 @@ class Cron {
 
 		if ( ! wp_next_scheduled( 'mai_analytics_cron_sync' ) ) {
 			wp_schedule_event( time(), 'mai_analytics_15min', 'mai_analytics_cron_sync' );
+		}
+
+		if ( ! wp_next_scheduled( 'mai_analytics_prune_trending' ) ) {
+			$schedule = (string) apply_filters( 'mai_analytics_prune_schedule', 'daily' );
+			wp_schedule_event( time(), $schedule, 'mai_analytics_prune_trending' );
 		}
 
 		$data_source = Settings::get( 'data_source' );
@@ -114,5 +120,18 @@ class Cron {
 		} else {
 			ProviderSync::sync();
 		}
+	}
+
+	/**
+	 * Daily trending prune. Deletes stale/zero trending rows so the trending
+	 * index stays bounded. Skipped when tracking is disabled.
+	 *
+	 * @return void
+	 */
+	public function prune_trending(): void {
+		if ( 'disabled' === Settings::get( 'data_source' ) ) {
+			return;
+		}
+		Stats::prune_trending( (int) Settings::get( 'trending_window' ) );
 	}
 }

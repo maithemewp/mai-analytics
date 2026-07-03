@@ -48,4 +48,12 @@ class Test_Cron extends WP_UnitTestCase {
 
 		$this->assertEquals( 1, (int) get_post_meta( $post_id, 'mai_views', true ) );
 	}
+
+	public function test_ensure_healthy_schedules_daily_prune(): void {
+		wp_clear_scheduled_hook( 'mai_analytics_prune_trending' );
+
+		( new \Mai\Analytics\Cron() )->ensure_healthy();
+
+		$this->assertNotFalse( wp_next_scheduled( 'mai_analytics_prune_trending' ) );
+	}
 }
