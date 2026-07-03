@@ -12,7 +12,9 @@ class Upgrade {
 	/**
 	 * Compares the stored version against the code version. On a change, schedules
 	 * an immediate out-of-band trending prune (a separate wp-cron request, never
-	 * during the upgrade itself) so existing bloat is cleaned up right away, then
+	 * during the upgrade itself) on its own one-off hook so existing bloat is
+	 * cleaned up right away, ensures the recurring daily prune is scheduled
+	 * (rather than waiting on admin traffic to hit Cron::ensure_healthy()), then
 	 * records the new version.
 	 *
 	 * @return void
@@ -24,9 +26,11 @@ class Upgrade {
 			return;
 		}
 
-		if ( ! wp_next_scheduled( 'mai_analytics_prune_trending' ) ) {
-			wp_schedule_single_event( time(), 'mai_analytics_prune_trending' );
+		if ( ! wp_next_scheduled( 'mai_analytics_prune_trending_now' ) ) {
+			wp_schedule_single_event( time(), 'mai_analytics_prune_trending_now' );
 		}
+
+		Cron::schedule_daily_prune();
 
 		update_option( 'mai_analytics_version', MAI_ANALYTICS_VERSION, false );
 	}
