@@ -198,4 +198,25 @@ class Test_Sync extends WP_UnitTestCase {
 
 		$this->assertFalse( metadata_exists( 'post', $post_id, 'mai_trending' ) );
 	}
+
+	public function test_self_hosted_decay_deletes_not_zeroes(): void {
+		update_option( 'mai_analytics_settings', [ 'data_source' => 'self_hosted' ] );
+
+		$post_id = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+		update_post_meta( $post_id, 'mai_trending', 20 ); // previously trending
+
+		// A view 10 days ago: outside the 7-day trending window but inside 14-day retention,
+		// so the inline decay loop sees it and must delete (not zero) the trending value.
+		global $wpdb;
+		$table = \Mai\Analytics\Database::get_table_name();
+		$wpdb->query( $wpdb->prepare(
+			"INSERT INTO $table (object_id, object_type, object_key, source, viewed_at)
+			 VALUES (%d, 'post', '', 'web', DATE_SUB(UTC_TIMESTAMP(), INTERVAL 10 DAY))",
+			$post_id
+		) );
+
+		\Mai\Analytics\Sync::sync();
+
+		$this->assertFalse( metadata_exists( 'post', $post_id, 'mai_trending' ) );
+	}
 }

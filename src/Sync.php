@@ -113,7 +113,7 @@ class Sync {
 					$has_trending[ 'post_type:' . $row->object_key ] = true;
 				} else {
 					$has_trending[ $row->object_type . ':' . $row->object_id ] = true;
-					self::update_meta( (int) $row->object_id, $row->object_type, 'mai_trending', 'replace', (int) $row->trending_count );
+					Stats::set_trending( (int) $row->object_id, $row->object_type, (int) $row->trending_count );
 				}
 			}
 		}
@@ -145,7 +145,9 @@ class Sync {
 		if ( $all_in_buffer ) {
 			foreach ( $all_in_buffer as $row ) {
 				if ( ! isset( $has_trending[ $row->object_type . ':' . $row->object_id ] ) ) {
-					self::update_meta( (int) $row->object_id, $row->object_type, 'mai_trending', 'replace', 0 );
+					// Delete rather than store a zero. The buffer is authoritative, so a
+					// post absent from the current window genuinely is not trending.
+					Stats::set_trending( (int) $row->object_id, $row->object_type, 0 );
 				}
 			}
 		}
