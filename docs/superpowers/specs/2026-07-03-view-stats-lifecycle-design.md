@@ -1,8 +1,20 @@
 # View-Stats Lifecycle — Design Spec
 
 - Date: 2026-07-03
-- Status: Proposed (awaiting review)
+- Status: Implemented (trending scope; Plan 1). The body below is the original proposal; the section immediately following records where the shipped code deviates from it. Read the deviations as authoritative.
 - Scope: mai-analytics only. The mai-engine Mai Post Grid over-fetch and the "storing-off gates trending grids" question are separate specs.
+
+## As-built deviations from this spec
+
+The trending lifecycle shipped, but review hardened several decisions. Where this list conflicts with the prose below, this list is what the code does.
+
+1. **Provider health gate — error-on-file, not the time-windowed breaker.** The spec gates provider-stale deletion on `Sync::seconds_until_provider_error_clear()` returning 0 (circuit breaker not fresh). Shipped code gates on `empty( Sync::get_last_error()['message'] )` — i.e. no *unresolved* provider error on file. Why: the breaker only holds an error "fresh" for 5 minutes, but provider syncs run every 15 minutes, so during a sustained outage the breaker reads "clear" for ~2/3 of the time and a daily prune firing in that window could wipe trending. The error-on-file signal is set on failure and cleared only on a *successful* sync (verified in `Providers/{Matomo,SiteKit,Jetpack}`), so it stays "unhealthy" for the whole outage and auto-resumes ~one sync cycle after recovery.
+2. **Missing `mai_views_synced_at` rows are kept, not deleted.** The spec's provider decay deletes stale-or-never-synced rows. Shipped code deletes only rows whose `mai_views_synced_at` *exists* and predates the window; a missing `synced_at` means the provider has never measured that object (app-only/unmappable objects, a self_hosted→provider switch, pre-sync upgrade rows), so it is kept rather than deleted on an absence of data and resolves on the next successful sync. (Zeros are still always deleted.)
+3. **Self-hosted stale prune is gated on a live buffer.** It runs only when the buffer has a row within the retention window; an empty/broken buffer is never read as "nothing trends" (otherwise `NOT IN (empty set)` would delete the entire trending index). Zero-deletion still runs.
+4. **Prune is bounded + resumable on cron; unbounded on CLI.** Each cron invocation deletes at most `mai_analytics_prune_max_batches` passes (default 5 ≈ 25k rows) then schedules a one-off continuation on `mai_analytics_prune_trending_now` if a backlog remains *and* the run made progress — so an HTTP-triggered cron can't hit `max_execution_time`. The CLI (`wp mai-analytics prune-trending`) is unbounded and drains the whole backlog in one command (WP-CLI has no web timeout). Both still work in 5,000-row SELECT passes for bounded memory.
+5. **Decoupled upgrade hook.** The immediate post-upgrade prune uses the distinct hook `mai_analytics_prune_trending_now` (not the recurring `mai_analytics_prune_trending`), so a pending one-off can't block the recurring daily event from scheduling. The stored version option is `mai_analytics_version`, compared in `Upgrade::maybe_upgrade()` from the plugin bootstrap.
+6. **Anomaly tripwire + logging.** `Stats::prune_trending` logs a per-category summary via `Mai_Logger`, and warns when a single run's *stale* deletions remove ≥ `mai_analytics_prune_anomaly_fraction` (default 0.9) of the trending index. Zero-deletions are excluded so the intended large first cleanup never trips it; it's defense-in-depth for an unforeseen regression.
+7. **API shape.** `Stats::prune_trending( int $window_days, bool $dry_run = false, ?int $batch_size = null, ?int $max_batches = null )` — explicit params, not an `$opts` array (removes a dry-run-key-typo → live-delete footgun). The Plan 2 methods (`set_web`/`add_app`/`recompute_total`/`mark_synced`) are **not** implemented here — this PR is trending-only. Provider staleness is scoped to a hardcoded `Stats::PROVIDER_SOURCES` allowlist (`matomo`/`site_kit`/`jetpack`); any other `data_source` prunes zeros only.
 
 ## Background
 
