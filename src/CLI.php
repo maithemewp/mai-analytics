@@ -367,16 +367,23 @@ class CLI {
 	 *     wp mai-analytics prune-trending --dry-run
 	 *     wp mai-analytics prune-trending
 	 *
+	 * @since 1.2.0
+	 *
 	 * @param array $args       Positional arguments (unused).
 	 * @param array $assoc_args Associative arguments: --dry-run.
 	 *
 	 * @return void
 	 */
 	public function prune_trending( array $args, array $assoc_args ): void {
+		if ( 'disabled' === Settings::get( 'data_source' ) ) {
+			WP_CLI::warning( 'Tracking is disabled; trending prune skipped.' );
+			return;
+		}
+
 		$dry_run = (bool) \WP_CLI\Utils\get_flag_value( $assoc_args, 'dry-run', false );
 		$window  = (int) Settings::get( 'trending_window' );
 
-		$count = Stats::prune_trending( $window, [ 'dry_run' => $dry_run ] );
+		$count = Stats::prune_trending( $window, $dry_run );
 
 		if ( $dry_run ) {
 			WP_CLI::success( sprintf( '%s trending rows would be deleted.', number_format( $count ) ) );

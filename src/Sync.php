@@ -326,6 +326,8 @@ class Sync {
 	/**
 	 * Deletes a meta value for a post, term, or user.
 	 *
+	 * @since 1.2.0
+	 *
 	 * @param int    $object_id   The post, term, or user ID.
 	 * @param string $object_type The object type: 'post', 'term', or 'user'.
 	 * @param string $key         The meta key to delete.

@@ -6,6 +6,8 @@ namespace Mai\Analytics;
  * Fires one-time work when the plugin code version changes. Deploy-agnostic:
  * runs on first load of new code whether updated via the WP updater, WP-CLI,
  * or a git pull, because it compares a stored option against the code constant.
+ *
+ * @since 1.2.0
  */
 class Upgrade {
 
@@ -17,6 +19,8 @@ class Upgrade {
 	 * (rather than waiting on admin traffic to hit Cron::ensure_healthy()), then
 	 * records the new version.
 	 *
+	 * @since 1.2.0
+	 *
 	 * @return void
 	 */
 	public static function maybe_upgrade(): void {
@@ -26,8 +30,8 @@ class Upgrade {
 			return;
 		}
 
-		if ( ! wp_next_scheduled( 'mai_analytics_prune_trending_now' ) ) {
-			wp_schedule_single_event( time(), 'mai_analytics_prune_trending_now' );
+		if ( ! wp_next_scheduled( Cron::PRUNE_NOW_HOOK ) ) {
+			wp_schedule_single_event( time(), Cron::PRUNE_NOW_HOOK );
 		}
 
 		Cron::schedule_daily_prune();
