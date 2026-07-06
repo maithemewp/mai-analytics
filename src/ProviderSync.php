@@ -297,7 +297,12 @@ class ProviderSync {
 				// Trending: only update web portion if provider succeeded.
 				$current_web_trending = ( null !== $web_trending ) ? $web_trending : (int) Sync::get_meta( $id, $type, 'mai_trending' );
 				$new_trending         = $current_web_trending + $app_trending;
-				Sync::update_meta( $id, $type, 'mai_trending', 'replace', $new_trending );
+
+				// Route through the store so 0 deletes the row instead of bloating the
+				// meta_value+0 sort. On a failed provider read the null-guard above falls
+				// back to the existing stored trending (plus app views), which is >= the
+				// old value, so this never deletes off a failure.
+				Stats::set_trending( $id, $type, $new_trending );
 
 				// Recompute total. Floor at trending so the math invariant
 				// (total >= trending) holds even if the all-time number is
@@ -650,7 +655,11 @@ class ProviderSync {
 					// Trending total — only update web portion if provider succeeded.
 					$effective_web_trending = ( null !== $web_trending ) ? $web_trending : (int) Sync::get_meta( $id, $type, 'mai_trending' );
 					$new_trending           = $effective_web_trending + $app_trending;
-					Sync::update_meta( $id, $type, 'mai_trending', 'replace', $new_trending );
+
+					// Route through the store so 0 deletes the row instead of bloating the
+					// meta_value+0 sort. On failure the null-guard falls back to the existing
+					// stored trending (plus app views), never below it. Mirrors process_batch().
+					Stats::set_trending( $id, $type, $new_trending );
 
 					// Recompute total. Floor at trending so the math invariant
 					// (total >= trending) holds even if all-time is stale.

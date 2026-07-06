@@ -5,12 +5,35 @@ namespace Mai\Analytics;
 class Cron {
 
 	/**
+	 * Recurring daily trending-prune event. One source of truth for the hook name,
+	 * shared by the scheduler and its listener so they can't drift.
+	 *
+	 * @since 1.2.0
+	 */
+	public const PRUNE_HOOK = 'mai_analytics_prune_trending';
+
+	/**
+	 * One-off trending-prune event, distinct from the recurring hook so a pending
+	 * one-off can't block schedule_daily_prune() from registering the recurring
+	 * event. Also used to continue a bounded prune out-of-band.
+	 *
+	 * @since 1.2.0
+	 */
+	public const PRUNE_NOW_HOOK = 'mai_analytics_prune_trending_now';
+
+	/**
 	 * Registers cron schedule, sync action, catchup action, and self-healing admin check.
 	 */
 	public function __construct() {
 		add_filter( 'cron_schedules', [ $this, 'add_schedule' ] );
 		add_action( 'mai_analytics_cron_sync', [ $this, 'maybe_sync' ] );
 		add_action( ProviderSync::CATCHUP_HOOK, [ $this, 'maybe_provider_sync' ] );
+		add_action( self::PRUNE_HOOK, [ $this, 'prune_trending' ] );
+
+		// One-off prune scheduled by Upgrade::maybe_upgrade() on a distinct hook so
+		// it doesn't block schedule_daily_prune() (called from ensure_healthy()) from
+		// registering the recurring PRUNE_HOOK event.
+		add_action( self::PRUNE_NOW_HOOK, [ $this, 'prune_trending' ] );
 
 		// Self-heal: re-schedule cron if deleted, force sync if stale.
 		add_action( 'admin_init', [ $this, 'ensure_healthy' ] );
@@ -33,6 +56,8 @@ class Cron {
 		if ( ! wp_next_scheduled( 'mai_analytics_cron_sync' ) ) {
 			wp_schedule_event( time(), 'mai_analytics_15min', 'mai_analytics_cron_sync' );
 		}
+
+		self::schedule_daily_prune();
 
 		$data_source = Settings::get( 'data_source' );
 
@@ -80,6 +105,29 @@ class Cron {
 	}
 
 	/**
+	 * Ensures the recurring daily trending prune is scheduled. Idempotent —
+	 * guards on wp_next_scheduled() so calling it from both ensure_healthy()
+	 * and Upgrade::maybe_upgrade() never stacks duplicate events.
+	 *
+	 * @since 1.2.0
+	 *
+	 * @return void
+	 */
+	public static function schedule_daily_prune(): void {
+		if ( ! wp_next_scheduled( self::PRUNE_HOOK ) ) {
+			/**
+			 * Filters the recurring trending-prune schedule.
+			 *
+			 * @since 1.2.0
+			 *
+			 * @param string $schedule A registered cron schedule name. Default 'daily'.
+			 */
+			$schedule = (string) apply_filters( 'mai_analytics_prune_schedule', 'daily' );
+			wp_schedule_event( time(), $schedule, self::PRUNE_HOOK );
+		}
+	}
+
+	/**
 	 * Adds a custom 15-minute cron schedule.
 	 *
 	 * @param array $schedules The existing WordPress cron schedules.
@@ -113,6 +161,53 @@ class Cron {
 			Sync::sync();
 		} else {
 			ProviderSync::sync();
+		}
+	}
+
+	/**
+	 * Trending prune. Deletes stale/zero trending rows so the trending index stays
+	 * bounded. Skipped when tracking is disabled.
+	 *
+	 * Bounded per request: a single wp-cron invocation prunes at most
+	 * `mai_analytics_prune_max_batches` batches, then — if prunable rows still
+	 * remain under the current gates and this run made progress — schedules a
+	 * one-off continuation rather than draining a large backlog in one long
+	 * request. On a maintained site nothing (or little) is left, so no
+	 * continuation is scheduled. Serves both the recurring daily event and the
+	 * one-off `mai_analytics_prune_trending_now` hook.
+	 *
+	 * @since 1.2.0
+	 *
+	 * @return void
+	 */
+	public function prune_trending(): void {
+		if ( 'disabled' === Settings::get( 'data_source' ) ) {
+			return;
+		}
+
+		$window = (int) Settings::get( 'trending_window' );
+
+		/**
+		 * Filters the max number of delete batches a single prune request performs
+		 * before scheduling an out-of-band continuation. Default 5 (≈25k rows/request
+		 * at the default batch size) stays well under a typical max_execution_time;
+		 * raise it on fast hosts to drain large backlogs in fewer runs.
+		 *
+		 * @since 1.2.0
+		 *
+		 * @param int $max_batches Batches per request. Default 5.
+		 */
+		$max     = max( 1, (int) apply_filters( 'mai_analytics_prune_max_batches', 5 ) );
+		$deleted = Stats::prune_trending( $window, false, null, $max );
+
+		// Continue out-of-band only when this run actually deleted rows (so a
+		// counted-but-undeletable row can never drive an endless reschedule loop)
+		// and prunable rows still remain under the current gates.
+		if ( $deleted > 0
+			&& ! wp_next_scheduled( self::PRUNE_NOW_HOOK )
+			&& Stats::prune_trending( $window, true ) > 0
+		) {
+			wp_schedule_single_event( time() + MINUTE_IN_SECONDS, self::PRUNE_NOW_HOOK );
 		}
 	}
 }

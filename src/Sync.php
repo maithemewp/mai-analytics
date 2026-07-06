@@ -113,7 +113,7 @@ class Sync {
 					$has_trending[ 'post_type:' . $row->object_key ] = true;
 				} else {
 					$has_trending[ $row->object_type . ':' . $row->object_id ] = true;
-					self::update_meta( (int) $row->object_id, $row->object_type, 'mai_trending', 'replace', (int) $row->trending_count );
+					Stats::set_trending( (int) $row->object_id, $row->object_type, (int) $row->trending_count );
 				}
 			}
 		}
@@ -145,7 +145,9 @@ class Sync {
 		if ( $all_in_buffer ) {
 			foreach ( $all_in_buffer as $row ) {
 				if ( ! isset( $has_trending[ $row->object_type . ':' . $row->object_id ] ) ) {
-					self::update_meta( (int) $row->object_id, $row->object_type, 'mai_trending', 'replace', 0 );
+					// Delete rather than store a zero. The buffer is authoritative, so a
+					// post absent from the current window genuinely is not trending.
+					Stats::set_trending( (int) $row->object_id, $row->object_type, 0 );
 				}
 			}
 		}
@@ -319,5 +321,25 @@ class Sync {
 		}
 
 		call_user_func( $func['update'], $object_id, $key, $value );
+	}
+
+	/**
+	 * Deletes a meta value for a post, term, or user.
+	 *
+	 * @since 1.2.0
+	 *
+	 * @param int    $object_id   The post, term, or user ID.
+	 * @param string $object_type The object type: 'post', 'term', or 'user'.
+	 * @param string $key         The meta key to delete.
+	 *
+	 * @return void
+	 */
+	public static function delete_meta( int $object_id, string $object_type, string $key ): void {
+		match ( $object_type ) {
+			'post' => delete_post_meta( $object_id, $key ),
+			'term' => delete_term_meta( $object_id, $key ),
+			'user' => delete_user_meta( $object_id, $key ),
+			default => null,
+		};
 	}
 }

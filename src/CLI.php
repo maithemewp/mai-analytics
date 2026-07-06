@@ -15,6 +15,7 @@ class CLI {
 		WP_CLI::add_command( 'mai-analytics sync',          [ $this, 'sync' ] );
 		WP_CLI::add_command( 'mai-analytics stats',         [ $this, 'stats' ] );
 		WP_CLI::add_command( 'mai-analytics prune',         [ $this, 'prune' ] );
+		WP_CLI::add_command( 'mai-analytics prune-trending', [ $this, 'prune_trending' ] );
 		WP_CLI::add_command( 'mai-analytics seed',          [ $this, 'seed' ] );
 		WP_CLI::add_command( 'mai-analytics reset',         [ $this, 'reset' ] );
 		WP_CLI::add_command( 'mai-analytics update-bots',   [ $this, 'update_bots' ] );
@@ -351,6 +352,44 @@ class CLI {
 		);
 
 		WP_CLI::success( sprintf( 'Pruned %s rows.', number_format( $count ) ) );
+	}
+
+	/**
+	 * Prune stale and zero mai_trending rows.
+	 *
+	 * ## OPTIONS
+	 *
+	 * [--dry-run]
+	 * : Report how many rows would be deleted without deleting them.
+	 *
+	 * ## EXAMPLES
+	 *
+	 *     wp mai-analytics prune-trending --dry-run
+	 *     wp mai-analytics prune-trending
+	 *
+	 * @since 1.2.0
+	 *
+	 * @param array $args       Positional arguments (unused).
+	 * @param array $assoc_args Associative arguments: --dry-run.
+	 *
+	 * @return void
+	 */
+	public function prune_trending( array $args, array $assoc_args ): void {
+		if ( 'disabled' === Settings::get( 'data_source' ) ) {
+			WP_CLI::warning( 'Tracking is disabled; trending prune skipped.' );
+			return;
+		}
+
+		$dry_run = (bool) \WP_CLI\Utils\get_flag_value( $assoc_args, 'dry-run', false );
+		$window  = (int) Settings::get( 'trending_window' );
+
+		$count = Stats::prune_trending( $window, $dry_run );
+
+		if ( $dry_run ) {
+			WP_CLI::success( sprintf( '%s trending rows would be deleted.', number_format( $count ) ) );
+		} else {
+			WP_CLI::success( sprintf( '%s trending rows deleted.', number_format( $count ) ) );
+		}
 	}
 
 	/**

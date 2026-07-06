@@ -211,6 +211,35 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 		$this->assertEquals( 53, $trending );
 	}
 
+	public function test_sync_deletes_trending_when_zero(): void {
+		$this->register_mock_provider( 0 ); // provider returns 0 for the trending window
+
+		$post_id = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+		update_post_meta( $post_id, 'mai_trending', 99 ); // stale value that must be pruned
+
+		// A web buffer row picks the object up for sync without adding app-window views,
+		// so the computed trending is 0.
+		Database::insert_view( $post_id, 'post', 'web' );
+
+		ProviderSync::sync();
+
+		$this->assertFalse( metadata_exists( 'post', $post_id, 'mai_trending' ) );
+	}
+
+	public function test_sync_preserves_trending_on_provider_failure(): void {
+		// Provider is available but returns an empty payload (failure), so web_trending is null.
+		$this->register_mock_provider( 0, true, 50, function () { return []; } );
+
+		$post_id = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+		update_post_meta( $post_id, 'mai_trending', 50 );
+		Database::insert_view( $post_id, 'post', 'web' );
+
+		ProviderSync::sync();
+
+		// Failed read must not delete or zero the existing value.
+		$this->assertSame( '50', get_post_meta( $post_id, 'mai_trending', true ) );
+	}
+
 	public function test_sync_concurrent_lock(): void {
 		$this->register_mock_provider( 100 );
 
@@ -326,6 +355,21 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 
 		$this->assertGreaterThanOrEqual( $before, $synced_at );
 		$this->assertLessThanOrEqual( $after, $synced_at );
+	}
+
+	public function test_warm_deletes_trending_when_zero(): void {
+		$this->register_mock_provider( 0 ); // provider returns 0 for the trending window.
+
+		$post_id = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+		update_post_meta( $post_id, 'mai_trending', 99 ); // stale value that must be pruned.
+
+		$this->drain_warm( ProviderSync::warm( [ 'type' => 'post' ] ) );
+
+		// Warm must route through Stats::set_trending like process_batch does, so a
+		// computed 0 deletes the row instead of writing a 0 back (re-creating the
+		// meta bloat this branch fixes). Use metadata_exists() rather than
+		// get_post_meta() because mai_trending has a registered default of 0.
+		$this->assertFalse( metadata_exists( 'post', $post_id, 'mai_trending' ) );
 	}
 
 	public function test_warm_twice_skips_recent_objects_by_default(): void {
