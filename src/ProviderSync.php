@@ -388,12 +388,26 @@ class ProviderSync {
 	/**
 	 * Gets the URL path for a buffer object.
 	 *
-	 * Resolves the object's permalink and extracts just the path component.
-	 * Returns null if the object type is unrecognized or the URL cannot be resolved.
+	 * Resolves the object's permalink and extracts the path (plus query string,
+	 * when present) so each object maps to a unique key. On plain-permalink
+	 * sites every object's permalink is a bare `/?p=123`-style URL with the
+	 * same path (`/`) and a distinguishing query string; dropping the query
+	 * (as a prior version of this method did) collapsed every object onto
+	 * one path and silently discarded all but the last from the warm/sync
+	 * batch. Preserving the query keeps objects distinct there. On
+	 * pretty-permalink sites there is no query string, so this is a no-op
+	 * and behavior is unchanged. Returns null if the object type is
+	 * unrecognized or the URL cannot be resolved.
+	 *
+	 * Note: this only prevents objects from being dropped/cross-contaminated
+	 * during warm/sync. Whether the provider (e.g. Matomo) actually has
+	 * matching view data for a query-string URL on a plain-permalink site is
+	 * a separate, out-of-scope concern.
 	 *
 	 * @param object $obj Buffer row with object_id, object_type, and object_key properties.
 	 *
-	 * @return string|null The URL path (e.g., '/some-post/'), or null on failure.
+	 * @return string|null The URL path, optionally with a query string (e.g.
+	 *                      '/some-post/' or '/?p=123'), or null on failure.
 	 */
 	private static function get_object_path( object $obj ): ?string {
 		$url = match ( $obj->object_type ) {
@@ -408,9 +422,10 @@ class ProviderSync {
 			return null;
 		}
 
-		$path = wp_parse_url( $url, PHP_URL_PATH );
+		$path  = wp_parse_url( $url, PHP_URL_PATH ) ?: '/';
+		$query = wp_parse_url( $url, PHP_URL_QUERY );
 
-		return $path ?: '/';
+		return $query ? "{$path}?{$query}" : $path;
 	}
 
 	/**
