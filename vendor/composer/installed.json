@@ -2,23 +2,23 @@
     "packages": [
         {
             "name": "maithemewp/mai-logger",
-            "version": "v0.1.0",
-            "version_normalized": "0.1.0.0",
+            "version": "v0.1.1",
+            "version_normalized": "0.1.1.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/maithemewp/mai-logger.git",
-                "reference": "cb4fa73f968dcf8e563369c217dcbff6ba16c2bc"
+                "reference": "388af2ec1fa699cbdcaddc6b18ead889dbeed434"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/maithemewp/mai-logger/zipball/cb4fa73f968dcf8e563369c217dcbff6ba16c2bc",
-                "reference": "cb4fa73f968dcf8e563369c217dcbff6ba16c2bc",
+                "url": "https://api.github.com/repos/maithemewp/mai-logger/zipball/388af2ec1fa699cbdcaddc6b18ead889dbeed434",
+                "reference": "388af2ec1fa699cbdcaddc6b18ead889dbeed434",
                 "shasum": ""
             },
             "require": {
                 "php": ">=7.4"
             },
-            "time": "2026-04-27T23:58:23+00:00",
+            "time": "2026-07-06T18:21:04+00:00",
             "type": "library",
             "installation-source": "dist",
             "autoload": {
@@ -32,7 +32,7 @@
             "description": "Versioned, drop-in logger for WordPress plugins. Newest installed version wins at runtime.",
             "homepage": "https://github.com/maithemewp/mai-logger",
             "support": {
-                "source": "https://github.com/maithemewp/mai-logger/tree/v0.1.0",
+                "source": "https://github.com/maithemewp/mai-logger/tree/v0.1.1",
                 "issues": "https://github.com/maithemewp/mai-logger/issues"
             },
             "install-path": "../maithemewp/mai-logger"
@@ -91,6 +91,6 @@
             "install-path": "../yahnis-elsts/plugin-update-checker"
         }
     ],
-    "dev": true,
+    "dev": false,
     "dev-package-names": []
 }

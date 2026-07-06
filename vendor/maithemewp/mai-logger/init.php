@@ -12,7 +12,7 @@
  * Old plugins out in the wild call the old signature on whichever bootstrap loaded first.
  */
 
-defined( 'ABSPATH' ) || exit;
+defined( 'ABSPATH' ) || 'cli' === PHP_SAPI || exit;
 
 if ( ! class_exists( 'Mai_Logger_Bootstrap', false ) ) {
 	/**
@@ -75,4 +75,4 @@ if ( ! class_exists( 'Mai_Logger_Bootstrap', false ) ) {
 }
 
 // Register THIS plugin's bundled version. Bump the string when releasing.
-Mai_Logger_Bootstrap::register( '0.1.0', __DIR__ . '/Mai_Logger.php' );
+Mai_Logger_Bootstrap::register( '0.1.1', __DIR__ . '/Mai_Logger.php' );

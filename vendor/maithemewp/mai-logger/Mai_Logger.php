@@ -2,7 +2,7 @@
 /**
  * Mai_Logger — lightweight logger for WordPress plugins.
  *
- * @version 0.1.0
+ * @version 0.1.1
  *
  * Loaded lazily by Mai_Logger_Bootstrap's autoloader, which selects the
  * newest version registered across all installed plugins.
@@ -13,11 +13,11 @@
  * - If you ever need a true breaking change, fork to a new class name.
  */
 
-defined( 'ABSPATH' ) || exit;
+defined( 'ABSPATH' ) || 'cli' === PHP_SAPI || exit;
 
 class Mai_Logger {
 
-	const VERSION = '0.1.0';
+	const VERSION = '0.1.1';
 
 	/**
 	 * Display name used as the prefix on every log line.
@@ -46,6 +46,11 @@ class Mai_Logger {
 
 	/**
 	 * Log an error message. Always logs (even with WP_DEBUG off).
+	 *
+	 * @param string $message The message to log.
+	 * @param mixed  ...$args  Optional context values appended to the log output.
+	 *
+	 * @return void
 	 */
 	public function error( string $message, ...$args ): void {
 		$this->log( $message, 'error', ...$args );
@@ -53,6 +58,11 @@ class Mai_Logger {
 
 	/**
 	 * Log a warning. Logs to debug.log when WP_DEBUG is on.
+	 *
+	 * @param string $message The message to log.
+	 * @param mixed  ...$args  Optional context values appended to the log output.
+	 *
+	 * @return void
 	 */
 	public function warning( string $message, ...$args ): void {
 		$this->log( $message, 'warning', ...$args );
@@ -60,6 +70,11 @@ class Mai_Logger {
 
 	/**
 	 * Log an info message. Goes to Ray / WP-CLI only — never to debug.log.
+	 *
+	 * @param string $message The message to log.
+	 * @param mixed  ...$args  Optional context values appended to the log output.
+	 *
+	 * @return void
 	 */
 	public function info( string $message, ...$args ): void {
 		$this->log( $message, 'info', ...$args );
@@ -67,6 +82,11 @@ class Mai_Logger {
 
 	/**
 	 * Log a success message. Goes to Ray / WP-CLI only — never to debug.log.
+	 *
+	 * @param string $message The message to log.
+	 * @param mixed  ...$args  Optional context values appended to the log output.
+	 *
+	 * @return void
 	 */
 	public function success( string $message, ...$args ): void {
 		$this->log( $message, 'success', ...$args );
@@ -74,6 +94,12 @@ class Mai_Logger {
 
 	/**
 	 * Internal log dispatcher.
+	 *
+	 * @param string $message The message to log.
+	 * @param string $type    Log level: 'error', 'warning', 'info', or 'success'.
+	 * @param mixed  ...$args  Optional context values appended to the log output.
+	 *
+	 * @return void
 	 */
 	private function log( string $message, string $type, ...$args ): void {
 		// Always log errors. Other types only when WP_DEBUG is on.
@@ -129,6 +155,10 @@ class Mai_Logger {
 
 	/**
 	 * Format additional arguments for log output.
+	 *
+	 * @param mixed ...$args Values to format (int, float, string, array, object, or bool).
+	 *
+	 * @return string
 	 */
 	private function format_args( ...$args ): string {
 		if ( empty( $args ) ) {

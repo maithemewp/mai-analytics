@@ -4,22 +4,37 @@ A tiny, versioned logger for WordPress plugins. Drop-in via Composer. The newest
 
 ## Install
 
-```bash
-composer require maithemewp/mai-logger
-```
-
-During local development:
+This package is distributed via GitHub, not Packagist. Add it as a VCS repository in your plugin's `composer.json`:
 
 ```json
 {
     "repositories": [
-        { "type": "path", "url": "/Users/you/LocalPackages/mai-logger", "options": { "symlink": true } }
+        { "type": "vcs", "url": "https://github.com/maithemewp/mai-logger" }
     ],
     "require": {
-        "maithemewp/mai-logger": "*"
+        "maithemewp/mai-logger": "^0.1"
     }
 }
 ```
+
+Then `composer install`. Composer will fetch the latest tagged release.
+
+### Local development of mai-logger itself
+
+If you're hacking on this package locally and want a consuming plugin to pull from your working copy:
+
+```json
+{
+    "repositories": [
+        { "type": "path", "url": "/path/to/local/mai-logger", "options": { "symlink": false } }
+    ],
+    "require": {
+        "maithemewp/mai-logger": "@dev"
+    }
+}
+```
+
+Use `"symlink": false` (mirror mode), not symlink mode. Strauss has a known bug that deletes any `vendor/` subdirectory whose only contents are symlinks, which would nuke `vendor/maithemewp/` on every install. Mirror mode copies real files and avoids the problem. Run `composer update maithemewp/mai-logger` after each edit to propagate changes into the consumer's `vendor/`.
 
 ## Use
 
@@ -29,24 +44,24 @@ In your plugin's main bootstrap, make sure Composer's autoloader runs:
 require_once __DIR__ . '/vendor/autoload.php';
 ```
 
-Then add a per-plugin helper:
+Then add a per-plugin helper. The function name should be unique to your plugin so it can't collide with helpers in other plugins:
 
 ```php
 // includes/functions.php
-function maisdio_logger(): Mai_Logger {
+function my_plugin_logger(): Mai_Logger {
     static $logger;
-    return $logger ??= new Mai_Logger( __FILE__ );
+    return $logger ??= new Mai_Logger( 'my-plugin' );
 }
 ```
 
 Call it anywhere:
 
 ```php
-maisdio_logger()->info( 'Hello' );
-maisdio_logger()->error( 'Something broke', $context_array );
+my_plugin_logger()->info( 'Hello' );
+my_plugin_logger()->error( 'Something broke', $context_array );
 ```
 
-The constructor accepts either a plugin slug string or `__FILE__`. With `__FILE__`, the slug is derived via `plugin_basename( dirname( __FILE__ ) )`.
+The constructor accepts either a plugin slug (used verbatim as the log-line prefix) or a file path like `__FILE__` (the slug is derived via `plugin_basename( dirname( $path ) )`). The slug form is recommended — it's explicit, predictable, and shows up in every log line.
 
 ## Logging behavior
 
@@ -85,13 +100,15 @@ This contract exists because all consuming plugins share one loaded class at run
 
 **Versioning:**
 - Strict semver. Patch = bug fix only. Minor = additive only. Major = … see "fork to new class name" above.
-- Always tag releases. Never instruct consumers to install `dev-main` — `version_compare` ranks non-numeric versions unpredictably.
+- Always tag releases and tell consumers to require a tagged constraint (e.g. `^0.1`). Tracking `dev-main` is fine for local development but ships unreleased code to production.
+- The version string registered with `Mai_Logger_Bootstrap` is the literal value hardcoded in this package's `init.php` — bump it in the same commit as any change to `Mai_Logger.php`. Otherwise the bootstrap will register a stale version and the negotiation will pick the wrong file.
 
 ## Edge cases
 
 - **Same version registered twice** (two plugins bundle v0.1.0): second registration overwrites first with the same path. Harmless.
 - **Two plugins, same version string, different files** (someone forked): registration order decides. Fix: bump the version when you fork.
-- **Strauss-prefixed by a third-party plugin:** that plugin gets a fully isolated copy and opts out of the shared registry. Working as intended.
+- **One plugin requires another that requires mai-logger** (plain Composer, e.g. `mai-publisher` bundling `mai-analytics`): Composer flattens the dep tree, so a single copy lands in the parent plugin's `vendor/`. The shared registry works as designed — both plugins see the same loaded class. No isolation, no special handling needed.
+- **Consumer uses Strauss to prefix `vendor/`:** the prefixed copy lives in its own namespace and never registers with `Mai_Logger_Bootstrap`. That copy is fully isolated. Working as intended — Strauss exists specifically to enforce isolation. The maithemewp plugins do **not** use Strauss for inter-plugin bundling, so this case doesn't apply to them.
 
 ## License
 
