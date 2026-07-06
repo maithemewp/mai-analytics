@@ -29,7 +29,14 @@ class Test_Cron extends WP_UnitTestCase {
 	}
 
 	public function test_cron_skips_recent_sync(): void {
-		update_option( 'mai_analytics_synced', time() );
+		// Set the marker a bit into the future (not just "now") so the view
+		// inserted below is unambiguously <= the sync boundary even if a
+		// wall-clock second ticks between this line and Database::insert_view().
+		// A same-second marker is boundary-fragile: viewed_at uses its own
+		// current_time() call, so it can land one second after this time()
+		// call, flipping the strict `viewed_at > $last_sync_date` comparison
+		// in Sync::sync() from excluded to included and failing the test.
+		update_option( 'mai_analytics_synced', time() + MINUTE_IN_SECONDS );
 
 		$cron    = new Cron();
 		$post_id = self::factory()->post->create();
