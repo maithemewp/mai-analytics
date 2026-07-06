@@ -3,3 +3,18 @@
 .AppleDouble
 .LSOverride
 data/.bot-patterns-hash
+
+# PHPUnit run cache (dev artifact).
+.phpunit.result.cache
+
+# Vendor allowlist: the committed vendor tree is PRODUCTION-ONLY. Ignore
+# everything under vendor/, then explicitly re-include only the production
+# packages. This way any dev dependency (phpunit and its transitive deps) is
+# ignored by default and can never be committed or pushed to GitHub/prod, even
+# if `composer install` (with dev) is run and someone `git add`s vendor/.
+# When adding a new PRODUCTION dependency, add an allow line for it here.
+/vendor/*
+!/vendor/autoload.php
+!/vendor/composer/
+!/vendor/maithemewp/
+!/vendor/yahnis-elsts/
