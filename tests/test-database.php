@@ -9,12 +9,6 @@ class Test_Database extends WP_UnitTestCase {
 		Database::create_table();
 	}
 
-	public function tearDown(): void {
-		global $wpdb;
-		$wpdb->query( 'TRUNCATE TABLE ' . Database::get_table_name() );
-		parent::tearDown();
-	}
-
 	public function test_table_exists(): void {
 		global $wpdb;
 		$table  = Database::get_table_name();
