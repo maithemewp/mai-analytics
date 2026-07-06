@@ -17,8 +17,7 @@ class Test_Admin_REST_API extends WP_UnitTestCase {
 	}
 
 	public function tearDown(): void {
-		global $wpdb, $wp_rest_server;
-		$wpdb->query( 'TRUNCATE TABLE ' . Database::get_table_name() );
+		global $wp_rest_server;
 		$wp_rest_server = null;
 		parent::tearDown();
 	}

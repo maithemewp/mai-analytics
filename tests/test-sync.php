@@ -12,8 +12,6 @@ class Test_Sync extends WP_UnitTestCase {
 	}
 
 	public function tearDown(): void {
-		global $wpdb;
-		$wpdb->query( 'TRUNCATE TABLE ' . Database::get_table_name() );
 		delete_transient( 'mai_analytics_sync_lock' );
 		delete_transient( 'mai_analytics_syncing' );
 		parent::tearDown();

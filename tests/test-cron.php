@@ -12,8 +12,6 @@ class Test_Cron extends WP_UnitTestCase {
 	}
 
 	public function tearDown(): void {
-		global $wpdb;
-		$wpdb->query( 'TRUNCATE TABLE ' . Database::get_table_name() );
 		delete_option( 'mai_analytics_synced' );
 		delete_option( 'mai_analytics_settings' );
 		delete_option( 'mai_analytics_provider_error' );

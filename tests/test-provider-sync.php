@@ -26,8 +26,6 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 	}
 
 	public function tearDown(): void {
-		global $wpdb;
-		$wpdb->query( 'TRUNCATE TABLE ' . Database::get_table_name() );
 		delete_transient( 'mai_analytics_provider_syncing' );
 		remove_all_filters( 'mai_analytics_providers' );
 		remove_all_filters( 'mai_analytics_warm_skip_threshold' );
