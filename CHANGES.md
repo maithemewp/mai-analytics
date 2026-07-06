@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.0 (7/6/26)
+
+* Fixed: `mai_trending` meta no longer stores a `0` for objects that are not currently trending — a computed `0` now deletes the row instead. Writing zeros and never pruning them let `mai_trending` grow unbounded (on one site to ~141k rows, 95% of them zeros), turning the `ORDER BY meta_value+0 DESC` trending sort into a full-keyspace filesort that overloaded MySQL. Both sync engines (self-hosted `Sync::sync()` and provider `ProviderSync` batch + warm) now route trending writes through the new store, so a zero is never persisted. View counts (`mai_views` / `mai_views_web` / `mai_views_app`) are unchanged.
+* Added: `Mai\Analytics\Stats` store that owns the `mai_trending` lifecycle — writes (with `0 => delete`) and pruning.
+* Added: Daily trending prune that deletes stale and zero `mai_trending` rows so the index stays bounded. Provider mode decays rows whose `mai_views_synced_at` predates the trending window, gated on there being no unresolved provider error on file so an outage can never wipe trending; self-hosted mode decays rows absent from the current buffer window, gated on the buffer being live. Bounded per wp-cron request and reschedules a one-off continuation for large backlogs.
+* Added: `wp mai-analytics prune-trending [--dry-run]` CLI command to prune stale/zero trending on demand (drains fully in one run).
+* Added: An immediate, out-of-band trending prune scheduled on plugin version change (new `Upgrade` class), so existing meta bloat is cleaned up automatically on first load of new code — no manual step per site.
+* Added: `Sync::delete_meta()` low-level helper for post/term/user meta deletion, mirroring `update_meta` / `get_meta`.
+* Added: [Developers] Filters `mai_analytics_prune_batch_size` (rows per pass, default 5000), `mai_analytics_prune_max_batches` (delete passes per cron request before rescheduling, default 5), `mai_analytics_prune_schedule` (prune cron recurrence, default `daily`), and `mai_analytics_prune_anomaly_fraction` (share of the trending index a single stale-prune may remove before logging a warning tripwire, default 0.9).
+
 ## 1.1.6 (5/6/26)
 
 * Added: ElasticPress integration — when EP 5.0+ is active, allowlists `mai_views`, `mai_views_web`, `mai_views_app`, and `mai_trending` post meta via `ep_prepare_meta_allowed_keys` so view/trending ordering keeps working on EP-integrated queries (e.g., when used alongside `mai-elasticpress`, which sets `ep_integrate => true` on Mai Post Grid queries). Run a full ElasticPress sync after upgrading. Term and user meta are not affected — EP indexes their public meta automatically.
