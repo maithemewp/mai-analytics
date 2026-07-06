@@ -2,6 +2,17 @@
 
 class Test_Meta extends WP_UnitTestCase {
 
+	/**
+	 * WP core's tearDown() calls unregister_all_meta_keys() after every test
+	 * in the suite, but Meta::register_meta() only ever runs once (hooked to
+	 * `init`, which fires once per process). Re-register before each test so
+	 * these assertions don't depend on running first in the process.
+	 */
+	public function setUp(): void {
+		parent::setUp();
+		( new \Mai\Analytics\Meta() )->register_meta();
+	}
+
 	public function test_post_meta_registered(): void {
 		$registered = get_registered_meta_keys( 'post' );
 
