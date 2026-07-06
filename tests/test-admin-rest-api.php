@@ -245,8 +245,11 @@ class Test_Admin_REST_API extends WP_UnitTestCase {
 	public function test_search_authors(): void {
 		wp_set_current_user( self::factory()->user->create( [ 'role' => 'editor' ] ) );
 
+		// Author search surfaces authors of viewed posts (matches get_filters()),
+		// not authors with their own /author/ archive tracked.
 		$user_id = self::factory()->user->create( [ 'display_name' => 'Jane Analytics' ] );
-		update_user_meta( $user_id, 'mai_views', 10 );
+		$post_id = self::factory()->post->create( [ 'post_status' => 'publish', 'post_author' => $user_id ] );
+		update_post_meta( $post_id, 'mai_views', 10 );
 
 		$request = new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/search' );
 		$request->set_param( 'type', 'author' );
