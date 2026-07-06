@@ -29,7 +29,6 @@ class BotFilter {
 		'node-fetch',
 		'axios/',
 		'scrapy',
-		'httpclient',
 	];
 
 	/**
