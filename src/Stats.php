@@ -4,8 +4,10 @@ namespace Mai\Analytics;
 
 /**
  * Owns the mai_trending meta lifecycle: writes (with 0 => delete) and pruning.
- * All-time view handling (mai_views / mai_views_web / mai_views_app) is not part
- * of this store — it still lives in Sync and ProviderSync.
+ * Also owns the view-meta write path — mai_views / mai_views_web / mai_views_app /
+ * mai_views_synced_at — via `set_web()`, `add_web()`, `add_app()`,
+ * `recompute_total()`, and `mark_synced()`. Sync and ProviderSync call through
+ * these methods rather than writing that meta directly.
  *
  * @since 1.2.0
  */

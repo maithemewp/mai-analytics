@@ -195,7 +195,7 @@ class ProviderSync {
 				// the buffer-row DELETE later in this method — its queued 'web'
 				// signal is still consumed. Logged so a systemic cause (e.g. a bad
 				// object_type entering the buffer) is discoverable.
-				mai_analytics_logger()->warning( sprintf(
+				mai_analytics_logger()->error( sprintf(
 					'ProviderSync::process_batch() could not resolve a path for object_type=%s object_id=%d — skipping provider fetch for this object.',
 					$obj->object_type,
 					(int) $obj->object_id
@@ -335,6 +335,13 @@ class ProviderSync {
 			// a fresh buffer row, and the provider is queried for the object's
 			// full all-time count (not a delta), so nothing is permanently lost
 			// as long as the object is visited again.
+			//
+			// This loop — and therefore this delete — only runs when at least
+			// one object in the batch resolved a path. When EVERY object in
+			// the batch is unresolvable, `$path_map` stays empty and the early
+			// `return;` above fires first, so an all-unresolvable batch's rows
+			// are never reached here; they persist and retry on the next sync
+			// (each still logged via the error() call in the loop above).
 			$wpdb->query(
 				$wpdb->prepare(
 					"DELETE FROM $table
@@ -632,7 +639,7 @@ class ProviderSync {
 				// touch the buffer table, so this object is simply skipped for
 				// this warm pass (not counted in $iterated/$updated) rather than
 				// losing a queued signal. Logged so a systemic cause is discoverable.
-				mai_analytics_logger()->warning( sprintf(
+				mai_analytics_logger()->error( sprintf(
 					'ProviderSync::process_warm_batch() could not resolve a path for object_type=%s object_id=%d — skipping this object.',
 					$obj->object_type,
 					(int) $obj->object_id
