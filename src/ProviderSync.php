@@ -189,6 +189,18 @@ class ProviderSync {
 			$path = self::get_object_path( $obj );
 
 			if ( ! $path ) {
+				// Unresolvable path (object deleted between buffering and sync, an
+				// unrecognized object_type, or a WP_Error from get_term_link()).
+				// This object is excluded from the provider fetch below AND — see
+				// the buffer-row DELETE later in this method — its queued 'web'
+				// signal is still consumed. Logged so a systemic cause (e.g. a bad
+				// object_type entering the buffer) is discoverable.
+				mai_analytics_logger()->error( sprintf(
+					'ProviderSync::process_batch() could not resolve a path for object_type=%s object_id=%d — skipping provider fetch for this object.',
+					$obj->object_type,
+					(int) $obj->object_id
+				) );
+
 				continue;
 			}
 
@@ -290,9 +302,9 @@ class ProviderSync {
 			} else {
 				// Posts, terms, users use meta.
 				if ( null !== $web_total ) {
-					Sync::update_meta( $id, $type, 'mai_views_web', 'replace', $web_total );
+					Stats::set_web( $id, $type, $web_total );
 				}
-				Sync::update_meta( $id, $type, 'mai_views_app', 'increment', $app_new );
+				Stats::add_app( $id, $type, $app_new );
 
 				// Trending: only update web portion if provider succeeded.
 				$current_web_trending = ( null !== $web_trending ) ? $web_trending : (int) Sync::get_meta( $id, $type, 'mai_trending' );
@@ -307,18 +319,29 @@ class ProviderSync {
 				// Recompute total. Floor at trending so the math invariant
 				// (total >= trending) holds even if the all-time number is
 				// momentarily stale (provider outage, between syncs, etc.).
-				$current_web = (int) Sync::get_meta( $id, $type, 'mai_views_web' );
-				$current_app = (int) Sync::get_meta( $id, $type, 'mai_views_app' );
-				$total       = max( $current_web + $current_app, $new_trending );
-				Sync::update_meta( $id, $type, 'mai_views', 'replace', $total );
+				Stats::recompute_total( $id, $type );
 
 				// See pt_synced comment above — only mark synced on real success.
 				if ( null !== $web_total ) {
-					Sync::update_meta( $id, $type, 'mai_views_synced_at', 'replace', $now );
+					Stats::mark_synced( $id, $type, $now );
 				}
 			}
 
-			// Delete processed web buffer rows for this object.
+			// Delete processed web buffer rows for this object. Intentional even
+			// when $path is null (path unresolved) or the provider call failed:
+			// the buffer's only job is to flag "this object needs a sync," and
+			// that job is done once we've attempted it, regardless of whether
+			// the provider had data. A future page view re-queues the object via
+			// a fresh buffer row, and the provider is queried for the object's
+			// full all-time count (not a delta), so nothing is permanently lost
+			// as long as the object is visited again.
+			//
+			// This loop — and therefore this delete — only runs when at least
+			// one object in the batch resolved a path. When EVERY object in
+			// the batch is unresolvable, `$path_map` stays empty and the early
+			// `return;` above fires first, so an all-unresolvable batch's rows
+			// are never reached here; they persist and retry on the next sync
+			// (each still logged via the error() call in the loop above).
 			$wpdb->query(
 				$wpdb->prepare(
 					"DELETE FROM $table
@@ -611,6 +634,17 @@ class ProviderSync {
 			$path = self::get_object_path( $obj );
 
 			if ( ! $path ) {
+				// Unresolvable path — see the matching branch in process_batch()
+				// for the possible causes. Unlike process_batch(), warm doesn't
+				// touch the buffer table, so this object is simply skipped for
+				// this warm pass (not counted in $iterated/$updated) rather than
+				// losing a queued signal. Logged so a systemic cause is discoverable.
+				mai_analytics_logger()->error( sprintf(
+					'ProviderSync::process_warm_batch() could not resolve a path for object_type=%s object_id=%d — skipping this object.',
+					$obj->object_type,
+					(int) $obj->object_id
+				) );
+
 				continue;
 			}
 
@@ -666,7 +700,7 @@ class ProviderSync {
 					}
 				} else {
 					if ( null !== $web_total ) {
-						Sync::update_meta( $id, $type, 'mai_views_web', 'replace', $web_total );
+						Stats::set_web( $id, $type, $web_total );
 					}
 
 					// Trending total — only update web portion if provider succeeded.
@@ -680,14 +714,11 @@ class ProviderSync {
 
 					// Recompute total. Floor at trending so the math invariant
 					// (total >= trending) holds even if all-time is stale.
-					$current_web = (int) Sync::get_meta( $id, $type, 'mai_views_web' );
-					$current_app = (int) Sync::get_meta( $id, $type, 'mai_views_app' );
-					$total       = max( $current_web + $current_app, $new_trending );
-					Sync::update_meta( $id, $type, 'mai_views', 'replace', $total );
+					Stats::recompute_total( $id, $type );
 
 					// See pt_synced comment above — only mark synced on real success.
 					if ( null !== $web_total ) {
-						Sync::update_meta( $id, $type, 'mai_views_synced_at', 'replace', $now );
+						Stats::mark_synced( $id, $type, $now );
 					}
 				}
 

@@ -135,6 +135,51 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 		$this->assertCount( 2, $captured_paths );
 	}
 
+	/**
+	 * Regression guard for the silent-drop observability fix: process_batch()
+	 * must still (a) skip the provider fetch for an object whose path can't be
+	 * resolved (here, an unrecognized object_type reaching the buffer) and (b)
+	 * still process/sync every other object in the same batch normally. This
+	 * doesn't assert the mai_analytics_logger()->error() call directly —
+	 * Mai_Logger has no filter/mock seam so there's nothing to assert against
+	 * — but it does exercise the exact branch the log call lives in and
+	 * confirms the log addition didn't change behavior. Unlike warning()
+	 * (which bails entirely when WP_DEBUG is off), error() reaches the WP-CLI
+	 * and debug-log paths without requiring WP_DEBUG — so the branch is
+	 * discoverable when an admin investigates via WP-CLI, or on a site with
+	 * WP_DEBUG_LOG on (the actual error_log write still needs WP_DEBUG_LOG).
+	 */
+	public function test_sync_skips_unresolvable_path_without_disrupting_batch(): void {
+		$this->register_mock_provider( 100 );
+
+		$post_id = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+		Database::insert_view( $post_id, 'post', 'web' );
+
+		// object_type 'bogus_type' matches no case in get_object_path()'s match
+		// expression, so it resolves to null — the same outcome as a post
+		// deleted between buffering and sync, or a WP_Error from get_term_link().
+		Database::insert_view( 999999, 'bogus_type', 'web' );
+
+		ProviderSync::sync();
+
+		// The valid object in the same batch is unaffected by the unresolvable one.
+		$this->assertEquals( 100, (int) get_post_meta( $post_id, 'mai_views_web', true ) );
+
+		// The unresolvable object's buffer row is still consumed (existing,
+		// intentional behavior — see the DELETE comment in process_batch()),
+		// not left stuck for endless retry.
+		global $wpdb;
+		$table     = Database::get_table_name();
+		$remaining = (int) $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT COUNT(*) FROM $table WHERE object_id = %d AND object_type = %s AND source = 'web'",
+				999999,
+				'bogus_type'
+			)
+		);
+		$this->assertSame( 0, $remaining );
+	}
+
 	public function test_sync_reads_distinct_objects_from_buffer(): void {
 		$this->register_mock_provider( 100 );
 
@@ -327,6 +372,59 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 	}
 
 	/**
+	 * Counterpart to test_sync_skips_unresolvable_path_without_disrupting_batch()
+	 * for the identical null-path branch in process_warm_batch().
+	 *
+	 * warm() enumerates LIVE posts/terms/users/archives at prepare_warm_state()
+	 * time rather than reading buffer rows, so process_batch()'s trick of
+	 * buffering a bogus object_type can't reach process_warm_batch() —
+	 * collect_warm_objects() only ever emits real object_type values tied to
+	 * an actual query result. The scenario that does reach it is the other
+	 * cause documented on get_object_path(): the object is deleted between
+	 * being enumerated and its batch actually running. That's a real
+	 * possibility here, not a contrivance — warm_batch() is deliberately
+	 * split across separate chunked HTTP requests (see its docblock) so real
+	 * time, and real content changes, elapse between batches.
+	 *
+	 * Batch size 1 forces one object per batch. Objects are queued DESC by
+	 * ID, so the higher-ID post is processed first; deleting the lower-ID,
+	 * not-yet-processed post between the two generator yields reproduces a
+	 * null get_object_path() for it without faking anything.
+	 *
+	 * @return void
+	 */
+	public function test_warm_skips_unresolvable_path_without_disrupting_batch(): void {
+		$this->register_mock_provider( 100, true, 1 );
+
+		$post_to_delete = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+		$post_valid     = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+
+		$gen = ProviderSync::warm( [ 'type' => 'post' ] );
+
+		// Batch 0: $post_valid (higher ID, DESC order) processes normally.
+		$first = $gen->current();
+		$this->assertSame( 1, $first['iterated'] );
+		$this->assertSame( 1, $first['updated'] );
+
+		// Delete the not-yet-processed post between batches. Its stdClass
+		// entry was already captured by prepare_warm_state() before this
+		// call, so process_warm_batch() will call get_permalink() against a
+		// now-nonexistent post when it reaches batch 1, producing a null path.
+		wp_delete_post( $post_to_delete, true );
+
+		$gen->next();
+		$second = $gen->current();
+
+		// The unresolvable object is skipped — not counted — and doesn't
+		// throw or otherwise disrupt the batch.
+		$this->assertSame( 0, $second['iterated'] );
+		$this->assertSame( 0, $second['updated'] );
+
+		// Batch 0's write is unaffected by batch 1's unresolvable object.
+		$this->assertSame( '100', get_post_meta( $post_valid, 'mai_views_web', true ) );
+	}
+
+	/**
 	 * Registers a mock provider that always returns an empty array from
 	 * get_views(), simulating a provider HTTP failure for skip-recent tests.
 	 *
@@ -415,13 +513,19 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 	public function test_warm_force_bypasses_skip_recent(): void {
 		$this->register_mock_provider( 100 );
 
-		self::factory()->post->create( [ 'post_status' => 'publish' ] );
+		$post_id = self::factory()->post->create( [ 'post_status' => 'publish' ] );
 
 		$first  = $this->drain_warm( ProviderSync::warm( [ 'type' => 'post' ] ) );
 		$forced = $this->drain_warm( ProviderSync::warm( [ 'type' => 'post', 'force' => true ] ) );
 
 		$this->assertSame( $first, $forced );
 		$this->assertGreaterThanOrEqual( 1, $forced );
+
+		// Regression guard: the warm path must REPLACE mai_views_web via
+		// Stats::set_web() on every pass, not increment it. The mock provider
+		// returns a fixed 100 every call, so two passes landing on '200'
+		// would mean a replace→increment mixup crept into the warm write site.
+		$this->assertSame( '100', get_post_meta( $post_id, 'mai_views_web', true ) );
 	}
 
 	public function test_warm_skip_threshold_zero_disables_skip(): void {

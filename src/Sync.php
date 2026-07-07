@@ -59,8 +59,7 @@ class Sync {
 			$pt_views_app = get_option( 'mai_analytics_post_type_views_app', [] );
 
 			foreach ( $new_views as $row ) {
-				$cnt        = (int) $row->cnt;
-				$source_key = 'app' === $row->source ? 'mai_views_app' : 'mai_views_web';
+				$cnt = (int) $row->cnt;
 
 				if ( 'post_type' === $row->object_type ) {
 					$pt_views[ $row->object_key ] = ( $pt_views[ $row->object_key ] ?? 0 ) + $cnt;
@@ -71,19 +70,19 @@ class Sync {
 						$pt_views_web[ $row->object_key ] = ( $pt_views_web[ $row->object_key ] ?? 0 ) + $cnt;
 					}
 				} else {
-					// Increment source-specific meta.
-					self::update_meta( (int) $row->object_id, $row->object_type, $source_key, 'increment', $cnt );
+					// Increment source-specific meta, routed through the Stats store.
+					if ( 'app' === $row->source ) {
+						Stats::add_app( (int) $row->object_id, $row->object_type, $cnt );
+					} else {
+						Stats::add_web( (int) $row->object_id, $row->object_type, $cnt );
+					}
 
 					// Recompute total. Floor at the current trending value so
 					// the math invariant (total >= trending) holds even under
 					// edge cases (e.g., the trending recompute below could
 					// briefly leave trending > web+app if the buffer rebuilds
 					// older data than the lifetime counters reflect).
-					$web      = (int) self::get_meta( (int) $row->object_id, $row->object_type, 'mai_views_web' );
-					$app      = (int) self::get_meta( (int) $row->object_id, $row->object_type, 'mai_views_app' );
-					$trending = (int) self::get_meta( (int) $row->object_id, $row->object_type, 'mai_trending' );
-					$total    = max( $web + $app, $trending );
-					self::update_meta( (int) $row->object_id, $row->object_type, 'mai_views', 'replace', $total );
+					Stats::recompute_total( (int) $row->object_id, $row->object_type );
 				}
 			}
 

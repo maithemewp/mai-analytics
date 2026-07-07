@@ -4,8 +4,10 @@ namespace Mai\Analytics;
 
 /**
  * Owns the mai_trending meta lifecycle: writes (with 0 => delete) and pruning.
- * All-time view handling (mai_views / mai_views_web / mai_views_app) is not part
- * of this store — it still lives in Sync and ProviderSync.
+ * Also owns the view-meta write path — mai_views / mai_views_web / mai_views_app /
+ * mai_views_synced_at — via `set_web()`, `add_web()`, `add_app()`,
+ * `recompute_total()`, and `mark_synced()`. Sync and ProviderSync call through
+ * these methods rather than writing that meta directly.
  *
  * @since 1.2.0
  */
@@ -57,6 +59,84 @@ class Stats {
 		} else {
 			Sync::delete_meta( $object_id, $object_type, 'mai_trending' );
 		}
+	}
+
+	/**
+	 * Records the provider-sync timestamp for an object (provider success marker).
+	 *
+	 * @since 1.3.0
+	 *
+	 * @param int    $object_id   The post, term, or user ID.
+	 * @param string $object_type The object type: 'post', 'term', or 'user'.
+	 * @param int    $now         The sync timestamp.
+	 *
+	 * @return void
+	 */
+	public static function mark_synced( int $object_id, string $object_type, int $now ): void {
+		Sync::update_meta( $object_id, $object_type, 'mai_views_synced_at', 'replace', $now );
+	}
+
+	/**
+	 * Replaces the web view count for an object.
+	 *
+	 * @since 1.3.0
+	 *
+	 * @param int    $object_id   The post, term, or user ID.
+	 * @param string $object_type The object type: 'post', 'term', or 'user'.
+	 * @param int    $value       The authoritative web total.
+	 *
+	 * @return void
+	 */
+	public static function set_web( int $object_id, string $object_type, int $value ): void {
+		Sync::update_meta( $object_id, $object_type, 'mai_views_web', 'replace', $value );
+	}
+
+	/**
+	 * Adds newly-counted web views to an object's running web total (self-hosted path).
+	 *
+	 * @since 1.3.0
+	 *
+	 * @param int    $object_id   The post, term, or user ID.
+	 * @param string $object_type The object type: 'post', 'term', or 'user'.
+	 * @param int    $delta       New web views counted since the last sync.
+	 *
+	 * @return void
+	 */
+	public static function add_web( int $object_id, string $object_type, int $delta ): void {
+		Sync::update_meta( $object_id, $object_type, 'mai_views_web', 'increment', $delta );
+	}
+
+	/**
+	 * Adds newly-buffered app views to an object's running app total.
+	 *
+	 * @since 1.3.0
+	 *
+	 * @param int    $object_id   The post, term, or user ID.
+	 * @param string $object_type The object type: 'post', 'term', or 'user'.
+	 * @param int    $delta       New app views counted since the last sync.
+	 *
+	 * @return void
+	 */
+	public static function add_app( int $object_id, string $object_type, int $delta ): void {
+		Sync::update_meta( $object_id, $object_type, 'mai_views_app', 'increment', $delta );
+	}
+
+	/**
+	 * Recomputes an object's total views as max( web + app, trending ), preserving
+	 * the floor invariant that total is never below the trending value.
+	 *
+	 * @since 1.3.0
+	 *
+	 * @param int    $object_id   The post, term, or user ID.
+	 * @param string $object_type The object type: 'post', 'term', or 'user'.
+	 *
+	 * @return void
+	 */
+	public static function recompute_total( int $object_id, string $object_type ): void {
+		$web      = (int) Sync::get_meta( $object_id, $object_type, 'mai_views_web' );
+		$app      = (int) Sync::get_meta( $object_id, $object_type, 'mai_views_app' );
+		$trending = (int) Sync::get_meta( $object_id, $object_type, 'mai_trending' );
+		Sync::update_meta( $object_id, $object_type, 'mai_views', 'replace', max( $web + $app, $trending ) );
 	}
 
 	/**
