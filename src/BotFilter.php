@@ -12,8 +12,12 @@ class BotFilter {
 	 * crawlers/bots, not generic command-line or script HTTP clients. Real
 	 * page views never come from these UAs, so they're merged in here
 	 * instead of hand-editing the generated file. Kept deliberately
-	 * conservative (unambiguous, slash-qualified where needed) to avoid
-	 * false-positiving on real browser or app traffic.
+	 * conservative — only unambiguous CLI/scraper tools, and NOT the default
+	 * user-agents of general-purpose HTTP libraries (Go, Node, Java, Guzzle,
+	 * Apache HttpClient), which legitimate app/backend integrations send and
+	 * which would otherwise silently undercount real `source=app` traffic.
+	 *
+	 * @since 1.3.0
 	 *
 	 * @var string[]
 	 */
@@ -22,13 +26,7 @@ class BotFilter {
 		'wget',
 		'python-requests',
 		'python-urllib',
-		'go-http-client',
 		'libwww-perl',
-		'java/',
-		'guzzlehttp',
-		'node-fetch',
-		'axios/',
-		'scrapy',
 	];
 
 	/**

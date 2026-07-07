@@ -46,8 +46,10 @@ jobs:
           bash bin/install-wp-tests.sh wordpress_test root root 127.0.0.1 latest
 
       - name: Install Composer dependencies
-        # --no-scripts skips the bot-pattern regeneration (post-update-cmd); dev
-        # deps (phpunit + polyfills) are fetched here since they are not committed.
+        # --no-scripts is a safety net: with composer.lock committed and in sync,
+        # post-update-cmd (bot-pattern regeneration) won't fire on install anyway,
+        # but it guards against a drifted lock silently mutating data/bot-patterns.php
+        # in CI. Dev deps (phpunit + polyfills) are fetched here (not committed).
         run: composer install --prefer-dist --no-progress --no-scripts
 
       - name: Run PHPUnit

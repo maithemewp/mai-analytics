@@ -393,8 +393,10 @@ class ProviderSync {
 	 * sites every object's permalink is a bare `/?p=123`-style URL with the
 	 * same path (`/`) and a distinguishing query string; dropping the query
 	 * (as a prior version of this method did) collapsed every object onto
-	 * one path and silently discarded all but the last from the warm/sync
-	 * batch. Preserving the query keeps objects distinct there. On
+	 * one path — so process_warm_batch() (keyed by path) dropped all but the
+	 * last colliding object, and process_batch() cross-contaminated every
+	 * colliding object with the same (wrong) counts. Preserving the query
+	 * keeps objects distinct there. On
 	 * pretty-permalink sites there is no query string, so this is a no-op
 	 * and behavior is unchanged. Returns null if the object type is
 	 * unrecognized or the URL cannot be resolved.
