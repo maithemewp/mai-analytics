@@ -311,7 +311,7 @@ class ProviderSync {
 
 				// See pt_synced comment above — only mark synced on real success.
 				if ( null !== $web_total ) {
-					Sync::update_meta( $id, $type, 'mai_views_synced_at', 'replace', $now );
+					Stats::mark_synced( $id, $type, $now );
 				}
 			}
 
@@ -681,7 +681,7 @@ class ProviderSync {
 
 					// See pt_synced comment above — only mark synced on real success.
 					if ( null !== $web_total ) {
-						Sync::update_meta( $id, $type, 'mai_views_synced_at', 'replace', $now );
+						Stats::mark_synced( $id, $type, $now );
 					}
 				}
 

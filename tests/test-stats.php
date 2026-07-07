@@ -32,6 +32,12 @@ class Test_Stats extends WP_UnitTestCase {
 		$this->assertSame( '8', get_post_meta( $post_id, 'mai_views_app', true ) );
 	}
 
+	public function test_mark_synced_writes_timestamp(): void {
+		$post_id = self::factory()->post->create();
+		Stats::mark_synced( $post_id, 'post', 1234567890 );
+		$this->assertSame( '1234567890', get_post_meta( $post_id, 'mai_views_synced_at', true ) );
+	}
+
 	public function test_set_trending_writes_positive_value(): void {
 		$post_id = self::factory()->post->create();
 

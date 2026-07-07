@@ -60,6 +60,21 @@ class Stats {
 	}
 
 	/**
+	 * Records the provider-sync timestamp for an object (provider success marker).
+	 *
+	 * @since 1.3.0
+	 *
+	 * @param int    $object_id   The post, term, or user ID.
+	 * @param string $object_type The object type: 'post', 'term', or 'user'.
+	 * @param int    $now         The sync timestamp.
+	 *
+	 * @return void
+	 */
+	public static function mark_synced( int $object_id, string $object_type, int $now ): void {
+		Sync::update_meta( $object_id, $object_type, 'mai_views_synced_at', 'replace', $now );
+	}
+
+	/**
 	 * Replaces the web view count for an object.
 	 *
 	 * @since 1.3.0
