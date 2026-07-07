@@ -59,8 +59,7 @@ class Sync {
 			$pt_views_app = get_option( 'mai_analytics_post_type_views_app', [] );
 
 			foreach ( $new_views as $row ) {
-				$cnt        = (int) $row->cnt;
-				$source_key = 'app' === $row->source ? 'mai_views_app' : 'mai_views_web';
+				$cnt = (int) $row->cnt;
 
 				if ( 'post_type' === $row->object_type ) {
 					$pt_views[ $row->object_key ] = ( $pt_views[ $row->object_key ] ?? 0 ) + $cnt;
@@ -71,11 +70,9 @@ class Sync {
 						$pt_views_web[ $row->object_key ] = ( $pt_views_web[ $row->object_key ] ?? 0 ) + $cnt;
 					}
 				} else {
-					// Increment source-specific meta. Web routes through the Stats
-					// store; app stays a direct meta increment for now (Task 2
-					// routes it through Stats::add_app).
+					// Increment source-specific meta, routed through the Stats store.
 					if ( 'app' === $row->source ) {
-						self::update_meta( (int) $row->object_id, $row->object_type, $source_key, 'increment', $cnt );
+						Stats::add_app( (int) $row->object_id, $row->object_type, $cnt );
 					} else {
 						Stats::add_web( (int) $row->object_id, $row->object_type, $cnt );
 					}

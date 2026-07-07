@@ -292,7 +292,7 @@ class ProviderSync {
 				if ( null !== $web_total ) {
 					Stats::set_web( $id, $type, $web_total );
 				}
-				Sync::update_meta( $id, $type, 'mai_views_app', 'increment', $app_new );
+				Stats::add_app( $id, $type, $app_new );
 
 				// Trending: only update web portion if provider succeeded.
 				$current_web_trending = ( null !== $web_trending ) ? $web_trending : (int) Sync::get_meta( $id, $type, 'mai_trending' );

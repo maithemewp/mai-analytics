@@ -90,6 +90,21 @@ class Stats {
 	}
 
 	/**
+	 * Adds newly-buffered app views to an object's running app total.
+	 *
+	 * @since 1.3.0
+	 *
+	 * @param int    $object_id   The post, term, or user ID.
+	 * @param string $object_type The object type: 'post', 'term', or 'user'.
+	 * @param int    $delta       New app views counted since the last sync.
+	 *
+	 * @return void
+	 */
+	public static function add_app( int $object_id, string $object_type, int $delta ): void {
+		Sync::update_meta( $object_id, $object_type, 'mai_views_app', 'increment', $delta );
+	}
+
+	/**
 	 * Deletes stale and zero mai_trending rows so the trending index stays bounded.
 	 *
 	 * Zero rows are always deleted, in any mode. Stale-row deletion is mode-specific

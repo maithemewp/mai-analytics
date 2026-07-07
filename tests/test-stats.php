@@ -25,6 +25,13 @@ class Test_Stats extends WP_UnitTestCase {
 		$this->assertSame( '10', get_post_meta( $post_id, 'mai_views_web', true ) );
 	}
 
+	public function test_add_app_increments_value(): void {
+		$post_id = self::factory()->post->create();
+		update_post_meta( $post_id, 'mai_views_app', 5 );
+		Stats::add_app( $post_id, 'post', 3 );
+		$this->assertSame( '8', get_post_meta( $post_id, 'mai_views_app', true ) );
+	}
+
 	public function test_set_trending_writes_positive_value(): void {
 		$post_id = self::factory()->post->create();
 
