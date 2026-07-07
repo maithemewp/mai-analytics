@@ -18,6 +18,13 @@ class Test_Stats extends WP_UnitTestCase {
 		parent::tearDown();
 	}
 
+	public function test_set_web_replaces_value(): void {
+		$post_id = self::factory()->post->create();
+		update_post_meta( $post_id, 'mai_views_web', 3 );
+		Stats::set_web( $post_id, 'post', 10 );
+		$this->assertSame( '10', get_post_meta( $post_id, 'mai_views_web', true ) );
+	}
+
 	public function test_set_trending_writes_positive_value(): void {
 		$post_id = self::factory()->post->create();
 

@@ -60,6 +60,36 @@ class Stats {
 	}
 
 	/**
+	 * Replaces the web view count for an object.
+	 *
+	 * @since 1.3.0
+	 *
+	 * @param int    $object_id   The post, term, or user ID.
+	 * @param string $object_type The object type: 'post', 'term', or 'user'.
+	 * @param int    $value       The authoritative web total.
+	 *
+	 * @return void
+	 */
+	public static function set_web( int $object_id, string $object_type, int $value ): void {
+		Sync::update_meta( $object_id, $object_type, 'mai_views_web', 'replace', $value );
+	}
+
+	/**
+	 * Adds newly-counted web views to an object's running web total (self-hosted path).
+	 *
+	 * @since 1.3.0
+	 *
+	 * @param int    $object_id   The post, term, or user ID.
+	 * @param string $object_type The object type: 'post', 'term', or 'user'.
+	 * @param int    $delta       New web views counted since the last sync.
+	 *
+	 * @return void
+	 */
+	public static function add_web( int $object_id, string $object_type, int $delta ): void {
+		Sync::update_meta( $object_id, $object_type, 'mai_views_web', 'increment', $delta );
+	}
+
+	/**
 	 * Deletes stale and zero mai_trending rows so the trending index stays bounded.
 	 *
 	 * Zero rows are always deleted, in any mode. Stale-row deletion is mode-specific

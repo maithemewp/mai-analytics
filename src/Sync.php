@@ -71,8 +71,14 @@ class Sync {
 						$pt_views_web[ $row->object_key ] = ( $pt_views_web[ $row->object_key ] ?? 0 ) + $cnt;
 					}
 				} else {
-					// Increment source-specific meta.
-					self::update_meta( (int) $row->object_id, $row->object_type, $source_key, 'increment', $cnt );
+					// Increment source-specific meta. Web routes through the Stats
+					// store; app stays a direct meta increment for now (Task 2
+					// routes it through Stats::add_app).
+					if ( 'app' === $row->source ) {
+						self::update_meta( (int) $row->object_id, $row->object_type, $source_key, 'increment', $cnt );
+					} else {
+						Stats::add_web( (int) $row->object_id, $row->object_type, $cnt );
+					}
 
 					// Recompute total. Floor at the current trending value so
 					// the math invariant (total >= trending) holds even under

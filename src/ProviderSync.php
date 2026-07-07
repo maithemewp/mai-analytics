@@ -290,7 +290,7 @@ class ProviderSync {
 			} else {
 				// Posts, terms, users use meta.
 				if ( null !== $web_total ) {
-					Sync::update_meta( $id, $type, 'mai_views_web', 'replace', $web_total );
+					Stats::set_web( $id, $type, $web_total );
 				}
 				Sync::update_meta( $id, $type, 'mai_views_app', 'increment', $app_new );
 
@@ -666,7 +666,7 @@ class ProviderSync {
 					}
 				} else {
 					if ( null !== $web_total ) {
-						Sync::update_meta( $id, $type, 'mai_views_web', 'replace', $web_total );
+						Stats::set_web( $id, $type, $web_total );
 					}
 
 					// Trending total — only update web portion if provider succeeded.
