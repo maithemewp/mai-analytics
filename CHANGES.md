@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.0 (7/7/26)
+
+* Fixed: Warm Stats no longer silently drops objects on sites that use plain permalinks. Every object's permalink resolved to the same path (`/`), so a warm batch kept only the last object and skipped the rest; object paths now preserve their query string so each object stays distinct. Sites using pretty permalinks were unaffected.
+* Fixed: Removed a leftover, unused author-list query from the dashboard `/admin/filters` endpoint — the author filter is populated via the ajax search, so that query ran on every dashboard load for nothing.
+* Changed: Generic non-browser HTTP clients (curl, wget, python-requests, and similar CLI/scraper tools) are now excluded from view tracking as bots, alongside the auto-generated Matomo crawler list. Real page views from these tools were previously counted.
+* Changed: [Developers] View-count meta writes (`mai_views` / `mai_views_web` / `mai_views_app` / `mai_views_synced_at`) now route through the `Stats` store, so all view-meta logic lives in one tested place. Behavior-preserving — stored counts are unchanged.
+* Changed: [Developers] Provider sync now logs (error level) any buffered object whose URL cannot be resolved during a sync, instead of silently skipping it.
+* Changed: [Developers] Re-vendored mai-logger 0.1.1 (CLI-safe autoload so the bundled logger no longer aborts PHPUnit on a clean checkout or in CI).
+
 ## 1.2.0 (7/6/26)
 
 * Fixed: `mai_trending` meta no longer stores a `0` for objects that are not currently trending — a computed `0` now deletes the row instead. Writing zeros and never pruning them let `mai_trending` grow unbounded (on one site to ~141k rows, 95% of them zeros), turning the `ORDER BY meta_value+0 DESC` trending sort into a full-keyspace filesort that overloaded MySQL. Both sync engines (self-hosted `Sync::sync()` and provider `ProviderSync` batch + warm) now route trending writes through the new store, so a zero is never persisted. View counts (`mai_views` / `mai_views_web` / `mai_views_app`) are unchanged.
