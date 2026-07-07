@@ -105,6 +105,24 @@ class Stats {
 	}
 
 	/**
+	 * Recomputes an object's total views as max( web + app, trending ), preserving
+	 * the floor invariant that total is never below the trending value.
+	 *
+	 * @since 1.3.0
+	 *
+	 * @param int    $object_id   The post, term, or user ID.
+	 * @param string $object_type The object type: 'post', 'term', or 'user'.
+	 *
+	 * @return void
+	 */
+	public static function recompute_total( int $object_id, string $object_type ): void {
+		$web      = (int) Sync::get_meta( $object_id, $object_type, 'mai_views_web' );
+		$app      = (int) Sync::get_meta( $object_id, $object_type, 'mai_views_app' );
+		$trending = (int) Sync::get_meta( $object_id, $object_type, 'mai_trending' );
+		Sync::update_meta( $object_id, $object_type, 'mai_views', 'replace', max( $web + $app, $trending ) );
+	}
+
+	/**
 	 * Deletes stale and zero mai_trending rows so the trending index stays bounded.
 	 *
 	 * Zero rows are always deleted, in any mode. Stale-row deletion is mode-specific

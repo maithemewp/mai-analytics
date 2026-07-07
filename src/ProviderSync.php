@@ -307,10 +307,7 @@ class ProviderSync {
 				// Recompute total. Floor at trending so the math invariant
 				// (total >= trending) holds even if the all-time number is
 				// momentarily stale (provider outage, between syncs, etc.).
-				$current_web = (int) Sync::get_meta( $id, $type, 'mai_views_web' );
-				$current_app = (int) Sync::get_meta( $id, $type, 'mai_views_app' );
-				$total       = max( $current_web + $current_app, $new_trending );
-				Sync::update_meta( $id, $type, 'mai_views', 'replace', $total );
+				Stats::recompute_total( $id, $type );
 
 				// See pt_synced comment above — only mark synced on real success.
 				if ( null !== $web_total ) {
@@ -680,10 +677,7 @@ class ProviderSync {
 
 					// Recompute total. Floor at trending so the math invariant
 					// (total >= trending) holds even if all-time is stale.
-					$current_web = (int) Sync::get_meta( $id, $type, 'mai_views_web' );
-					$current_app = (int) Sync::get_meta( $id, $type, 'mai_views_app' );
-					$total       = max( $current_web + $current_app, $new_trending );
-					Sync::update_meta( $id, $type, 'mai_views', 'replace', $total );
+					Stats::recompute_total( $id, $type );
 
 					// See pt_synced comment above — only mark synced on real success.
 					if ( null !== $web_total ) {

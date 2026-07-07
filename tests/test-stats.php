@@ -196,6 +196,17 @@ class Test_Stats extends WP_UnitTestCase {
 		$this->assertFalse( metadata_exists( 'user', $user_id, 'mai_trending' ) );
 	}
 
+	public function test_recompute_total_floors_at_trending(): void {
+		$post_id = self::factory()->post->create();
+		update_post_meta( $post_id, 'mai_views_web', 4 );
+		update_post_meta( $post_id, 'mai_views_app', 3 );
+		update_post_meta( $post_id, 'mai_trending', 20 ); // trending > web+app
+
+		Stats::recompute_total( $post_id, 'post' );
+
+		$this->assertSame( '20', get_post_meta( $post_id, 'mai_views', true ) ); // floored at trending
+	}
+
 	public function test_prune_respects_max_batches_budget(): void {
 		update_option( 'mai_analytics_settings', [ 'data_source' => 'matomo' ] );
 		delete_option( 'mai_analytics_provider_error' );

@@ -82,11 +82,7 @@ class Sync {
 					// edge cases (e.g., the trending recompute below could
 					// briefly leave trending > web+app if the buffer rebuilds
 					// older data than the lifetime counters reflect).
-					$web      = (int) self::get_meta( (int) $row->object_id, $row->object_type, 'mai_views_web' );
-					$app      = (int) self::get_meta( (int) $row->object_id, $row->object_type, 'mai_views_app' );
-					$trending = (int) self::get_meta( (int) $row->object_id, $row->object_type, 'mai_trending' );
-					$total    = max( $web + $app, $trending );
-					self::update_meta( (int) $row->object_id, $row->object_type, 'mai_views', 'replace', $total );
+					Stats::recompute_total( (int) $row->object_id, $row->object_type );
 				}
 			}
 
