@@ -135,6 +135,47 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 		$this->assertCount( 2, $captured_paths );
 	}
 
+	/**
+	 * Regression guard for the silent-drop observability fix: process_batch()
+	 * must still (a) skip the provider fetch for an object whose path can't be
+	 * resolved (here, an unrecognized object_type reaching the buffer) and (b)
+	 * still process/sync every other object in the same batch normally. This
+	 * doesn't assert the new mai_analytics_logger()->warning() call directly —
+	 * Mai_Logger has no filter/mock seam and only writes to error_log when
+	 * WP_DEBUG_LOG is on — but it does exercise the exact branch the log call
+	 * lives in and confirms the log addition didn't change behavior.
+	 */
+	public function test_sync_skips_unresolvable_path_without_disrupting_batch(): void {
+		$this->register_mock_provider( 100 );
+
+		$post_id = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+		Database::insert_view( $post_id, 'post', 'web' );
+
+		// object_type 'bogus_type' matches no case in get_object_path()'s match
+		// expression, so it resolves to null — the same outcome as a post
+		// deleted between buffering and sync, or a WP_Error from get_term_link().
+		Database::insert_view( 999999, 'bogus_type', 'web' );
+
+		ProviderSync::sync();
+
+		// The valid object in the same batch is unaffected by the unresolvable one.
+		$this->assertEquals( 100, (int) get_post_meta( $post_id, 'mai_views_web', true ) );
+
+		// The unresolvable object's buffer row is still consumed (existing,
+		// intentional behavior — see the DELETE comment in process_batch()),
+		// not left stuck for endless retry.
+		global $wpdb;
+		$table     = Database::get_table_name();
+		$remaining = (int) $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT COUNT(*) FROM $table WHERE object_id = %d AND object_type = %s AND source = 'web'",
+				999999,
+				'bogus_type'
+			)
+		);
+		$this->assertSame( 0, $remaining );
+	}
+
 	public function test_sync_reads_distinct_objects_from_buffer(): void {
 		$this->register_mock_provider( 100 );
 
