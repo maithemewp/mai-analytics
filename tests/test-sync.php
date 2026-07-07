@@ -12,8 +12,6 @@ class Test_Sync extends WP_UnitTestCase {
 	}
 
 	public function tearDown(): void {
-		global $wpdb;
-		$wpdb->query( 'TRUNCATE TABLE ' . Database::get_table_name() );
 		delete_transient( 'mai_analytics_sync_lock' );
 		delete_transient( 'mai_analytics_syncing' );
 		parent::tearDown();
@@ -31,7 +29,10 @@ class Test_Sync extends WP_UnitTestCase {
 
 	public function test_sync_increments_existing_views(): void {
 		$post_id = self::factory()->post->create();
-		update_post_meta( $post_id, 'mai_views', 10 );
+
+		// mai_views is a computed total (max(web+app, trending)), not an
+		// independently incremented counter — pre-seed the source of truth.
+		update_post_meta( $post_id, 'mai_views_web', 10 );
 
 		Database::insert_view( $post_id, 'post' );
 		Sync::sync();

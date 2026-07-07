@@ -668,7 +668,7 @@ class AdminRestApi {
 	 *
 	 * @param WP_REST_Request $request The incoming request.
 	 *
-	 * @return WP_REST_Response Available post types, taxonomies, and authors that have data.
+	 * @return WP_REST_Response Available post types and taxonomies that have data.
 	 */
 	public function get_filters( WP_REST_Request $request ): WP_REST_Response {
 		$cached = get_transient( 'mai_analytics_admin_filters' );
@@ -730,35 +730,9 @@ class AdminRestApi {
 			}
 		}
 
-		// Authors of posts with views. The Posts-tab filter narrows posts by
-		// their author, so the relevant set is "authors who have viewed posts"
-		// rather than "authors whose own /author/ archive was tracked" (often
-		// zero — author archives are rarely linked and often disabled by SEO
-		// plugins, plus tracking is skipped for visitors with edit_posts).
-		$authors     = [];
-		$author_rows = $wpdb->get_results(
-			"SELECT DISTINCT u.ID, u.display_name
-			 FROM $wpdb->users u
-			 INNER JOIN $wpdb->posts p ON u.ID = p.post_author
-			 INNER JOIN $wpdb->postmeta pm ON p.ID = pm.post_id
-			 WHERE pm.meta_key = 'mai_views'
-			   AND CAST(pm.meta_value AS UNSIGNED) > 0
-			   AND p.post_status = 'publish'
-			   AND p.post_type IN ('{$type_list}')
-			 ORDER BY u.display_name ASC"
-		);
-
-		foreach ( $author_rows as $author ) {
-			$authors[] = [
-				'id'   => (int) $author->ID,
-				'name' => $author->display_name,
-			];
-		}
-
 		$payload = [
 			'post_types' => $post_types,
 			'taxonomies' => $taxonomies,
-			'authors'    => $authors,
 		];
 
 		set_transient( 'mai_analytics_admin_filters', $payload, 5 * MINUTE_IN_SECONDS );

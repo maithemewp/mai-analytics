@@ -26,8 +26,6 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 	}
 
 	public function tearDown(): void {
-		global $wpdb;
-		$wpdb->query( 'TRUNCATE TABLE ' . Database::get_table_name() );
 		delete_transient( 'mai_analytics_provider_syncing' );
 		remove_all_filters( 'mai_analytics_providers' );
 		remove_all_filters( 'mai_analytics_warm_skip_threshold' );
@@ -107,6 +105,34 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 			'data_source' => 'test_provider',
 			'sync_user'   => 1,
 		] );
+	}
+
+	public function test_sync_requests_distinct_paths_per_object(): void {
+		// Regression guard for the plain-permalink data-loss fix (get_object_path()
+		// preserving the query string). The WP test env uses plain permalinks, so
+		// both posts' permalinks are '/?p=N' — same path, different query. Each
+		// object must map to a UNIQUE provider path; if a refactor drops the query
+		// again, both collapse to '/' and only one path reaches the provider.
+		$captured_paths = null;
+		$this->register_mock_provider( 100, true, 50, function ( $paths, $windows ) use ( &$captured_paths ) {
+			$captured_paths = $paths;
+			$out = [];
+			foreach ( $paths as $path ) {
+				foreach ( $windows as $name => $_range ) {
+					$out[ $path ][ $name ] = 100;
+				}
+			}
+			return $out;
+		} );
+
+		$post_a = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+		$post_b = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+		Database::insert_view( $post_a, 'post', 'web' );
+		Database::insert_view( $post_b, 'post', 'web' );
+
+		ProviderSync::sync();
+
+		$this->assertCount( 2, $captured_paths );
 	}
 
 	public function test_sync_reads_distinct_objects_from_buffer(): void {

@@ -96,18 +96,18 @@ class Test_Providers_Matomo extends WP_UnitTestCase {
 		$this->assertStringContainsString( '/post-b/', $entries[2]['pageUrl'] );
 		$this->assertStringContainsString( '/post-b/', $entries[3]['pageUrl'] );
 
-		// Trending sub-queries (period=day) come before all-time (period=week)
+		// Trending sub-queries (period=day) come before all-time (period=year)
 		// within each path's group.
 		$this->assertEquals( 'day',  $entries[0]['period'] );
-		$this->assertEquals( 'week', $entries[1]['period'] );
+		$this->assertEquals( 'year', $entries[1]['period'] );
 		$this->assertEquals( 'day',  $entries[2]['period'] );
-		$this->assertEquals( 'week', $entries[3]['period'] );
+		$this->assertEquals( 'year', $entries[3]['period'] );
 	}
 
 	/**
-	 * Empty start_date in a window must produce period=week, date=last{years*52}.
+	 * Empty start_date in a window must produce period=year, date=last{years}.
 	 */
-	public function test_empty_start_translates_to_weekly_period(): void {
+	public function test_empty_start_translates_to_yearly_period(): void {
 		// Force a known views_years so the assertion is stable.
 		add_filter( 'mai_analytics_views_years', fn() => 3 );
 
@@ -122,8 +122,8 @@ class Test_Providers_Matomo extends WP_UnitTestCase {
 		$urls = self::$captured[0]['body']['urls'] ?? [];
 		parse_str( $urls[0], $entry );
 
-		$this->assertEquals( 'week', $entry['period'] );
-		$this->assertEquals( 'last' . ( 3 * 52 ), $entry['date'] );
+		$this->assertEquals( 'year', $entry['period'] );
+		$this->assertEquals( 'last' . 3, $entry['date'] );
 	}
 
 	/**

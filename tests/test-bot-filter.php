@@ -33,4 +33,24 @@ class Test_Bot_Filter extends WP_UnitTestCase {
 		add_filter( 'mai_analytics_bot_patterns', fn( $p ) => array_merge( $p, [ 'MyCustomBot' ] ) );
 		$this->assertTrue( BotFilter::is_bot( 'MyCustomBot/1.0' ) );
 	}
+
+	/**
+	 * Coverage for the supplementary generic-client patterns (curl is covered by
+	 * test_detects_curl). Guards against a typo or accidental removal, and against
+	 * the list drifting back toward the ambiguous library UAs we deliberately excluded.
+	 *
+	 * @dataProvider generic_http_client_provider
+	 */
+	public function test_detects_generic_http_clients( string $user_agent ): void {
+		$this->assertTrue( BotFilter::is_bot( $user_agent ) );
+	}
+
+	public static function generic_http_client_provider(): array {
+		return [
+			'wget'            => [ 'Wget/1.21.3 (linux-gnu)' ],
+			'python-requests' => [ 'python-requests/2.31.0' ],
+			'python-urllib'   => [ 'Python-urllib/3.9' ],
+			'libwww-perl'     => [ 'libwww-perl/6.67' ],
+		];
+	}
 }
