@@ -17,6 +17,5 @@ data/.bot-patterns-hash
 !/vendor/autoload.php
 !/vendor/composer/
 !/vendor/maithemewp/
-/vendor/maithemewp/deployable-guard/
 !/vendor/yahnis-elsts/
 .githooks/

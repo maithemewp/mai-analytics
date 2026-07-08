@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.1 (7/8/26)
+
+* Changed: [Developers] Swapped the `deployable-guard` dev dependency (and its CI check) from the `maithemewp` org to `bizbudding/deployable-guard`, its canonical home. Dev-tooling only — nothing shipped to sites changes.
+
 ## 1.3.0 (7/7/26)
 
 * Fixed: Warm Stats no longer silently drops objects on sites that use plain permalinks. Every object's permalink resolved to the same path (`/`), so a warm batch kept only the last object and skipped the rest; object paths now preserve their query string so each object stays distinct. Sites using pretty permalinks were unaffected.
