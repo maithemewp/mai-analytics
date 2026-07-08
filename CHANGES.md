@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.2 (7/8/26)
+
+* Changed: [Developers] Added a `.gitattributes` with `export-ignore` rules so dev-only paths (`tests/`, `docs/`, `.github/`, `bin/`, `phpunit.xml.dist`) are stripped from the Composer dist archive. When mai-analytics is bundled as a dependency in another plugin, its `vendor/` copy no longer carries test/CI/planning cruft to production. No change to this plugin's own standalone deploy.
+
 ## 1.3.1 (7/8/26)
 
 * Changed: [Developers] Swapped the `deployable-guard` dev dependency (and its CI check) from the `maithemewp` org to `bizbudding/deployable-guard`, its canonical home. Dev-tooling only — nothing shipped to sites changes.

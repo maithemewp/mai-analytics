@@ -1,0 +1,13 @@
+# Strip dev-only files from the Composer dist archive (GitHub zipball / git
+# archive). Affects ONLY archive-based installs — i.e. when this plugin is
+# bundled as a Composer dependency into another plugin (e.g. mai-publisher),
+# composer's dist download excludes these. It does NOT affect this plugin's own
+# standalone raw-git-tree deploy (a working-tree checkout ignores export-ignore).
+# Takes effect for versions tagged after this file is added.
+/.github          export-ignore
+/.gitattributes   export-ignore
+/.gitignore       export-ignore
+/bin              export-ignore
+/docs             export-ignore
+/tests            export-ignore
+/phpunit.xml.dist export-ignore
