@@ -10,6 +10,11 @@ use WP_REST_Request;
 class SiteKit implements WebViewProvider {
 
 	/**
+	 * Minimum Site Kit version required for the GA4 report REST API.
+	 */
+	private const MIN_SITE_KIT_VERSION = '1.96.0';
+
+	/**
 	 * Gets the provider slug identifier.
 	 *
 	 * @return string The provider slug.
@@ -87,11 +92,6 @@ class SiteKit implements WebViewProvider {
 	 *
 	 * @return bool True if Site Kit is available and GA4 is fully configured.
 	 */
-	/**
-	 * Minimum Site Kit version required for the GA4 report REST API.
-	 */
-	private const MIN_SITE_KIT_VERSION = '1.96.0';
-
 	public function is_available(): bool {
 		if ( ! defined( 'GOOGLESITEKIT_VERSION' ) ) {
 			return false;
