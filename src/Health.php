@@ -96,6 +96,24 @@ class Health {
 		// ── Settings & Provider ──
 		$check( 'Provider', 'Settings saved', ! empty( $settings ), 'data_source=' . $data_source );
 
+		/**
+		 * Report availability for every registered provider, not just the selected one.
+		 *
+		 * The checks below only run once a provider is already selected, but an
+		 * unavailable provider renders disabled in the settings dropdown, so it can
+		 * never be selected in the first place. That left no way to find out why a
+		 * provider was unavailable. These are informational rather than pass/fail:
+		 * a provider you are not using being unconfigured is not a failure.
+		 */
+		foreach ( apply_filters( 'mai_analytics_providers', [] ) as $registered ) {
+			$available = $registered->is_available();
+			$detail    = $available
+				? 'connected'
+				: ( method_exists( $registered, 'get_unavailable_reason' ) ? $registered->get_unavailable_reason() : 'unavailable' );
+
+			$check( 'Provider', $registered->get_label(), true, $detail );
+		}
+
 		if ( 'self_hosted' !== $data_source && 'disabled' !== $data_source ) {
 			$provider = ProviderSync::get_provider();
 			$check( 'Provider', 'Provider found', (bool) $provider, $provider ? $provider->get_label() : 'no matching provider for ' . $data_source );
