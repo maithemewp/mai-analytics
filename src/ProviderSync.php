@@ -111,7 +111,8 @@ class ProviderSync {
 			return;
 		}
 
-		// Provider handles its own API auth (e.g., SiteKit uses googlesitekit_owner_id).
+		// Provider handles its own API auth (e.g., SiteKit binds its GA4 client to
+		// the Site Kit module owner itself, independent of the current user).
 		// We just need a user context for meta writes during cron.
 		if ( ! get_current_user_id() ) {
 			$sync_user = Settings::get( 'sync_user' );
