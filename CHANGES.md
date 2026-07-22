@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.3 (7/21/26)
+
+* Fixed: Google Analytics (via Site Kit) view syncing failed on every cron run, reporting "Site Kit can't access the relevant data from Analytics because you haven't granted all permissions requested during setup" even on correctly connected sites. Site Kit binds its Google credentials to whichever user is current early in the WordPress load, and under cron that is nobody — so switching users at request time, as this plugin did, never reached it. The GA4 client is now built bound to the Site Kit module owner directly, the way Site Kit's own background jobs work, so syncing no longer depends on who is logged in. Affected sites saw web view counts refresh only while the connected Google account's user was browsing wp-admin; counts were preserved, not lost, and resume updating on the next sync.
+* Fixed: The all-time window for Google Analytics (via Site Kit) returned only the last 28 days. Requests omitted the date range to mean "all data", but Site Kit silently rewrites a missing range to the last 28 days, so `mai_views` held a rolling 28-day count that never accumulated and could decrease. The all-time window now starts at the GA4 property's creation date, falling back to 2019-01-01 when Site Kit has not yet recorded one. Totals will jump upward on the first sync after upgrading as the true all-time figure replaces the 28-day one.
+* Changed: [Developers] The Site Kit module owner is now resolved from the Analytics module's own `ownerID` setting — the value Site Kit itself uses — before falling back to `googlesitekit_owner_id` and the legacy `googlesitekit_first_admin` option. Sites where module ownership was transferred could previously resolve to a stale user.
+* Changed: [Developers] The Site Kit provider reports itself unavailable, with an explanatory reason, when the Site Kit internals it depends on are missing — so a future Site Kit release degrades to paused syncing with preserved stats rather than a fatal error.
+
 ## 1.3.2 (7/8/26)
 
 * Changed: [Developers] Added a `.gitattributes` with `export-ignore` rules so dev-only paths (`tests/`, `docs/`, `.github/`, `bin/`, `phpunit.xml.dist`) are stripped from the Composer dist archive. When mai-analytics is bundled as a dependency in another plugin, its `vendor/` copy no longer carries test/CI/planning cruft to production. No change to this plugin's own standalone deploy.
