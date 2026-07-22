@@ -3,7 +3,6 @@
 ## 1.3.3 (7/21/26)
 
 * Added: The Site Health report now lists availability for every registered analytics provider, not just the selected one — with the specific reason when a provider is unavailable (Site Kit not installed, too old, or GA4 not connected). An unavailable provider is disabled in the settings dropdown and so could never be selected, which meant there was previously no way to find out why. These entries are informational, not pass/fail.
-* Changed: [Developers] Dev-only `TODO-buffer-refactor.md` is now `export-ignore`d alongside the other dev paths, so it is stripped from the Composer dist archive when mai-analytics is bundled as a dependency.
 
 * Fixed: Jetpack view syncing could overwrite real view counts with zero. If Jetpack Stats failed for a single post, that post was skipped and the rest of the batch was returned as if complete — and every skipped post then had its stored count replaced with `0` and stamped as freshly synced. A failed fetch now abandons the whole batch so existing counts are preserved, matching the other providers.
 * Fixed: Objects with genuinely zero views are no longer treated as a provider outage. A batch where nothing had views was indistinguishable from a failed request, so those objects were never stamped as synced and were re-fetched on every sync and warm pass indefinitely, and a resolved provider error could never clear.
