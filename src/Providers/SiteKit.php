@@ -8,29 +8,45 @@ use Mai\Analytics\WebViewProvider;
 class SiteKit implements WebViewProvider {
 
 	/**
-	 * Minimum Site Kit version required for the GA4 module classes we call.
+	 * Minimum supported Site Kit version.
+	 *
+	 * Inherited from the previous REST-based implementation. The module classes
+	 * this provider now calls predate it — `Analytics_4` is `@since 1.30.0` and
+	 * `Module::get_data()` is `@since 1.0.0` — so nothing in the current code
+	 * path requires 1.96.0 specifically. It is retained as a conservative,
+	 * field-tested baseline rather than re-derived downward.
 	 */
 	private const MIN_SITE_KIT_VERSION = '1.96.0';
 
 	/**
 	 * Start date used for the all-time window when the GA4 property creation
-	 * time is unavailable.
+	 * time is missing or unusable.
 	 *
-	 * Deliberately predates GA4 itself — the first App + Web properties appeared
-	 * in 2019 — so it can never land after a property was created. That is what
-	 * makes the fallback safe: a start date earlier than the property returns
-	 * exactly the same totals as the property creation date, because GA4 holds
-	 * no data from before the property existed. A fallback that could land
-	 * *later* would silently undercount.
+	 * Predates GA4 itself — the first App + Web properties appeared in 2019 —
+	 * so it can never land after a property was created. It also doubles as the
+	 * lower bound in `is_usable_start_date()`.
+	 *
+	 * This rests on an assumption about Google's API, not about Site Kit: that
+	 * the GA4 Data API returns no rows for dates preceding property creation
+	 * rather than erroring. True in practice, but not something Site Kit
+	 * guarantees. (Data retention limits govern event-level and exploration
+	 * data, not standard aggregate pagePath/screenPageViews reports.)
 	 *
 	 * @since 1.3.3
 	 */
 	private const ALL_TIME_FALLBACK_START = '2019-01-01';
 
 	/**
-	 * Site Kit classes this provider instantiates directly. All are marked
-	 * `@access private` upstream, so their availability is verified before use
-	 * rather than assumed — see `has_required_classes()`.
+	 * Site Kit classes this provider depends on directly.
+	 *
+	 * `User_Options` and `Analytics_4` are marked `@access private` upstream.
+	 * `Plugin` is not — it is Site Kit's documented entry point — but its
+	 * `instance()` returns null before Site Kit has bootstrapped, so all three
+	 * are verified rather than assumed.
+	 *
+	 * Note this only catches class *removal*. The likelier upstream drift is a
+	 * changed constructor signature, which surfaces as a caught `\Throwable` in
+	 * `get_owner_bound_module()` instead.
 	 *
 	 * @since 1.3.3
 	 */
@@ -39,16 +55,6 @@ class SiteKit implements WebViewProvider {
 		'\Google\Site_Kit\Core\Storage\User_Options',
 		'\Google\Site_Kit\Modules\Analytics_4',
 	];
-
-	/**
-	 * Memoized all-time start date, so a multi-batch sync resolves it once
-	 * instead of re-querying for every batch of paths.
-	 *
-	 * @since 1.3.3
-	 *
-	 * @var string
-	 */
-	private static $all_time_start = '';
 
 	/**
 	 * Gets the provider slug identifier.
@@ -127,9 +133,9 @@ class SiteKit implements WebViewProvider {
 	 * Checks whether Site Kit is installed, active, and has a fully configured GA4 property.
 	 *
 	 * Verifies that the GOOGLESITEKIT_VERSION constant is defined, that the
-	 * internal classes this provider calls still exist, and that the GA4
-	 * settings option contains non-empty accountID, propertyID,
-	 * webDataStreamID, and measurementID values.
+	 * version meets MIN_SITE_KIT_VERSION, that the internal classes this
+	 * provider calls still exist, and that the GA4 settings option contains
+	 * non-empty accountID, propertyID, webDataStreamID, and measurementID values.
 	 *
 	 * @return bool True if Site Kit is available and GA4 is fully configured.
 	 */
@@ -167,21 +173,21 @@ class SiteKit implements WebViewProvider {
 	 *
 	 * Why not the REST route, and why not `wp_set_current_user()`: Site Kit
 	 * constructs its `User_Options` on `init` at priority -999 and caches
-	 * whichever user is current at that moment for the rest of the request. It
-	 * only ever re-binds that on `wp_login`. Under WP-Cron the current user is
-	 * 0, so a call-time `wp_set_current_user()` — which is what this method
-	 * used to do — never reached Site Kit's OAuth context, and every sync
-	 * failed with "you haven't granted all permissions requested during setup".
-	 * Constructing our own owner-bound `User_Options` sidesteps the timing
-	 * entirely: `Module::__construct()` passes it into the `Authentication` it
-	 * builds, so the OAuth client is owner-scoped by construction. This mirrors
-	 * how Site Kit's own background jobs work (see its `Synchronize_Property`,
-	 * which switches to the owner rather than relying on the current user).
+	 * whichever user is current at that moment. The only thing that re-binds it
+	 * for the remainder of a request is `wp_login`; everything else (Permissions,
+	 * the Synchronize_* crons, shared-module token refresh) switches temporarily
+	 * and restores. Under WP-Cron the current user is 0, so the call-time
+	 * `wp_set_current_user()` this method used to do never reached Site Kit's
+	 * OAuth context, and every sync failed with "you haven't granted all
+	 * permissions requested during setup". Constructing our own owner-bound
+	 * `User_Options` sidesteps the timing entirely: `Module::__construct()`
+	 * passes it into the `Authentication` it builds, so the OAuth client is
+	 * owner-scoped by construction. This mirrors how Site Kit's own background
+	 * jobs work — see its `Synchronize_Property`.
 	 *
 	 * Empty start_date semantics: an empty start in a window means "all-time".
-	 * Site Kit has no "no date range" mode — an omitted or unparseable range is
-	 * silently rewritten to the last 28 days — so all-time resolves to an
-	 * explicit early start date via `get_all_time_start_date()`.
+	 * Site Kit has no "no date range" mode, so all-time resolves to an explicit
+	 * early start date via `get_all_time_start_date()`.
 	 *
 	 * Failure semantics: all-or-nothing per call. If any window errors, we set
 	 * the provider error state and return `[]` so ProviderSync preserves
@@ -216,10 +222,11 @@ class SiteKit implements WebViewProvider {
 			return [];
 		}
 
-		$module = self::get_owner_bound_module( $owner_id );
+		$build_error = '';
+		$module      = self::get_owner_bound_module( $owner_id, $build_error );
 
 		if ( ! $module ) {
-			self::set_last_error( __( 'Could not build the Site Kit Analytics module. Site Kit may have changed internally; check for a Mai Analytics update.', 'mai-analytics' ) );
+			self::set_last_error( $build_error );
 			return [];
 		}
 
@@ -243,26 +250,43 @@ class SiteKit implements WebViewProvider {
 		foreach ( $windows as $window_name => $range ) {
 			[ $start_date, $end_date ] = $range;
 
+			// Both dates must survive Site Kit's `strtotime()` gate or it
+			// discards the pair and substitutes the last 28 days. The start is
+			// validated in get_all_time_start_date(); the end is defended here
+			// because get_views() is a public interface method and callers
+			// build their own windows.
 			$params              = $base_params;
 			$params['startDate'] = '' !== $start_date ? $start_date : self::get_all_time_start_date();
-			$params['endDate']   = $end_date;
+			$params['endDate']   = '' !== $end_date ? $end_date : gmdate( 'Y-m-d' );
 
-			// Site Kit's module internals are private API. A signature change
-			// upstream would otherwise surface as a fatal on every cron run,
-			// so contain it and let the all-or-nothing path preserve meta.
+			// Site Kit already converts its own exceptions to WP_Error inside
+			// Module::execute_data_request(), so this catch exists for
+			// engine-level \Error — e.g. a TypeError from a changed private-API
+			// signature — plus the shape errors parse_report_rows() raises.
+			// Both would otherwise fatal every cron run.
 			try {
 				$response = $module->get_data( 'report', $params );
+
+				if ( is_wp_error( $response ) ) {
+					throw new \RuntimeException( $response->get_error_message() );
+				}
+
+				$rows = self::parse_report_rows( $response );
 			} catch ( \Throwable $e ) {
-				$any_error_msg = $e->getMessage();
-				continue;
-			}
+				// Window and range context, because a bare Google message like
+				// "Request contains an invalid argument" is undiagnosable later.
+				$any_error_msg = sprintf(
+					'[%s window, %s to %s] %s',
+					$window_name,
+					$params['startDate'],
+					$params['endDate'],
+					$e->getMessage()
+				);
 
-			if ( is_wp_error( $response ) ) {
-				$any_error_msg = $response->get_error_message();
-				continue;
+				// The return value is already committed to [] — don't spend
+				// another authenticated round trip on the remaining windows.
+				break;
 			}
-
-			$rows = self::parse_report_rows( $response );
 
 			if ( ! $rows ) {
 				continue;
@@ -297,8 +321,15 @@ class SiteKit implements WebViewProvider {
 	 * Resolves the user whose Google credentials back the GA4 module.
 	 *
 	 * Prefers the module's own `ownerID` — the value Site Kit itself reads via
-	 * `Module_With_Owner_Trait::get_owner_id()` — then the site-wide owner
-	 * option, then the legacy option used by older Site Kit versions.
+	 * `Module_With_Owner_Trait::get_owner_id()`.
+	 *
+	 * Neither fallback option exists in Site Kit 1.181; a full-source grep for
+	 * `googlesitekit_owner_id` and `googlesitekit_first_admin` returns nothing.
+	 * They are retained only for sites still carrying values written by much
+	 * older versions. Once those stop appearing in the wild, delete both.
+	 *
+	 * Public so support tooling and tests can resolve the same user this
+	 * provider authenticates as.
 	 *
 	 * @since 1.3.3
 	 *
@@ -327,25 +358,35 @@ class SiteKit implements WebViewProvider {
 	 * resulting token owner-scoped regardless of who — if anyone — is the
 	 * current WordPress user.
 	 *
+	 * Returns a weakly-typed `?object` rather than `?Analytics_4` deliberately:
+	 * a top-level `use` of an `@access private` Site Kit class would make this
+	 * file's type references depend on a class that may not exist, which is the
+	 * very condition `has_required_classes()` exists to detect. The concrete
+	 * classes are also php-scoper-prefixed upstream
+	 * (`Google\Site_Kit_Dependencies\…`), so duck typing is the durable choice.
+	 *
 	 * @since 1.3.3
 	 *
-	 * @param int $owner_id The Site Kit module owner user ID.
+	 * @param int    $owner_id The Site Kit module owner user ID.
+	 * @param string $error    Set to a human-readable reason when null is returned.
 	 *
 	 * @return object|null The Analytics_4 module instance, or null on failure.
 	 */
-	private static function get_owner_bound_module( int $owner_id ): ?object {
+	private static function get_owner_bound_module( int $owner_id, string &$error = '' ): ?object {
 		if ( ! self::has_required_classes() ) {
-			return null;
-		}
-
-		// Site Kit's main instance is null until its own bootstrap has run.
-		$plugin = \Google\Site_Kit\Plugin::instance();
-
-		if ( ! $plugin ) {
+			$error = __( 'This version of Site Kit does not expose the internals Mai Analytics reads.', 'mai-analytics' );
 			return null;
 		}
 
 		try {
+			// Site Kit's main instance is null until its own bootstrap has run.
+			$plugin = \Google\Site_Kit\Plugin::instance();
+
+			if ( ! $plugin ) {
+				$error = __( 'Site Kit has not finished loading, so its Analytics module is unavailable.', 'mai-analytics' );
+				return null;
+			}
+
 			// context() is one of the few public methods Site Kit exposes, so
 			// the Context is obtained rather than constructed.
 			$context      = $plugin->context();
@@ -353,7 +394,15 @@ class SiteKit implements WebViewProvider {
 
 			return new \Google\Site_Kit\Modules\Analytics_4( $context, null, $user_options );
 		} catch ( \Throwable $e ) {
-			mai_analytics_logger()->error( 'Site Kit module build failed: ' . $e->getMessage() );
+			// Carry the real message: under cron the logger writes nowhere
+			// unless WP_DEBUG_LOG is on, so routing it through the caller's
+			// set_last_error() is the only way it reaches a human.
+			$error = sprintf(
+				/* translators: %s: the underlying PHP error message. */
+				__( 'Could not build the Site Kit Analytics module — check for a Mai Analytics update. Details: %s', 'mai-analytics' ),
+				$e->getMessage()
+			);
+
 			return null;
 		}
 	}
@@ -361,22 +410,34 @@ class SiteKit implements WebViewProvider {
 	/**
 	 * Reduces a GA4 report response to a path => view count map.
 	 *
-	 * Accepts both the Google service response object and a pre-decoded array,
-	 * since the response shape is not part of any contract we control.
+	 * Shape detection is positive on both levels, and an unrecognized shape
+	 * raises rather than returning an empty array. Returning empty would be
+	 * indistinguishable from "this site genuinely had no views", which the
+	 * caller treats as a successful window — so a changed Site Kit response
+	 * contract would stop all syncing with no error, no log, and a green status
+	 * in the admin. Failing loudly keeps that visible.
 	 *
 	 * @since 1.3.3
 	 *
 	 * @param mixed $response The report response from Analytics_4::get_data().
 	 *
-	 * @return array<string, int> Map of path to view count. Empty when nothing usable.
+	 * @throws \RuntimeException When the response or a row is not a shape we understand.
+	 *
+	 * @return array<string, int> Map of path to view count.
 	 */
 	private static function parse_report_rows( $response ): array {
-		$rows = [];
-
 		if ( is_object( $response ) && method_exists( $response, 'getRows' ) ) {
 			$rows = $response->getRows() ?: [];
-		} elseif ( is_array( $response ) && isset( $response['rows'] ) ) {
-			$rows = (array) $response['rows'];
+		} elseif ( is_array( $response ) && array_key_exists( 'rowCount', $response ) ) {
+			// GA4 omits `rows` entirely for a report with no data but always
+			// reports `rowCount`, so keying off `rows` alone cannot tell "no
+			// data" apart from "not a report response".
+			$rows = (array) ( $response['rows'] ?? [] );
+		} else {
+			throw new \RuntimeException( sprintf(
+				'Unrecognized GA4 report response (%s). Site Kit may have changed its report contract.',
+				is_object( $response ) ? get_class( $response ) : gettype( $response )
+			) );
 		}
 
 		$results = [];
@@ -387,9 +448,16 @@ class SiteKit implements WebViewProvider {
 				$metrics    = $row->getMetricValues() ?: [];
 				$path       = isset( $dimensions[0] ) ? (string) $dimensions[0]->getValue() : '';
 				$count      = isset( $metrics[0] ) ? (int) $metrics[0]->getValue() : 0;
-			} else {
+			} elseif ( is_array( $row ) ) {
 				$path  = (string) ( $row['dimensionValues'][0]['value'] ?? '' );
 				$count = (int) ( $row['metricValues'][0]['value'] ?? 0 );
+			} else {
+				// Array access on an object is a fatal, not a warning, so an
+				// unexpected row type must never reach the array branch.
+				throw new \RuntimeException( sprintf(
+					'Unrecognized GA4 report row (%s).',
+					is_object( $row ) ? get_class( $row ) : gettype( $row )
+				) );
 			}
 
 			if ( '' === $path || $count <= 0 ) {
@@ -405,44 +473,86 @@ class SiteKit implements WebViewProvider {
 	/**
 	 * Resolves the start date used for the all-time window.
 	 *
-	 * Site Kit has no "all data" mode: `ReportParsers::parse_dateranges()`
-	 * rewrites an omitted or unparseable range to the last 28 days, so an
-	 * explicit start is required or the all-time column silently becomes a
-	 * rolling 28-day count.
+	 * Site Kit has no "all data" mode: `Analytics_4\Report\ReportParsers::parse_dateranges()`
+	 * rewrites an omitted or unparseable range to the last 28 days (it has done
+	 * so since ~1.99, under earlier class names). Without an explicit start the
+	 * all-time column silently becomes a rolling 28-day count.
 	 *
-	 * Prefers the GA4 property creation time, which is populated by one of Site
-	 * Kit's own cron jobs and can be 0 on a freshly connected property. Both
-	 * branches return identical view totals — GA4 holds no data from before the
-	 * property existed — so the fallback only widens the queried range, never
-	 * the result. Using propertyCreateTime simply narrows the request and costs
-	 * less API quota.
+	 * Prefers the GA4 property creation time, which narrows the request and
+	 * costs less API quota. That value is populated by one of Site Kit's own
+	 * cron jobs and is 0 on a freshly connected property — or on Site Kit
+	 * < 1.116.0, which predates the setting entirely.
+	 *
+	 * The computed date is validated rather than trusted. `propertyCreateTime`
+	 * is a private-API setting read from another plugin, and a unit change
+	 * upstream would be silent: any value of 1–999 floors to 0, yielding
+	 * 1970-01-01, whose `strtotime()` is 0 — falsy — so Site Kit would discard
+	 * the range and revert to 28 days. "Earlier is always safe" only holds for
+	 * dates Site Kit actually accepts.
 	 *
 	 * @since 1.3.3
 	 *
 	 * @return string The start date as Y-m-d.
 	 */
 	private static function get_all_time_start_date(): string {
-		if ( '' !== self::$all_time_start ) {
-			return self::$all_time_start;
-		}
-
 		$settings = get_option( 'googlesitekit_analytics-4_settings', [] );
 		$created  = isset( $settings['propertyCreateTime'] ) ? (int) $settings['propertyCreateTime'] : 0;
 
-		// Site Kit stores propertyCreateTime in milliseconds.
-		self::$all_time_start = $created > 0
-			? gmdate( 'Y-m-d', (int) floor( $created / 1000 ) )
-			: self::ALL_TIME_FALLBACK_START;
+		// Back up a day: gmdate() yields the UTC date, but GA4 reads ranges in
+		// the property's own timezone, so a property created late in its local
+		// day west of UTC would otherwise lose its first day of views.
+		$candidate = $created > 0
+			? gmdate( 'Y-m-d', (int) floor( $created / 1000 ) - DAY_IN_SECONDS )
+			: '';
 
-		return self::$all_time_start;
+		if ( self::is_usable_start_date( $candidate ) ) {
+			return $candidate;
+		}
+
+		if ( $created > 0 ) {
+			// Distinguishes "not populated yet" (expected, silent) from
+			// "populated with something unusable" (a real upstream change).
+			mai_analytics_logger()->error( sprintf(
+				'Site Kit propertyCreateTime=%d produced an unusable all-time start date (%s); falling back to %s. Site Kit may have changed the stored unit.',
+				$created,
+				'' !== $candidate ? $candidate : '(none)',
+				self::ALL_TIME_FALLBACK_START
+			) );
+		}
+
+		return self::ALL_TIME_FALLBACK_START;
 	}
 
 	/**
-	 * Checks that every Site Kit class this provider instantiates still exists.
+	 * Checks whether a start date is one Site Kit will actually honor.
 	 *
-	 * These are all `@access private` upstream, so their presence is verified
-	 * rather than assumed — a Site Kit refactor degrades this provider to
-	 * "unavailable" instead of fataling on every cron run.
+	 * @since 1.3.3
+	 *
+	 * @param string $date The candidate date as Y-m-d.
+	 *
+	 * @return bool True when the date parses, is not in the future, and is not
+	 *              earlier than GA4 itself.
+	 */
+	private static function is_usable_start_date( string $date ): bool {
+		if ( '' === $date ) {
+			return false;
+		}
+
+		$timestamp = strtotime( $date );
+
+		// Site Kit gates on strtotime() truthiness, so 1970-01-01 — which
+		// parses to 0 — is treated as absent and silently rewritten.
+		if ( ! $timestamp ) {
+			return false;
+		}
+
+		// A future start date puts start after end, which Site Kit also
+		// rewrites to 28 days, and would otherwise return nothing forever.
+		return $timestamp >= strtotime( self::ALL_TIME_FALLBACK_START ) && $timestamp <= time();
+	}
+
+	/**
+	 * Checks that every Site Kit class this provider depends on still exists.
 	 *
 	 * @since 1.3.3
 	 *
