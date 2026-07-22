@@ -85,7 +85,7 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 				public function get_batch_size(): int { return $this->size; }
 				public function get_settings_fields(): array { return []; }
 
-				public function get_views( array $paths, array $windows ): array {
+				public function get_views( array $paths, array $windows ): ?array {
 					if ( $this->on_get_views ) {
 						return ( $this->on_get_views )( $paths, $windows );
 					}
@@ -298,8 +298,8 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 	}
 
 	public function test_sync_preserves_trending_on_provider_failure(): void {
-		// Provider is available but returns an empty payload (failure), so web_trending is null.
-		$this->register_mock_provider( 0, true, 50, function () { return []; } );
+		// Provider is available but signals failure with null, so web_trending is null.
+		$this->register_mock_provider( 0, true, 50, function () { return null; } );
 
 		$post_id = self::factory()->post->create( [ 'post_status' => 'publish' ] );
 		update_post_meta( $post_id, 'mai_trending', 50 );
@@ -425,8 +425,9 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 	}
 
 	/**
-	 * Registers a mock provider that always returns an empty array from
-	 * get_views(), simulating a provider HTTP failure for skip-recent tests.
+	 * Registers a mock provider that always returns null from get_views(),
+	 * simulating a provider HTTP failure for skip-recent tests. Null rather
+	 * than [] because [] now means "succeeded, nothing has views".
 	 *
 	 * @return void
 	 */
@@ -438,7 +439,7 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 				public function is_available(): bool { return true; }
 				public function get_batch_size(): int { return 50; }
 				public function get_settings_fields(): array { return []; }
-				public function get_views( array $paths, array $windows ): array { return []; }
+				public function get_views( array $paths, array $windows ): ?array { return null; }
 			} ];
 		} );
 
@@ -549,7 +550,7 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 
 		$this->drain_warm( ProviderSync::warm( [ 'type' => 'post' ] ) );
 
-		// Provider returned [], so the batch is treated as failed: existing
+		// Provider returned null, so the batch is treated as failed: existing
 		// meta is preserved and no `mai_views_synced_at` row is written.
 		// Otherwise the next warm would silently skip this object, masking
 		// the failure. Use metadata_exists() rather than get_post_meta() to
@@ -559,6 +560,42 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 		// And a follow-up warm should still process the object — not skip it.
 		$retry = $this->drain_warm( ProviderSync::warm( [ 'type' => 'post' ] ) );
 		$this->assertGreaterThanOrEqual( 1, $retry );
+	}
+
+	/**
+	 * An empty (but successful) provider response means "nothing here has
+	 * views", not "the provider failed". Those objects must still be stamped
+	 * as synced — otherwise the skip-recent filter never hides them and every
+	 * warm and sync pass re-fetches the same zero-view objects forever.
+	 *
+	 * @return void
+	 */
+	public function test_zero_view_batch_is_still_marked_synced(): void {
+		$this->register_mock_provider( 0, true, 50, function () { return []; } );
+
+		$post_id = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+		Database::insert_view( $post_id, 'post', 'web' );
+
+		ProviderSync::sync();
+
+		$this->assertTrue( metadata_exists( 'post', $post_id, 'mai_views_synced_at' ) );
+	}
+
+	/**
+	 * The counterpart to the test above: a real failure must NOT be stamped,
+	 * so the distinction between [] and null is load-bearing in both directions.
+	 *
+	 * @return void
+	 */
+	public function test_failed_batch_is_not_marked_synced(): void {
+		$this->register_mock_provider( 0, true, 50, function () { return null; } );
+
+		$post_id = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+		Database::insert_view( $post_id, 'post', 'web' );
+
+		ProviderSync::sync();
+
+		$this->assertFalse( metadata_exists( 'post', $post_id, 'mai_views_synced_at' ) );
 	}
 
 	public function test_provider_error_round_trip_via_helpers(): void {
@@ -644,7 +681,7 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 
 	public function test_sync_breaks_loop_when_breaker_trips_mid_run(): void {
 		// batch_size=1 so each buffer object is its own batch. The callback
-		// trips the breaker and returns [] (simulating provider failure)
+		// trips the breaker and returns null (simulating provider failure)
 		// while counting invocations.
 		$count = 0;
 		$this->register_mock_provider(
@@ -654,7 +691,7 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 			function () use ( &$count ) {
 				$count++;
 				Sync::set_provider_error( 'simulated batch failure' );
-				return [];
+				return null;
 			}
 		);
 
@@ -698,7 +735,7 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 			function () use ( &$count ) {
 				$count++;
 				Sync::set_provider_error( 'simulated batch failure' );
-				return [];
+				return null;
 			}
 		);
 

@@ -113,16 +113,17 @@ class Matomo implements WebViewProvider {
 	 * @param array<string>                            $paths   URL paths.
 	 * @param array<string, array{0:string,1:string}>  $windows Map of window name to [start, end].
 	 *
-	 * @return array<string, array<string, int>> Map of path => (window name => view count).
+	 * @return array<string, array<string, int>>|null Map of path => (window name =>
+	 *     view count), or null when the request could not be completed.
 	 */
-	public function get_views( array $paths, array $windows ): array {
+	public function get_views( array $paths, array $windows ): ?array {
 		$matomo_url = Settings::get( 'matomo_url' );
 		$site_id    = Settings::get( 'matomo_site_id' );
 		$token      = Settings::get( 'matomo_token' );
 
 		if ( ! ( $matomo_url && $site_id && $token ) ) {
 			self::set_last_error( __( 'Matomo provider missing required settings.', 'mai-analytics' ) );
-			return [];
+			return null;
 		}
 
 		if ( ! $paths || ! $windows ) {
@@ -184,7 +185,7 @@ class Matomo implements WebViewProvider {
 			// nothing semantics — partial results would let ProviderSync's
 			// `?? 0` fall through and silently zero meta for unfetched paths.
 			if ( null === $chunk_results ) {
-				return [];
+				return null;
 			}
 
 			$any_chunk_ok = true;
