@@ -72,7 +72,7 @@ class Test_Providers_SiteKit extends WP_UnitTestCase {
 		];
 	}
 
-	private function get_views( ?array $windows = null ): array {
+	private function get_views( ?array $windows = null ): ?array {
 		$provider = new SiteKit();
 
 		return $provider->get_views( [ '/post-a/' ], $windows ?? $this->windows() );
