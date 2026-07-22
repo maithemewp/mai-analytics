@@ -72,7 +72,7 @@ class Test_Providers_SiteKit extends WP_UnitTestCase {
 		];
 	}
 
-	private function get_views( ?array $windows = null ): array {
+	private function get_views( ?array $windows = null ): ?array {
 		$provider = new SiteKit();
 
 		return $provider->get_views( [ '/post-a/' ], $windows ?? $this->windows() );
@@ -107,15 +107,15 @@ class Test_Providers_SiteKit extends WP_UnitTestCase {
 		$this->assertSame( 0, SiteKit::get_owner_id() );
 	}
 
-	public function test_no_owner_stores_an_error_and_returns_empty(): void {
-		$this->assertSame( [], $this->get_views() );
+	public function test_no_owner_stores_an_error_and_returns_null(): void {
+		$this->assertNull( $this->get_views() );
 		$this->assertNotEmpty( SiteKit::get_last_error() );
 	}
 
 	public function test_missing_owner_user_stores_an_actionable_error(): void {
 		update_option( 'googlesitekit_analytics-4_settings', [ 'ownerID' => 999999 ] );
 
-		$this->assertSame( [], $this->get_views() );
+		$this->assertNull( $this->get_views() );
 		$this->assertStringContainsString( '999999', SiteKit::get_last_error() );
 	}
 
@@ -251,7 +251,8 @@ class Test_Providers_SiteKit extends WP_UnitTestCase {
 
 	/**
 	 * A report with no data still reports rowCount, so it must parse as a
-	 * successful empty result rather than raising.
+	 * successful empty result — [] rather than null — or the caller would treat
+	 * a zero-traffic batch as an outage and never stamp it as synced.
 	 *
 	 * @return void
 	 */
@@ -275,7 +276,7 @@ class Test_Providers_SiteKit extends WP_UnitTestCase {
 
 		Analytics_4::$responses = [ 'not a report' ];
 
-		$this->assertSame( [], $this->get_views() );
+		$this->assertNull( $this->get_views() );
 		$this->assertStringContainsString( 'Unrecognized', SiteKit::get_last_error() );
 	}
 
@@ -284,7 +285,7 @@ class Test_Providers_SiteKit extends WP_UnitTestCase {
 
 		Analytics_4::$responses = [ new Fake_Report( [ new stdClass() ] ) ];
 
-		$this->assertSame( [], $this->get_views() );
+		$this->assertNull( $this->get_views() );
 		$this->assertStringContainsString( 'Unrecognized', SiteKit::get_last_error() );
 	}
 
@@ -292,21 +293,21 @@ class Test_Providers_SiteKit extends WP_UnitTestCase {
 	// Failure semantics
 	// -----------------------------------------------------------------
 
-	public function test_wp_error_returns_empty_and_stores_the_message(): void {
+	public function test_wp_error_returns_null_and_stores_the_message(): void {
 		$this->set_module_settings();
 
 		Analytics_4::$responses = [ new WP_Error( 'boom', 'Insufficient scopes.' ) ];
 
-		$this->assertSame( [], $this->get_views() );
+		$this->assertNull( $this->get_views() );
 		$this->assertStringContainsString( 'Insufficient scopes.', SiteKit::get_last_error() );
 	}
 
-	public function test_thrown_error_returns_empty_and_stores_the_message(): void {
+	public function test_thrown_error_returns_null_and_stores_the_message(): void {
 		$this->set_module_settings();
 
 		Analytics_4::$responses = [ new TypeError( 'Too few arguments' ) ];
 
-		$this->assertSame( [], $this->get_views() );
+		$this->assertNull( $this->get_views() );
 		$this->assertStringContainsString( 'Too few arguments', SiteKit::get_last_error() );
 	}
 

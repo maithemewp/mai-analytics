@@ -108,9 +108,16 @@ class Jetpack implements WebViewProvider {
 	 * @param array<string>                            $paths   URL paths.
 	 * @param array<string, array{0:string,1:string}>  $windows Map of window name to [start, end].
 	 *
-	 * @return array<string, array<string, int>> Map of path => (window name => view count).
+	 * Failure semantics: all-or-nothing per call, per the WebViewProvider
+	 * contract. A single post whose stats cannot be fetched abandons the whole
+	 * call. Previously such a failure was skipped and the remaining posts were
+	 * returned, which the caller read as "the failed posts have zero views" and
+	 * wrote that zero over their real counts.
+	 *
+	 * @return array<string, array<string, int>>|null Map of path => (window name =>
+	 *     view count), or null when the request could not be completed.
 	 */
-	public function get_views( array $paths, array $windows ): array {
+	public function get_views( array $paths, array $windows ): ?array {
 		if ( ! $paths || ! $windows ) {
 			return [];
 		}
@@ -127,8 +134,12 @@ class Jetpack implements WebViewProvider {
 
 			$data = $this->fetch_post_views( $post_id );
 
+			// fetch_post_views() has already recorded the error. Abandon the
+			// whole call rather than returning the posts that did resolve —
+			// the caller reads a missing path as a genuine zero and would
+			// overwrite the real count of every post whose fetch failed.
 			if ( null === $data ) {
-				continue;
+				return null;
 			}
 
 			// Every window for this path comes out of the same raw dataset.
@@ -148,9 +159,9 @@ class Jetpack implements WebViewProvider {
 			}
 		}
 
-		if ( $views ) {
-			Sync::clear_provider_error();
-		}
+		// Reaching here means every path resolved, so the provider is healthy
+		// even when nothing had views — clear on success, not on non-emptiness.
+		Sync::clear_provider_error();
 
 		return $views;
 	}

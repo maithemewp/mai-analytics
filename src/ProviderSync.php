@@ -218,8 +218,14 @@ class ProviderSync {
 
 		// One bulk call for both windows. See WebViewProvider::get_views() for
 		// the contract; ordering rationale lives on the WINDOW_* constants.
+		//
+		// Null means the request failed; an empty array means it succeeded and
+		// nothing has views. Distinguishing them matters: treating "no views"
+		// as failure would skip the synced-at stamp below, so a batch of
+		// zero-view objects would be re-fetched on every pass forever.
 		$web_views       = $provider->get_views( $paths, $windows );
-		$provider_failed = empty( $web_views );
+		$provider_failed = null === $web_views;
+		$web_views       = $web_views ?? [];
 
 		// Options for post_type archives.
 		$pt_views     = get_option( 'mai_analytics_post_type_views', [] );
@@ -246,6 +252,13 @@ class ProviderSync {
 			// Providers are responsible for enforcing the math invariant
 			// `all_time >= trending` per path before returning — see
 			// Matomo::get_views() for the rationale.
+			//
+			// The `?? 0` is deliberate, not a missing-data bug. Providers omit
+			// paths and windows with no views, so within a successful response
+			// an absent key means the object genuinely has zero views for that
+			// window, and that zero must be written. Providers guarantee this
+			// is safe by returning null rather than a partial result whenever
+			// any part of the request fails — see WebViewProvider::get_views().
 			$web_total    = ( ! $provider_failed && $path ) ? (int) ( $web_views[ $path ][ self::WINDOW_ALL_TIME ] ?? 0 ) : null;
 			$web_trending = ( ! $provider_failed && $path ) ? (int) ( $web_views[ $path ][ self::WINDOW_TRENDING ] ?? 0 ) : null;
 
@@ -654,8 +667,11 @@ class ProviderSync {
 
 		if ( $path_map ) {
 			$paths           = array_keys( $path_map );
+			// Null means failed, empty array means succeeded with no views —
+			// see the same distinction in process_batch().
 			$web_views       = $state['provider']->get_views( $paths, $state['windows'] );
-			$provider_failed = empty( $web_views );
+			$provider_failed = null === $web_views;
+			$web_views       = $web_views ?? [];
 
 			foreach ( $path_map as $path => $obj ) {
 				$id   = (int) $obj->object_id;
@@ -664,6 +680,7 @@ class ProviderSync {
 
 				// Providers enforce all_time >= trending themselves — see
 				// Matomo::get_views() — so we just read what they returned.
+				// `?? 0` is deliberate; see the note in process_batch().
 				$web_total    = $provider_failed ? null : (int) ( $web_views[ $path ][ self::WINDOW_ALL_TIME ] ?? 0 );
 				$web_trending = $provider_failed ? null : (int) ( $web_views[ $path ][ self::WINDOW_TRENDING ] ?? 0 );
 

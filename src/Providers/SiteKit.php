@@ -189,16 +189,19 @@ class SiteKit implements WebViewProvider {
 	 * Site Kit has no "no date range" mode, so all-time resolves to an explicit
 	 * early start date via `get_all_time_start_date()`.
 	 *
-	 * Failure semantics: all-or-nothing per call. If any window errors, we set
-	 * the provider error state and return `[]` so ProviderSync preserves
-	 * existing meta rather than overwriting the missing window's column with 0.
+	 * Failure semantics: all-or-nothing per call, per the WebViewProvider
+	 * contract. If anything fails we set the provider error state and return
+	 * null so ProviderSync preserves existing meta. Returning the windows that
+	 * did succeed would let the caller read the missing ones as genuine zeros
+	 * and erase real counts.
 	 *
 	 * @param array<string>                            $paths   URL paths.
 	 * @param array<string, array{0:string,1:string}>  $windows Map of window name to [start, end].
 	 *
-	 * @return array<string, array<string, int>> Map of path => (window name => view count).
+	 * @return array<string, array<string, int>>|null Map of path => (window name =>
+	 *     view count), or null when the request could not be completed.
 	 */
-	public function get_views( array $paths, array $windows ): array {
+	public function get_views( array $paths, array $windows ): ?array {
 		if ( ! $paths || ! $windows ) {
 			return [];
 		}
@@ -207,7 +210,7 @@ class SiteKit implements WebViewProvider {
 
 		if ( ! $owner_id ) {
 			self::set_last_error( __( 'Site Kit owner user not found. Cannot authenticate GA4 request.', 'mai-analytics' ) );
-			return [];
+			return null;
 		}
 
 		// A stale owner option pointing at a deleted user yields a module bound
@@ -219,7 +222,7 @@ class SiteKit implements WebViewProvider {
 				__( 'Site Kit owner user (ID %d) does not exist. Have an existing admin re-sign-in via Site Kit, or update the Analytics module owner.', 'mai-analytics' ),
 				$owner_id
 			) );
-			return [];
+			return null;
 		}
 
 		$build_error = '';
@@ -227,7 +230,7 @@ class SiteKit implements WebViewProvider {
 
 		if ( ! $module ) {
 			self::set_last_error( $build_error );
-			return [];
+			return null;
 		}
 
 		$results       = [];
@@ -299,15 +302,14 @@ class SiteKit implements WebViewProvider {
 			}
 		}
 
-		// All-or-nothing failure semantics: if any window errored, return [] so
-		// ProviderSync's `empty( $web_views )` check trips and existing meta is
-		// preserved. Returning a partial result would let the caller's
-		// `$web_views[$path][$missing_window] ?? 0` fall through to 0 and
+		// All-or-nothing failure semantics: if any window errored, return null so
+		// the caller preserves existing meta. Returning a partial result would
+		// let `$web_views[$path][$missing_window] ?? 0` fall through to 0 and
 		// silently overwrite the failed column with zero. The stored error
 		// surfaces the failure to the admin UI either way.
 		if ( '' !== $any_error_msg ) {
 			self::set_last_error( $any_error_msg );
-			return [];
+			return null;
 		}
 
 		if ( $any_success ) {
