@@ -2,7 +2,7 @@
 /**
  * Mai_Logger — lightweight logger for WordPress plugins.
  *
- * @version 0.1.1
+ * @version 0.1.2
  *
  * Loaded lazily by Mai_Logger_Bootstrap's autoloader, which selects the
  * newest version registered across all installed plugins.
@@ -17,7 +17,7 @@ defined( 'ABSPATH' ) || 'cli' === PHP_SAPI || exit;
 
 class Mai_Logger {
 
-	const VERSION = '0.1.1';
+	const VERSION = '0.1.2';
 
 	/**
 	 * Display name used as the prefix on every log line.

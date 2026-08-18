@@ -8,16 +8,16 @@
     "packages": [
         {
             "name": "maithemewp/mai-logger",
-            "version": "v0.1.1",
+            "version": "v0.1.2",
             "source": {
                 "type": "git",
                 "url": "https://github.com/maithemewp/mai-logger.git",
-                "reference": "388af2ec1fa699cbdcaddc6b18ead889dbeed434"
+                "reference": "267c5db29f076db0f9d452bc7496e83a50855bc1"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/maithemewp/mai-logger/zipball/388af2ec1fa699cbdcaddc6b18ead889dbeed434",
-                "reference": "388af2ec1fa699cbdcaddc6b18ead889dbeed434",
+                "url": "https://api.github.com/repos/maithemewp/mai-logger/zipball/267c5db29f076db0f9d452bc7496e83a50855bc1",
+                "reference": "267c5db29f076db0f9d452bc7496e83a50855bc1",
                 "shasum": ""
             },
             "require": {
@@ -35,23 +35,23 @@
             "description": "Versioned, drop-in logger for WordPress plugins. Newest installed version wins at runtime.",
             "homepage": "https://github.com/maithemewp/mai-logger",
             "support": {
-                "source": "https://github.com/maithemewp/mai-logger/tree/v0.1.1",
+                "source": "https://github.com/maithemewp/mai-logger/tree/v0.1.2",
                 "issues": "https://github.com/maithemewp/mai-logger/issues"
             },
-            "time": "2026-07-06T18:21:04+00:00"
+            "time": "2026-07-08T21:01:11+00:00"
         },
         {
             "name": "yahnis-elsts/plugin-update-checker",
-            "version": "v5.6",
+            "version": "v5.7",
             "source": {
                 "type": "git",
                 "url": "https://github.com/YahnisElsts/plugin-update-checker.git",
-                "reference": "a2db6871deec989a74e1f90fafc6d58ae526a879"
+                "reference": "275a96a2a18d03c34c87f35cb68673c8c49ac3b1"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/YahnisElsts/plugin-update-checker/zipball/a2db6871deec989a74e1f90fafc6d58ae526a879",
-                "reference": "a2db6871deec989a74e1f90fafc6d58ae526a879",
+                "url": "https://api.github.com/repos/YahnisElsts/plugin-update-checker/zipball/275a96a2a18d03c34c87f35cb68673c8c49ac3b1",
+                "reference": "275a96a2a18d03c34c87f35cb68673c8c49ac3b1",
                 "shasum": ""
             },
             "require": {
@@ -61,7 +61,7 @@
             "type": "library",
             "autoload": {
                 "files": [
-                    "load-v5p6.php"
+                    "load-v5p7.php"
                 ]
             },
             "notification-url": "https://packagist.org/downloads/",
@@ -86,9 +86,9 @@
             ],
             "support": {
                 "issues": "https://github.com/YahnisElsts/plugin-update-checker/issues",
-                "source": "https://github.com/YahnisElsts/plugin-update-checker/tree/v5.6"
+                "source": "https://github.com/YahnisElsts/plugin-update-checker/tree/v5.7"
             },
-            "time": "2025-05-20T12:29:01+00:00"
+            "time": "2026-05-26T12:48:45+00:00"
         }
     ],
     "packages-dev": [

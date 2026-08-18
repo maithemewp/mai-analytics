@@ -7,5 +7,5 @@ $baseDir = dirname($vendorDir);
 
 return array(
     '8ce417dc94e97e8bdcca8ea65c25676a' => $vendorDir . '/maithemewp/mai-logger/init.php',
-    'f6d4f6bcee7247df6b777884c3e22f98' => $vendorDir . '/yahnis-elsts/plugin-update-checker/load-v5p6.php',
+    'bc0af1337b39f0d750e835f5263eb646' => $vendorDir . '/yahnis-elsts/plugin-update-checker/load-v5p7.php',
 );
