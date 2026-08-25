@@ -19,3 +19,6 @@ data/.bot-patterns-hash
 !/vendor/maithemewp/
 !/vendor/yahnis-elsts/
 .githooks/
+
+# Regenerates with the current git ref, so tracking it dirties the tree after every commit.
+/vendor/composer/installed.php
