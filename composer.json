@@ -4,8 +4,14 @@
     "type": "wordpress-plugin",
     "license": "GPL-2.0-or-later",
     "repositories": [
-        { "type": "vcs", "url": "https://github.com/maithemewp/mai-logger" },
-        { "type": "vcs", "url": "https://github.com/bizbudding/deployable-guard" }
+        {
+            "type": "vcs",
+            "url": "https://github.com/maithemewp/mai-logger"
+        },
+        {
+            "type": "vcs",
+            "url": "https://github.com/bizbudding/deployable-guard"
+        }
     ],
     "require": {
         "yahnis-elsts/plugin-update-checker": "^5.0",
@@ -23,13 +29,15 @@
     },
     "scripts": {
         "update-bots": "php bin/update-bot-patterns.php",
+        "test": "phpunit",
+        "install-git-hooks": [
+            "sh -c 'test -f vendor/bin/deployable-guard && php vendor/bin/deployable-guard install-hook || true'"
+        ],
         "post-install-cmd": [
-            "@php vendor/bin/deployable-guard install-hook"
+            "@install-git-hooks"
         ],
         "post-update-cmd": [
-            "@update-bots",
-            "@php vendor/bin/deployable-guard install-hook"
-        ],
-        "test": "phpunit"
+            "@install-git-hooks"
+        ]
     }
 }
