@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.4 (8/26/26)
+
+* Changed: [Developers] Updated mai-logger to 0.1.2.
+* Changed: [Developers] Updated plugin-update-checker to 5.7.
+* Changed: [Developers] The deployable-guard pre-commit hook now installs via a named `install-git-hooks` composer script, so it can also be run on its own. Dev tooling only.
+* Changed: [Developers] `vendor/composer/installed.php` is no longer tracked. It rebuilds itself every time Composer runs, which left the working tree dirty after every commit. Nothing loads it.
+* Fixed: Trending counts could go wrong while an analytics provider was down. Posts, terms and users got inflated on every failed sync; post type archives got wiped to zero. Trending is now left alone until real data comes back. All-time views were never affected, and bad values correct themselves on the next successful sync.
+
 ## 1.3.3 (7/21/26)
 
 * Added: The Site Health report now lists availability for every registered analytics provider, not just the selected one — with the specific reason when a provider is unavailable (Site Kit not installed, too old, or GA4 not connected). An unavailable provider is disabled in the settings dropdown and so could never be selected, which meant there was previously no way to find out why. These entries are informational, not pass/fail.
