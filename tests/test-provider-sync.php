@@ -749,4 +749,111 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 		// Force pushes through every batch — 5 attempts, not 1.
 		$this->assertSame( 5, $count );
 	}
+
+	/**
+	 * A failed provider read must not re-add the app window on top of the
+	 * stored trending value.
+	 *
+	 * `mai_trending` already contains the app count written by the last
+	 * successful sync, and `$app_trending` is an absolute count over the whole
+	 * window rather than a delta, so adding it to the stored value compounds on
+	 * every failed run. At a 15-minute cron that is ~96 inflations a day for as
+	 * long as the provider stays down.
+	 *
+	 * @since 1.3.4
+	 *
+	 * @return void
+	 */
+	public function test_sync_does_not_inflate_trending_on_provider_failure(): void {
+		$this->register_mock_provider( 0, true, 50, function () { return null; } );
+
+		$post_id = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+
+		// Stands in for a previous successful sync of 47 web + 3 app.
+		update_post_meta( $post_id, 'mai_trending', 50 );
+
+		// The same three app rows are still inside the trending window.
+		Database::insert_view( $post_id, 'post', 'app' );
+		Database::insert_view( $post_id, 'post', 'app' );
+		Database::insert_view( $post_id, 'post', 'app' );
+
+		// A web row queues the object for this sync.
+		Database::insert_view( $post_id, 'post', 'web' );
+
+		ProviderSync::sync();
+
+		$this->assertSame( '50', get_post_meta( $post_id, 'mai_trending', true ) );
+	}
+
+	/**
+	 * A failed provider read must not wipe a post type archive's trending count.
+	 *
+	 * The meta branch guards its web writes behind `null !== $web_total`, but the
+	 * option branch computes `( $web_trending ?? 0 ) + $app_trending`, so a failed
+	 * read coalesces the unknown web portion to 0 and persists it. On a site with
+	 * no app traffic that zeroes the archive outright.
+	 *
+	 * @since 1.3.4
+	 *
+	 * @return void
+	 */
+	public function test_sync_preserves_post_type_trending_on_provider_failure(): void {
+		register_post_type( 'mai_doc', [ 'public' => true, 'has_archive' => true ] );
+
+		$this->register_mock_provider( 0, true, 50, function () { return null; } );
+
+		update_option( 'mai_analytics_post_type_trending', [ 'mai_doc' => 42 ] );
+
+		Database::insert_view( 0, 'post_type', 'web', 'mai_doc' );
+
+		ProviderSync::sync();
+
+		$trending = get_option( 'mai_analytics_post_type_trending', [] );
+
+		$this->assertSame( 42, $trending['mai_doc'] ?? null );
+	}
+
+	/**
+	 * Warm shares process_batch()'s merge logic, so it shares the inflation bug.
+	 *
+	 * @since 1.3.4
+	 *
+	 * @return void
+	 */
+	public function test_warm_does_not_inflate_trending_on_provider_failure(): void {
+		$this->register_mock_provider( 0, true, 50, function () { return null; } );
+
+		$post_id = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+
+		update_post_meta( $post_id, 'mai_trending', 50 );
+
+		Database::insert_view( $post_id, 'post', 'app' );
+		Database::insert_view( $post_id, 'post', 'app' );
+		Database::insert_view( $post_id, 'post', 'app' );
+
+		$this->drain_warm( ProviderSync::warm( [ 'type' => 'post' ] ) );
+
+		$this->assertSame( '50', get_post_meta( $post_id, 'mai_trending', true ) );
+	}
+
+	/**
+	 * Warm shares the option branch too, so it shares the zeroing bug.
+	 *
+	 * @since 1.3.4
+	 *
+	 * @return void
+	 */
+	public function test_warm_preserves_post_type_trending_on_provider_failure(): void {
+		register_post_type( 'mai_doc', [ 'public' => true, 'has_archive' => true ] );
+
+		$this->register_mock_provider( 0, true, 50, function () { return null; } );
+
+		update_option( 'mai_analytics_post_type_trending', [ 'mai_doc' => 42 ] );
+
+		$this->drain_warm( ProviderSync::warm( [ 'type' => 'archive', 'post_type' => 'mai_doc' ] ) );
+
+		$trending = get_option( 'mai_analytics_post_type_trending', [] );
+
+		$this->assertSame( 42, $trending['mai_doc'] ?? null );
+	}
 }

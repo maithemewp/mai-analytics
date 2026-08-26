@@ -303,8 +303,14 @@ class ProviderSync {
 				}
 				$pt_views_app[ $key ] = ( $pt_views_app[ $key ] ?? 0 ) + $app_new;
 				$pt_views[ $key ]     = ( $pt_views_web[ $key ] ?? 0 ) + ( $pt_views_app[ $key ] ?? 0 );
-				$pt_trending[ $key ]  = ( $web_trending ?? 0 ) + $app_trending;
 				$pt_options_dirty     = true;
+
+				// Guarded like $pt_views_web above. Coalescing a failed read to 0
+				// would persist a zeroed archive rather than a stale one, and on a
+				// site with no app traffic that wipes the count outright.
+				if ( null !== $web_trending ) {
+					$pt_trending[ $key ] = $web_trending + $app_trending;
+				}
 
 				// Only mark synced when the provider returned data. On failure
 				// we preserve existing meta but must NOT update the timestamp,
@@ -320,15 +326,19 @@ class ProviderSync {
 				}
 				Stats::add_app( $id, $type, $app_new );
 
-				// Trending: only update web portion if provider succeeded.
-				$current_web_trending = ( null !== $web_trending ) ? $web_trending : (int) Sync::get_meta( $id, $type, 'mai_trending' );
-				$new_trending         = $current_web_trending + $app_trending;
-
-				// Route through the store so 0 deletes the row instead of bloating the
-				// meta_value+0 sort. On a failed provider read the null-guard above falls
-				// back to the existing stored trending (plus app views), which is >= the
-				// old value, so this never deletes off a failure.
-				Stats::set_trending( $id, $type, $new_trending );
+				// Only rewrite trending when the provider succeeded. The stored
+				// value already contains the app count written by the last good
+				// sync, and $app_trending is an absolute count over the window
+				// rather than a delta, so folding it into the stored value would
+				// re-add it on every failed run and compound without bound.
+				// Leaving the value untouched keeps it stale rather than wrong,
+				// which is the same trade the web meta above makes.
+				//
+				// Route through the store so 0 deletes the row instead of
+				// bloating the meta_value+0 sort.
+				if ( null !== $web_trending ) {
+					Stats::set_trending( $id, $type, $web_trending + $app_trending );
+				}
 
 				// Recompute total. Floor at trending so the math invariant
 				// (total >= trending) holds even if the all-time number is
@@ -706,8 +716,12 @@ class ProviderSync {
 					}
 					$app_count                    = (int) ( $state['pt_views_app'][ $key ] ?? 0 );
 					$state['pt_views'][ $key ]    = ( $state['pt_views_web'][ $key ] ?? 0 ) + $app_count;
-					$state['pt_trending'][ $key ] = ( $web_trending ?? 0 ) + $app_trending;
 					$state['pt_dirty']            = true;
+
+					// Guarded like $pt_views_web above. Mirrors process_batch().
+					if ( null !== $web_trending ) {
+						$state['pt_trending'][ $key ] = $web_trending + $app_trending;
+					}
 
 					// Only mark synced when the provider returned data. On
 					// failure we preserve existing meta but must NOT advance
@@ -721,14 +735,15 @@ class ProviderSync {
 						Stats::set_web( $id, $type, $web_total );
 					}
 
-					// Trending total — only update web portion if provider succeeded.
-					$effective_web_trending = ( null !== $web_trending ) ? $web_trending : (int) Sync::get_meta( $id, $type, 'mai_trending' );
-					$new_trending           = $effective_web_trending + $app_trending;
-
-					// Route through the store so 0 deletes the row instead of bloating the
-					// meta_value+0 sort. On failure the null-guard falls back to the existing
-					// stored trending (plus app views), never below it. Mirrors process_batch().
-					Stats::set_trending( $id, $type, $new_trending );
+					// Only rewrite trending when the provider succeeded. See the
+					// matching branch in process_batch() for why folding
+					// $app_trending into the stored value compounds on failure.
+					//
+					// Route through the store so 0 deletes the row instead of
+					// bloating the meta_value+0 sort.
+					if ( null !== $web_trending ) {
+						Stats::set_trending( $id, $type, $web_trending + $app_trending );
+					}
 
 					// Recompute total. Floor at trending so the math invariant
 					// (total >= trending) holds even if all-time is stale.
