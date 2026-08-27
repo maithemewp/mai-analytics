@@ -5,6 +5,7 @@
  * Plugin URI:      https://bizbudding.com/
  * Description:     View tracking for posts, terms, and authors. Supports self-hosted tracking, Google Analytics (via Site Kit), Matomo, and Jetpack Stats.
  * Version:         1.3.4
+ * Requires PHP:    8.1
  *
  * Author:          BizBudding
  * Author URI:      https://bizbudding.com
