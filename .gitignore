@@ -1,9 +1,9 @@
 *.log
-mai-sites.json
 .DS_Store
 .AppleDouble
 .LSOverride
 data/.bot-patterns-hash
+mai-sites.json
 
 # PHPUnit run cache (dev artifact).
 .phpunit.result.cache
