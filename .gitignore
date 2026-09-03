@@ -1,4 +1,5 @@
 *.log
+mai-sites.json
 .DS_Store
 .AppleDouble
 .LSOverride
