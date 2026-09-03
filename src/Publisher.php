@@ -89,6 +89,12 @@ class Publisher {
 	 * @return array Settings keys whose value would change, empty when in sync.
 	 */
 	public static function get_copyable_matomo_settings(): array {
+		// Nothing worth offering unless Mai Publisher holds a coherent pair. A
+		// lone token with no URL or site ID can't configure anything.
+		if ( ! self::has_matomo_settings() ) {
+			return [];
+		}
+
 		$copyable = [];
 
 		foreach ( self::get_matomo_settings() as $key => $value ) {
