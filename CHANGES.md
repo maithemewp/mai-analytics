@@ -2,7 +2,7 @@
 
 ## 1.3.5 (9/3/26)
 
-* Added: A "Copy from Mai Publisher" button on the settings page fills the Matomo URL, Site ID and Auth Token from Mai Publisher's Matomo Tracking config. It fills the fields only, so you can check the values before saving.
+* Added: A "Copy from Mai Publisher" button on the settings page fills the Matomo URL, Site ID and Auth Token from Mai Publisher's Matomo Tracking config. It fills the fields only, so you can check the values before saving, and it appears only when copying would actually change something.
 * Fixed: Matomo could not be selected as the view tracking source. The dropdown option was disabled until the Matomo credentials were filled in, but those fields only appeared once Matomo was selected, so there was no way to configure it. Unconfigured providers can now be selected and are labelled "(not configured)".
 * Fixed: The one-time settings pull from Mai Publisher missed Matomo credentials on most sites and could wipe existing settings. It read Mai Publisher's stored option directly, so values supplied by a constant or filter were invisible to it, it ran before Mai Publisher had loaded, and it replaced the whole settings array rather than filling in the gaps. It now runs once Mai Publisher is available and only fills in settings that are missing.
 * Fixed: Provider Status reported on the saved provider rather than the one selected in the dropdown, so choosing Matomo showed "Select a provider to see its status". Each provider now has its own status, matching whatever is selected, and says when the selection has not been saved yet.

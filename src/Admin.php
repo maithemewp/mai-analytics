@@ -158,7 +158,7 @@ class Admin {
 			wp_localize_script( 'mai-analytics-admin-settings', 'maiAnalyticsSettings', [
 				'restBase'        => esc_url_raw( rest_url( 'mai-analytics/v1/admin/' ) ),
 				'nonce'           => wp_create_nonce( 'wp_rest' ),
-				'publisherMatomo' => Publisher::has_matomo_settings() ? Publisher::get_matomo_settings() : [],
+				'publisherMatomo' => Publisher::get_copyable_matomo_settings(),
 			] );
 		}
 	}

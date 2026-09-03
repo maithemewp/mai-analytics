@@ -132,15 +132,19 @@ class AdminSettings {
 			);
 		}
 
-		// Matomo-specific settings fields (toggled via CSS).
-		add_settings_field(
-			'copy_from_publisher',
-			__( 'Copy from Mai Publisher', 'mai-analytics' ),
-			[ $this, 'render_copy_from_publisher' ],
-			'mai-analytics-settings',
-			'mai_analytics_data_source',
-			[ 'class' => 'mai-analytics-provider-matomo' ]
-		);
+		// Matomo-specific settings fields (toggled via CSS). The copy row only
+		// exists when copying would change something, so it disappears once the
+		// two plugins are in sync rather than sitting there doing nothing.
+		if ( Publisher::get_copyable_matomo_settings() ) {
+			add_settings_field(
+				'copy_from_publisher',
+				__( 'Copy from Mai Publisher', 'mai-analytics' ),
+				[ $this, 'render_copy_from_publisher' ],
+				'mai-analytics-settings',
+				'mai_analytics_data_source',
+				[ 'class' => 'mai-analytics-provider-matomo' ]
+			);
+		}
 
 		add_settings_field(
 			'matomo_url',
@@ -329,15 +333,6 @@ class AdminSettings {
 	 * @return void
 	 */
 	public function render_copy_from_publisher(): void {
-		if ( ! Publisher::is_active() ) {
-			return;
-		}
-
-		if ( ! Publisher::has_matomo_settings() ) {
-			echo '<p class="description">' . esc_html__( 'Mai Publisher has no Matomo URL and Site ID to copy.', 'mai-analytics' ) . '</p>';
-			return;
-		}
-
 		$publisher = Publisher::get_matomo_settings();
 		?>
 		<button type="button" class="button" id="mai-analytics-copy-publisher">
