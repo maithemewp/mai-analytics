@@ -12,43 +12,66 @@ class Migration {
 	 * @return void
 	 */
 	public static function maybe_migrate(): void {
-		self::maybe_migrate_from_publisher();
+		// Deferred to admin_init so Mai Publisher has loaded. Its Matomo values
+		// commonly come from constants or filters that only maipub_get_option()
+		// resolves, and that function does not exist yet during plugins_loaded.
+		add_action( 'admin_init', [ __CLASS__, 'maybe_migrate_from_publisher' ], 5 );
+
 		self::maybe_migrate_legacy_meta_keys();
 	}
 
 	/**
-	 * Migrates views-related settings from Mai Publisher's option.
+	 * Migrates views-related settings from Mai Publisher.
 	 *
-	 * Only runs if mai_analytics_settings doesn't exist yet and mai_publisher option is present.
-	 * Reads the Mai Publisher option but does not modify it.
+	 * Runs once, on the first admin request after Mai Analytics is installed
+	 * alongside Mai Publisher. Fills in only the settings Mai Analytics does not
+	 * already have, so values an admin entered here are never clobbered. Reads
+	 * Mai Publisher's settings but does not modify them.
+	 *
+	 * Matomo credentials come from Publisher::get_matomo_settings(), which uses
+	 * Mai Publisher's accessor so constant- and filter-supplied values resolve.
+	 * The legacy views_* keys are read from the raw option, since those only ever
+	 * lived in the database.
+	 *
+	 * @since 1.3.5 Merges instead of overwriting, and reads Matomo values through
+	 *              Mai Publisher's accessor.
 	 *
 	 * @return void
 	 */
-	private static function maybe_migrate_from_publisher(): void {
+	public static function maybe_migrate_from_publisher(): void {
 		if ( get_option( 'mai_analytics_migrated_from_publisher' ) ) {
 			return;
 		}
 
 		$publisher = get_option( 'mai_publisher', [] );
 
-		if ( ! $publisher ) {
+		if ( ! $publisher && ! Publisher::is_active() ) {
 			return;
 		}
 
-		$views_api = $publisher['views_api'] ?? 'disabled';
+		$settings = get_option( 'mai_analytics_settings', [] );
 
-		// Map Mai Publisher's views_api to Mai Analytics' data_source.
-		$data_source = in_array( $views_api, [ 'matomo', 'jetpack', 'disabled' ], true )
-			? $views_api
-			: 'self_hosted';
+		// Fill only what's missing here. An admin who already entered credentials
+		// on the Mai Analytics settings page keeps them.
+		foreach ( Publisher::get_matomo_settings() as $key => $value ) {
+			if ( '' !== $value && empty( $settings[ $key ] ) ) {
+				$settings[ $key ] = $value;
+			}
+		}
 
-		$settings = [
-			'data_source'    => $data_source,
-			'sync_user'      => get_current_user_id() ?: self::get_first_admin_id(),
-			'matomo_url'     => $publisher['matomo_url'] ?? '',
-			'matomo_site_id' => $publisher['matomo_site_id'] ?? '',
-			'matomo_token'   => $publisher['matomo_token'] ?? '',
-		];
+		if ( ! isset( $settings['data_source'] ) ) {
+			$views_api = $publisher['views_api'] ?? '';
+
+			// Map Mai Publisher's legacy views_api to Mai Analytics' data_source,
+			// falling back to Matomo when Mai Publisher has Matomo configured.
+			$settings['data_source'] = in_array( $views_api, [ 'matomo', 'jetpack', 'disabled' ], true )
+				? $views_api
+				: ( Publisher::has_matomo_settings() ? 'matomo' : 'self_hosted' );
+		}
+
+		if ( ! isset( $settings['sync_user'] ) ) {
+			$settings['sync_user'] = get_current_user_id() ?: self::get_first_admin_id();
+		}
 
 		update_option( 'mai_analytics_settings', $settings, false );
 

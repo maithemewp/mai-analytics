@@ -14,6 +14,42 @@
 // Exit if accessed directly.
 if ( ! defined( 'ABSPATH' ) ) exit;
 
+if ( ! function_exists( 'mai_analytics_standalone_is_active' ) ) {
+	/**
+	 * Checks whether a standalone Mai Analytics plugin is active.
+	 *
+	 * Reads the active plugin list directly. is_plugin_active() lives in an admin
+	 * file that isn't loaded this early, and this runs while plugins load.
+	 *
+	 * @since 1.3.5
+	 *
+	 * @return bool True when a non-bundled copy is active.
+	 */
+	function mai_analytics_standalone_is_active(): bool {
+		$active = (array) get_option( 'active_plugins', [] );
+
+		if ( is_multisite() ) {
+			$active = array_merge( $active, array_keys( (array) get_site_option( 'active_sitewide_plugins', [] ) ) );
+		}
+
+		foreach ( $active as $plugin ) {
+			if ( str_ends_with( $plugin, '/mai-analytics.php' ) && ! str_contains( $plugin, '/vendor/' ) ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+}
+
+// A copy bundled via Composer inside another plugin always defers to a
+// standalone Mai Analytics plugin, whichever one WordPress loads first. Without
+// this, the winner is decided by plugin load order, so a bundled copy can
+// silently shadow a newer standalone install.
+if ( str_contains( wp_normalize_path( __DIR__ ), '/vendor/' ) && mai_analytics_standalone_is_active() ) {
+	return;
+}
+
 // Prevent double-loading when installed standalone AND bundled via Composer.
 if ( defined( 'MAI_ANALYTICS_VERSION' ) ) {
 	return;

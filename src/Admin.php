@@ -9,7 +9,27 @@ class Admin {
 	 */
 	public function __construct() {
 		add_action( 'admin_menu', [ $this, 'register_menu' ], 12 );
+		add_filter( 'submenu_file', [ $this, 'fix_submenu_highlight' ] );
 		add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_assets' ] );
+	}
+
+	/**
+	 * Forces the "Analytics" submenu item to highlight as current.
+	 *
+	 * Our page loads at admin.php?page=mai-analytics rather than through the
+	 * parent slug's own file (edit.php, options-general.php), so WP core's
+	 * highlight check in wp-admin/menu-header.php never matches it.
+	 *
+	 * @param string $submenu_file The current submenu file.
+	 *
+	 * @return string
+	 */
+	public function fix_submenu_highlight( $submenu_file ) {
+		if ( isset( $_GET['page'] ) && 'mai-analytics' === $_GET['page'] ) {
+			return 'mai-analytics';
+		}
+
+		return $submenu_file;
 	}
 
 	/**
@@ -105,13 +125,25 @@ class Admin {
 
 		// Settings tab assets.
 		if ( 'settings' === ( $_GET['tab'] ?? '' ) ) {
-			wp_add_inline_style( 'wp-admin', '
-				.mai-analytics-provider-status,
-				.mai-analytics-provider-matomo { display: none; }
-				:has(#mai-analytics-data-source option[value="site_kit"]:checked) .mai-analytics-provider-status,
-				:has(#mai-analytics-data-source option[value="matomo"]:checked) .mai-analytics-provider-status,
-				:has(#mai-analytics-data-source option[value="matomo"]:checked) .mai-analytics-provider-matomo { display: table-row; }
-			' );
+			// Rows are hidden by default and revealed to match whatever the data
+			// source dropdown is showing right now, so the page reflects an
+			// unsaved selection without a round trip.
+			$hidden = [ '.mai-analytics-provider-matomo' ];
+			$shown  = [ ':has(#mai-analytics-data-source option[value="matomo"]:checked) .mai-analytics-provider-matomo' ];
+
+			foreach ( apply_filters( 'mai_analytics_providers', [] ) as $provider ) {
+				$slug  = preg_replace( '/[^a-z0-9_-]/', '', strtolower( $provider->get_slug() ) );
+				$class = '.mai-analytics-provider-status-' . $slug;
+
+				$hidden[] = $class;
+				$shown[]  = sprintf( ':has(#mai-analytics-data-source option[value="%s"]:checked) %s', $slug, $class );
+			}
+
+			wp_add_inline_style( 'wp-admin', sprintf(
+				'%s { display: none; } %s { display: table-row; }',
+				implode( ",\n", $hidden ),
+				implode( ",\n", $shown )
+			) );
 
 			$settings_js = MAI_ANALYTICS_PLUGIN_DIR . 'assets/js/admin-settings.js';
 
@@ -124,8 +156,9 @@ class Admin {
 			);
 
 			wp_localize_script( 'mai-analytics-admin-settings', 'maiAnalyticsSettings', [
-				'restBase' => esc_url_raw( rest_url( 'mai-analytics/v1/admin/' ) ),
-				'nonce'    => wp_create_nonce( 'wp_rest' ),
+				'restBase'        => esc_url_raw( rest_url( 'mai-analytics/v1/admin/' ) ),
+				'nonce'           => wp_create_nonce( 'wp_rest' ),
+				'publisherMatomo' => Publisher::has_matomo_settings() ? Publisher::get_matomo_settings() : [],
 			] );
 		}
 	}

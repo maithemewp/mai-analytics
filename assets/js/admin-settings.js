@@ -11,7 +11,46 @@
 		bindButton('mai-analytics-sync-now', 'sync-now', 'Syncing...');
 		bindWarmButton('mai-analytics-warm');
 		bindHealthCheck();
+		bindCopyFromPublisher();
 	});
+
+	/**
+	 * Fills the Matomo fields with Mai Publisher's values.
+	 *
+	 * Client-side only. Nothing is written until the admin reviews the values and
+	 * hits Save Changes, so a mistaken click costs nothing.
+	 */
+	function bindCopyFromPublisher() {
+		var btn = document.getElementById('mai-analytics-copy-publisher');
+
+		if (!btn) {
+			return;
+		}
+
+		var statusEl = btn.parentNode.querySelector('.mai-analytics-btn-status');
+		var values = (window.maiAnalyticsSettings && maiAnalyticsSettings.publisherMatomo) || {};
+
+		btn.addEventListener('click', function () {
+			var filled = 0;
+
+			Object.keys(values).forEach(function (key) {
+				var field = document.getElementById('mai-analytics-' + key);
+
+				if (!field || !values[key]) {
+					return;
+				}
+
+				field.value = values[key];
+				filled++;
+			});
+
+			showStatus(
+				statusEl,
+				filled ? 'Copied ' + filled + ' value(s). Review, then Save Changes.' : 'Nothing to copy.',
+				filled ? '#00a32a' : '#d63638'
+			);
+		});
+	}
 
 	function bindButton(btnId, endpoint, loadingText) {
 		var btn = document.getElementById(btnId);

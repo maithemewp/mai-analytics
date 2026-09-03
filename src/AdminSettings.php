@@ -115,16 +115,33 @@ class AdminSettings {
 			'mai_analytics_data_source'
 		);
 
-		add_settings_field(
-			'provider_status',
-			__( 'Provider Status', 'mai-analytics' ),
-			[ $this, 'render_provider_status' ],
-			'mai-analytics-settings',
-			'mai_analytics_data_source',
-			[ 'class' => 'mai-analytics-provider-status' ]
-		);
+		// One status row per provider, revealed by CSS to match whatever is
+		// selected in the dropdown right now. A single shared row would report the
+		// saved provider's status while the dropdown showed an unsaved selection.
+		foreach ( apply_filters( 'mai_analytics_providers', [] ) as $provider ) {
+			add_settings_field(
+				'provider_status_' . $provider->get_slug(),
+				__( 'Provider Status', 'mai-analytics' ),
+				[ $this, 'render_provider_status' ],
+				'mai-analytics-settings',
+				'mai_analytics_data_source',
+				[
+					'class'    => 'mai-analytics-provider-status-' . sanitize_html_class( $provider->get_slug() ),
+					'provider' => $provider,
+				]
+			);
+		}
 
 		// Matomo-specific settings fields (toggled via CSS).
+		add_settings_field(
+			'copy_from_publisher',
+			__( 'Copy from Mai Publisher', 'mai-analytics' ),
+			[ $this, 'render_copy_from_publisher' ],
+			'mai-analytics-settings',
+			'mai_analytics_data_source',
+			[ 'class' => 'mai-analytics-provider-matomo' ]
+		);
+
 		add_settings_field(
 			'matomo_url',
 			__( 'Matomo URL', 'mai-analytics' ),
@@ -244,11 +261,10 @@ class AdminSettings {
 			</option>
 			<?php foreach ( $providers as $provider ) : ?>
 				<option value="<?php echo esc_attr( $provider->get_slug() ); ?>"
-					<?php selected( $current, $provider->get_slug() ); ?>
-					<?php disabled( ! $provider->is_available() ); ?>>
+					<?php selected( $current, $provider->get_slug() ); ?>>
 					<?php echo esc_html( $provider->get_label() ); ?>
 					<?php if ( ! $provider->is_available() ) : ?>
-						<?php esc_html_e( '(not available)', 'mai-analytics' ); ?>
+						<?php esc_html_e( '(not configured)', 'mai-analytics' ); ?>
 					<?php endif; ?>
 				</option>
 			<?php endforeach; ?>
@@ -259,10 +275,16 @@ class AdminSettings {
 	/**
 	 * Renders the provider status indicator.
 	 *
+	 * @since 1.3.5 Accepts a provider, so the row can report on the provider
+	 *              selected in the dropdown rather than the saved one.
+	 *
+	 * @param array $args Field arguments. Accepts 'provider', a WebViewProvider
+	 *                    instance. Falls back to the saved provider when absent.
+	 *
 	 * @return void
 	 */
-	public function render_provider_status(): void {
-		$provider = ProviderSync::get_provider();
+	public function render_provider_status( array $args = [] ): void {
+		$provider = $args['provider'] ?? ProviderSync::get_provider();
 
 		if ( ! $provider ) {
 			echo '<p class="description">' . esc_html__( 'Select a provider to see its status.', 'mai-analytics' ) . '</p>';
@@ -276,7 +298,10 @@ class AdminSettings {
 			printf( '<span style="color:#d63638;">&#10007; %s</span>', esc_html( $reason ?: __( 'Not configured', 'mai-analytics' ) ) );
 		}
 
-		$last_error = method_exists( $provider, 'get_last_error' ) ? $provider::get_last_error() : '';
+		// The stored sync error is global, not per provider, so it only belongs on
+		// the saved provider's row. Showing it elsewhere would blame the wrong one.
+		$is_saved   = $provider->get_slug() === Settings::get( 'data_source' );
+		$last_error = $is_saved && method_exists( $provider, 'get_last_error' ) ? $provider::get_last_error() : '';
 
 		if ( $last_error ) {
 			printf(
@@ -285,6 +310,54 @@ class AdminSettings {
 				esc_html( $last_error )
 			);
 		}
+
+		// The status above reflects saved settings. Say so when the dropdown is
+		// showing a provider that hasn't been saved yet.
+		if ( ! $is_saved ) {
+			echo '<p class="description">' . esc_html__( 'Not saved yet. Save changes to sync from this provider.', 'mai-analytics' ) . '</p>';
+		}
+	}
+
+	/**
+	 * Renders the "Copy from Mai Publisher" button.
+	 *
+	 * Fills the Matomo fields below with Mai Publisher's values client-side so the
+	 * admin can review them before saving. Nothing is written until Save Changes.
+	 *
+	 * @since 1.3.5
+	 *
+	 * @return void
+	 */
+	public function render_copy_from_publisher(): void {
+		if ( ! Publisher::is_active() ) {
+			return;
+		}
+
+		if ( ! Publisher::has_matomo_settings() ) {
+			echo '<p class="description">' . esc_html__( 'Mai Publisher has no Matomo URL and Site ID to copy.', 'mai-analytics' ) . '</p>';
+			return;
+		}
+
+		$publisher = Publisher::get_matomo_settings();
+		?>
+		<button type="button" class="button" id="mai-analytics-copy-publisher">
+			<?php esc_html_e( 'Copy from Mai Publisher', 'mai-analytics' ); ?>
+		</button>
+		<p class="mai-analytics-btn-status" style="display:none; margin:8px 0 0; font-weight:600;"></p>
+		<p class="description">
+			<?php
+			printf(
+				/* translators: 1: Matomo URL, 2: Matomo site ID, 3: whether a token is set */
+				esc_html__( 'Fills the fields below with %1$s (site ID %2$s, %3$s). Review them, then save.', 'mai-analytics' ),
+				esc_html( $publisher['matomo_url'] ),
+				esc_html( $publisher['matomo_site_id'] ),
+				$publisher['matomo_token']
+					? esc_html__( 'token included', 'mai-analytics' )
+					: esc_html__( 'no token set', 'mai-analytics' )
+			);
+			?>
+		</p>
+		<?php
 	}
 
 	/**
@@ -348,6 +421,7 @@ class AdminSettings {
 		?>
 		<input
 			type="<?php echo esc_attr( $type ); ?>"
+			id="mai-analytics-<?php echo esc_attr( $key ); ?>"
 			name="mai_analytics_settings[<?php echo esc_attr( $key ); ?>]"
 			value="<?php echo esc_attr( $value ); ?>"
 			class="regular-text"
