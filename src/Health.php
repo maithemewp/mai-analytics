@@ -187,10 +187,6 @@ class Health {
 				}
 			}
 
-			$request  = new \WP_REST_Request( 'GET', '/mai-analytics/v1/admin/summary' );
-			$response = rest_do_request( $request );
-			$check( 'REST', 'GET /admin/summary', ! $response->is_error(), 'status=' . $response->get_status() );
-
 			$request  = new \WP_REST_Request( 'GET', '/mai-analytics/v1/admin/top/posts' );
 			$response = rest_do_request( $request );
 			$check( 'REST', 'GET /admin/top/posts', ! $response->is_error(), 'status=' . $response->get_status() );

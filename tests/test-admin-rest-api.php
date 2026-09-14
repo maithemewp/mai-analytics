@@ -25,7 +25,7 @@ class Test_Admin_REST_API extends WP_UnitTestCase {
 	public function test_unauthenticated_user_denied(): void {
 		wp_set_current_user( 0 );
 
-		$request  = new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/summary' );
+		$request  = new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/top/posts' );
 		$response = $this->server->dispatch( $request );
 
 		$this->assertEquals( 401, $response->get_status() );
@@ -34,7 +34,7 @@ class Test_Admin_REST_API extends WP_UnitTestCase {
 	public function test_subscriber_denied(): void {
 		wp_set_current_user( self::factory()->user->create( [ 'role' => 'subscriber' ] ) );
 
-		$request  = new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/summary' );
+		$request  = new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/top/posts' );
 		$response = $this->server->dispatch( $request );
 
 		$this->assertEquals( 403, $response->get_status() );
@@ -43,35 +43,177 @@ class Test_Admin_REST_API extends WP_UnitTestCase {
 	public function test_editor_allowed(): void {
 		wp_set_current_user( self::factory()->user->create( [ 'role' => 'editor' ] ) );
 
-		$request  = new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/summary' );
+		$request  = new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/top/posts' );
 		$response = $this->server->dispatch( $request );
 
 		$this->assertEquals( 200, $response->get_status() );
 	}
 
-	public function test_summary_returns_expected_shape(): void {
+	public function test_summary_endpoint_removed(): void {
 		wp_set_current_user( self::factory()->user->create( [ 'role' => 'editor' ] ) );
 
 		$request  = new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/summary' );
-		$data     = $this->server->dispatch( $request )->get_data();
+		$response = $this->server->dispatch( $request );
 
-		$this->assertArrayHasKey( 'total_views', $data );
-		$this->assertArrayHasKey( 'trending_count', $data );
-		$this->assertArrayHasKey( 'last_sync', $data );
-		$this->assertArrayNotHasKey( 'views_today', $data );
-		$this->assertArrayNotHasKey( 'buffer_rows', $data );
+		$this->assertEquals( 404, $response->get_status() );
 	}
 
-	public function test_summary_counts_views(): void {
+	public function test_top_posts_totals_follow_filters(): void {
 		wp_set_current_user( self::factory()->user->create( [ 'role' => 'editor' ] ) );
 
-		$post_id = self::factory()->post->create();
-		update_post_meta( $post_id, 'mai_views', 42 );
+		$cat_a = self::factory()->category->create();
+		$cat_b = self::factory()->category->create();
 
-		$request = new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/summary' );
+		// In both categories, so a two-term filter must not count it twice.
+		$both = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+		wp_set_object_terms( $both, [ $cat_a, $cat_b ], 'category' );
+		update_post_meta( $both, 'mai_views', 100 );
+		update_post_meta( $both, 'mai_trending', 10 );
+
+		$only_a = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+		wp_set_object_terms( $only_a, $cat_a, 'category' );
+		update_post_meta( $only_a, 'mai_views', 50 );
+		update_post_meta( $only_a, 'mai_trending', 0 );
+
+		$outside = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+		update_post_meta( $outside, 'mai_views', 1000 );
+		update_post_meta( $outside, 'mai_trending', 500 );
+
+		$request = new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/top/posts' );
+		$request->set_param( 'taxonomy', 'category' );
+		$request->set_param( 'term_id', $cat_a . ',' . $cat_b );
+		$request->set_param( 'per_page', 1 );
+		$data = $this->server->dispatch( $request )->get_data();
+
+		// Totals cover every matching row, not just the current page.
+		$this->assertSame(
+			[ 'views' => 150, 'trending_views' => 10, 'trending_count' => 1 ],
+			$data['totals']
+		);
+	}
+
+	public function test_top_posts_totals_follow_search_and_sort(): void {
+		wp_set_current_user( self::factory()->user->create( [ 'role' => 'editor' ] ) );
+
+		$alpha = self::factory()->post->create( [ 'post_title' => 'Alpha', 'post_status' => 'publish' ] );
+		$beta  = self::factory()->post->create( [ 'post_title' => 'Beta', 'post_status' => 'publish' ] );
+		update_post_meta( $alpha, 'mai_views', 40 );
+		update_post_meta( $alpha, 'mai_trending', 4 );
+		update_post_meta( $beta, 'mai_views', 60 );
+
+		$request = new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/top/posts' );
+		$request->set_param( 'search', 'Alpha' );
+		$request->set_param( 'orderby', 'trending' );
+		$data = $this->server->dispatch( $request )->get_data();
+
+		$this->assertSame(
+			[ 'views' => 40, 'trending_views' => 4, 'trending_count' => 1 ],
+			$data['totals']
+		);
+	}
+
+	public function test_top_posts_published_days_uses_gmt(): void {
+		wp_set_current_user( self::factory()->user->create( [ 'role' => 'editor' ] ) );
+
+		// A far-east offset pushes local post_date well ahead of GMT. The post
+		// went out 30 hours ago, so a one-day window must exclude it whatever
+		// time zone the database server runs in.
+		update_option( 'timezone_string', '' );
+		update_option( 'gmt_offset', 14 );
+
+		$gmt   = time() - ( 30 * HOUR_IN_SECONDS );
+		$post  = self::factory()->post->create( [
+			'post_status'   => 'publish',
+			'post_date'     => gmdate( 'Y-m-d H:i:s', $gmt + ( 14 * HOUR_IN_SECONDS ) ),
+			'post_date_gmt' => gmdate( 'Y-m-d H:i:s', $gmt ),
+		] );
+		update_post_meta( $post, 'mai_views', 25 );
+
+		$request = new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/top/posts' );
+		$request->set_param( 'published_days', 1 );
+		$data = $this->server->dispatch( $request )->get_data();
+
+		$this->assertEquals( 0, $data['total'] );
+		$this->assertSame( 0, $data['totals']['views'] );
+
+		$request->set_param( 'published_days', 2 );
+		$data = $this->server->dispatch( $request )->get_data();
+
+		$this->assertEquals( 1, $data['total'] );
+		$this->assertSame( 25, $data['totals']['views'] );
+	}
+
+	public function test_top_terms_totals_follow_filters(): void {
+		wp_set_current_user( self::factory()->user->create( [ 'role' => 'editor' ] ) );
+
+		$cat = self::factory()->category->create( [ 'name' => 'Sports' ] );
+		$tag = self::factory()->tag->create( [ 'name' => 'Sporty' ] );
+		update_term_meta( $cat, 'mai_views', 70 );
+		update_term_meta( $cat, 'mai_trending', 7 );
+		update_term_meta( $tag, 'mai_views', 30 );
+
+		$request = new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/top/terms' );
+		$request->set_param( 'taxonomy', 'category' );
+		$data = $this->server->dispatch( $request )->get_data();
+
+		$this->assertSame(
+			[ 'views' => 70, 'trending_views' => 7, 'trending_count' => 1 ],
+			$data['totals']
+		);
+	}
+
+	public function test_top_authors_totals_follow_search(): void {
+		wp_set_current_user( self::factory()->user->create( [ 'role' => 'editor' ] ) );
+
+		$alice = self::factory()->user->create( [ 'display_name' => 'Alice Totals' ] );
+		$bob   = self::factory()->user->create( [ 'display_name' => 'Bob Totals' ] );
+		update_user_meta( $alice, 'mai_views', 12 );
+		update_user_meta( $alice, 'mai_trending', 3 );
+		update_user_meta( $bob, 'mai_views', 88 );
+
+		$request = new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/top/authors' );
+		$request->set_param( 'search', 'Alice' );
+		$data = $this->server->dispatch( $request )->get_data();
+
+		$this->assertSame(
+			[ 'views' => 12, 'trending_views' => 3, 'trending_count' => 1 ],
+			$data['totals']
+		);
+	}
+
+	public function test_top_archives_totals_and_search(): void {
+		wp_set_current_user( self::factory()->user->create( [ 'role' => 'editor' ] ) );
+
+		update_option( 'mai_analytics_post_type_views', [ 'post' => 300, 'page' => 20 ] );
+		update_option( 'mai_analytics_post_type_trending', [ 'post' => 10 ] );
+
+		$request = new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/top/archives' );
 		$data    = $this->server->dispatch( $request )->get_data();
 
-		$this->assertGreaterThanOrEqual( 42, $data['total_views'] );
+		$this->assertSame(
+			[ 'views' => 320, 'trending_views' => 10, 'trending_count' => 1 ],
+			$data['totals']
+		);
+
+		$request->set_param( 'search', 'page' );
+		$data = $this->server->dispatch( $request )->get_data();
+
+		$this->assertCount( 1, $data['items'] );
+		$this->assertSame( 'page', $data['items'][0]['post_type'] );
+		$this->assertSame( 20, $data['totals']['views'] );
+	}
+
+	public function test_top_archives_tolerates_corrupt_options(): void {
+		wp_set_current_user( self::factory()->user->create( [ 'role' => 'editor' ] ) );
+
+		update_option( 'mai_analytics_post_type_views', 'not-an-array' );
+		update_option( 'mai_analytics_post_type_trending', '' );
+
+		$request  = new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/top/archives' );
+		$response = $this->server->dispatch( $request );
+
+		$this->assertEquals( 200, $response->get_status() );
+		$this->assertEmpty( $response->get_data()['items'] );
 	}
 
 
@@ -490,23 +632,5 @@ class Test_Admin_REST_API extends WP_UnitTestCase {
 		$this->assertContains( $id1, $ids );
 		$this->assertContains( $id2, $ids );
 		$this->assertNotContains( $id3, $ids );
-	}
-
-	public function test_trending_count_from_meta(): void {
-		wp_set_current_user( self::factory()->user->create( [ 'role' => 'editor' ] ) );
-
-		$id1 = self::factory()->post->create( [ 'post_status' => 'publish' ] );
-		$id2 = self::factory()->post->create( [ 'post_status' => 'publish' ] );
-		update_post_meta( $id1, 'mai_trending', 10 );
-		update_post_meta( $id2, 'mai_trending', 0 );
-
-		$term_id = self::factory()->category->create();
-		update_term_meta( $term_id, 'mai_trending', 5 );
-
-		$request = new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/summary' );
-		$data    = $this->server->dispatch( $request )->get_data();
-
-		// Should count objects with trending > 0 from meta (post + term = 2).
-		$this->assertGreaterThanOrEqual( 2, $data['trending_count'] );
 	}
 }

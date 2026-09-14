@@ -5,20 +5,24 @@
 	var headers = { 'X-WP-Nonce': maiAnalytics.nonce };
 
 	// State. Initial tab comes from server-rendered active class so ?subtab=
-	// deep-links land on the right table without a second render pass.
+	// deep-links land on the right table without a second render pass. Sort
+	// and page come from the URL. Filters, search and per-page come from the
+	// server-rendered controls, which already reflect the URL.
+	var urlParams      = new URLSearchParams(window.location.search);
 	var initialTab     = document.querySelector('.mai-analytics-tabs .nav-tab-active');
 	var activeTab      = (initialTab && initialTab.dataset.tab) || 'posts';
-	var currentPage   = 1;
-	var currentOrderby = 'views';
-	var currentOrder   = 'desc';
-	var searchQuery   = '';
-	var searchTimer   = null;
-	var filtersData   = null;
-	// Whether the site has any app traffic. Driven by /admin/summary's
-	// has_app flag. When false, the Web and App columns are hidden from
-	// every tab — for the app-less common case, Views == Web == mai_views_web,
-	// so showing them is just `views, views, 0` repetition.
-	var hasApp        = false;
+	var currentPage    = Math.max(1, parseInt(urlParams.get('paged'), 10) || 1);
+	var currentOrderby = 'trending' === urlParams.get('orderby') ? 'trending' : 'views';
+	var currentOrder   = 'asc' === urlParams.get('order') ? 'asc' : 'desc';
+	var searchQuery    = '';
+	var searchTimer    = null;
+	// Bumped on every table request so a slow response for an old filter
+	// can't overwrite the table and cards after a newer one has landed.
+	var requestId      = 0;
+	// Whether the site has any app traffic. When false, the Web and App
+	// columns are hidden from every tab. For the app-less common case,
+	// Views == Web and App is 0, so showing them is just repetition.
+	var hasApp         = !! maiAnalytics.hasApp;
 
 	// Tom Select instances. Every filter dropdown is a Tom Select for visual
 	// uniformity; ajaxFilters use remote search, staticFilters use a fixed list.
@@ -40,8 +44,9 @@
 			return;
 		}
 
+		searchQuery = document.getElementById('mai-analytics-search').value.trim();
+
 		initSelects();
-		loadSummary();
 		loadFilters();
 		loadTable();
 		bindEvents();
@@ -63,14 +68,10 @@
 				currentOrder   = 'desc';
 				searchQuery    = '';
 				document.getElementById('mai-analytics-search').value = '';
-				if (publishedDaysFilter) publishedDaysFilter.clear();
-				updateFilterVisibility();
+				if (publishedDaysFilter) publishedDaysFilter.reset();
+				document.querySelector('.mai-analytics-filters').dataset.tab = activeTab;
+				updateTrendingLabel();
 				loadTable();
-
-				// Reflect the active tab in the URL so it's bookmarkable / shareable.
-				if (this.href) {
-					window.history.replaceState({}, '', this.href);
-				}
 			});
 		});
 
@@ -78,12 +79,6 @@
 		// post-type, taxonomy, author, and published-days all dispatch through
 		// their TomSelect instance, so no native `change` listeners are needed
 		// for those filters here.
-
-		// Per-page selector.
-		document.getElementById('mai-analytics-per-page').addEventListener('change', function () {
-			currentPage = 1;
-			loadTable();
-		});
 
 		// Table search.
 		var searchSpinner = document.querySelector('.mai-analytics-search-spinner');
@@ -114,15 +109,21 @@
 	 * loadFilters(); ajax multi-selects (term, author) load on focus/search.
 	 */
 	function initSelects() {
-		ptSelect = initTomSelectStatic('mai-analytics-post-type', function () {
+		ptSelect = initTomSelectStatic('mai-analytics-post-type', true, function () {
 			currentPage = 1;
 			loadTable();
 		});
 
-		taxSelect = initTomSelectStatic('mai-analytics-taxonomy', function () {
+		taxSelect = initTomSelectStatic('mai-analytics-taxonomy', true, function () {
 			currentPage = 1;
 			updateTermDropdown();
-			updateFilterVisibility();
+			loadTable();
+		});
+
+		// Always has a value, so no clear button. Tom Select keeps the
+		// original select's value in sync, which loadTable() reads.
+		initTomSelectStatic('mai-analytics-per-page', false, function () {
+			currentPage = 1;
 			loadTable();
 		});
 
@@ -138,16 +139,14 @@
 		authorSelect = initTomSelect('mai-analytics-author', 'author', function () {
 			return {};
 		});
-
-		// Term wrapper is hidden until a taxonomy is selected.
-		termSelect.wrapper.style.display = 'none';
 	}
 
 	/**
-	 * Encapsulates the "Publish Dates" filter — the only filter with real
-	 * internal state (preset → "Custom Days" → debounced number input). Owns
+	 * Encapsulates the "Published" filter. It's the only filter with real internal
+	 * state (preset → "Custom" → debounced number input). Owns
 	 * its Tom Select, its sub-input, the `is-custom` class toggle, and the
-	 * resolved day count. Consumers read via getValue() / clear().
+	 * resolved day count. It always has a value: 0 means any time, and the
+	 * select's `data-default` is what a tab switch goes back to.
 	 *
 	 * @param {HTMLElement} rootEl   The .mai-analytics-filters__published cell.
 	 * @param {Function}    onChange Fires after value is committed.
@@ -158,23 +157,26 @@
 		this.root         = rootEl;
 		this.selectEl     = rootEl.querySelector('select');
 		this.customInput  = rootEl.querySelector('.mai-analytics-filters__custom-days');
-		this.value        = 0;
+		this.defaultDays  = parseInt(this.selectEl.dataset.default, 10) || 0;
+		// The server renders the URL's choice, including a custom day count.
+		this.value        = Math.min(365, parseInt('custom' === this.selectEl.value ? this.customInput.value : this.selectEl.value, 10) || 0);
 		this.onChange     = onChange || function () {};
 		this._customTimer = null;
 
-		var placeholder = this.selectEl.getAttribute('placeholder') || '';
+		var prefix = this.selectEl.dataset.prefix || '';
 
 		this.tomSelect = new TomSelect(this.selectEl, {
-			placeholder:  placeholder,
-			plugins:      ['clear_button'],
 			// Eight presets — search is noise. Click/arrow-keys still work.
 			controlInput: null,
 			onChange:     function () { self._handleSelectChange(); },
+			// Options stay short ("30 days"). The closed control adds the
+			// prefix ("Published: 30 days") so it can't be read as a views window.
+			render: {
+				item: function (data, escape) {
+					return '<div>' + escape(prefix ? prefix + ' ' + data.text : data.text) + '</div>';
+				},
+			},
 		});
-
-		if (placeholder) {
-			this.tomSelect.control.setAttribute('data-placeholder', placeholder);
-		}
 
 		this.customInput.addEventListener('input', function () {
 			clearTimeout(self._customTimer);
@@ -200,7 +202,7 @@
 
 		this.root.classList.remove('is-custom');
 		this.customInput.value = '';
-		this.value             = val ? parseInt(val, 10) : 0;
+		this.value             = parseInt(val, 10) || 0;
 		this.onChange();
 	};
 
@@ -208,41 +210,18 @@
 		return this.value;
 	};
 
-	PublishedDaysFilter.prototype.clear = function () {
-		this.tomSelect.setValue('', true);
+	PublishedDaysFilter.prototype.reset = function () {
+		this.tomSelect.setValue(String(this.defaultDays), true);
 		this.customInput.value = '';
 		this.root.classList.remove('is-custom');
-		this.value = 0;
+		this.value = this.defaultDays;
 	};
-
-	/**
-	 * Fetch summary data and populate cards.
-	 */
-	function loadSummary() {
-		apiFetch('summary').then(function (data) {
-			setCardValue('total_views', formatNumber(data.total_views));
-			setCardValue('trending_views', formatNumber(data.trending_views));
-			setCardValue('trending_count', formatNumber(data.trending_count));
-			setCardValue('last_sync', data.last_sync ? formatDate(data.last_sync) : '—');
-
-			// Toggle Web/App column visibility based on whether the site has
-			// any app traffic. We refresh the table in case it already
-			// rendered with the default-false value before summary returned.
-			var nextHasApp = !! data.has_app;
-			if ( nextHasApp !== hasApp ) {
-				hasApp = nextHasApp;
-				loadData();
-			}
-		});
-	}
 
 	/**
 	 * Fetch filter options and populate dropdowns.
 	 */
 	function loadFilters() {
 		apiFetch('filters').then(function (data) {
-			filtersData = data;
-
 			data.post_types.forEach(function (pt) {
 				ptSelect.addOption({ value: pt.slug, text: pt.label });
 			});
@@ -252,66 +231,160 @@
 				taxSelect.addOption({ value: tax.slug, text: tax.label });
 			});
 			taxSelect.refreshOptions(false);
-
-			updateFilterVisibility();
-			updateTermDropdown();
 		});
 	}
 
 	/**
-	 * Reset the published-within filter UI without changing state.
-	 */
-
-	/**
-	 * Fetch table data based on active tab and filters.
+	 * Fetch table data and card totals based on active tab and filters.
 	 */
 	function loadTable() {
 		var endpoint = 'top/' + activeTab;
+		var filters  = getFilters();
+		var perPage  = document.getElementById('mai-analytics-per-page').value;
 		var params   = new URLSearchParams({
 			orderby:  currentOrderby,
 			order:    currentOrder,
 			page:     currentPage,
-			per_page: document.getElementById('mai-analytics-per-page').value,
+			per_page: perPage,
 		});
 
-		if (activeTab === 'posts') {
-			var pt      = ptSelect      ? ptSelect.getValue()      : '';
-			var tax     = taxSelect     ? taxSelect.getValue()     : '';
-			var terms   = termSelect    ? termSelect.getValue()    : [];
-			var authors = authorSelect  ? authorSelect.getValue()  : [];
+		if (filters.postType)          params.set('post_type', filters.postType);
+		if (filters.taxonomy)          params.set('taxonomy', filters.taxonomy);
+		if (filters.terms.length)      params.set('term_id', filters.terms.join(','));
+		if (filters.authors.length)    params.set('author', filters.authors.join(','));
+		if (filters.publishedDays > 0) params.set('published_days', filters.publishedDays);
+		if (searchQuery)               params.set('search', searchQuery);
 
-			if (pt)                params.set('post_type', pt);
-			if (tax)               params.set('taxonomy', tax);
-			if (terms.length)      params.set('term_id', terms.join(','));
-			if (authors.length)    params.set('author', authors.join(','));
-			var pubDays = publishedDaysFilter ? publishedDaysFilter.getValue() : 0;
-			if (pubDays > 0) params.set('published_days', pubDays);
-		} else if (activeTab === 'terms') {
-			var tax2 = taxSelect ? taxSelect.getValue() : '';
-			if (tax2) params.set('taxonomy', tax2);
-		}
+		syncUrl(filters, perPage);
 
-		if (searchQuery) {
-			params.set('search', searchQuery);
-		}
+		var thisRequest = ++requestId;
+		var isFiltered  = params.has('post_type') || params.has('taxonomy') || params.has('term_id')
+			|| params.has('author') || params.has('published_days') || params.has('search');
 
 		showLoading(true);
 
 		apiFetch(endpoint + '?' + params.toString()).then(function (data) {
-			renderTable(data);
+			if (thisRequest !== requestId) {
+				return;
+			}
+
+			// A shared link can point past the last page once the data moves on.
+			if (currentPage > data.pages && data.pages > 0) {
+				currentPage = data.pages;
+				loadTable();
+				return;
+			}
+
+			showLoading(false);
+			renderCards(data.totals);
+			renderTable(data, isFiltered
+				? 'Nothing matches these filters.'
+				: 'No data yet. Views will appear here once visitors start browsing your site.');
 			renderPagination(data.total, data.pages);
-			showLoading(false);
-			document.querySelector('.mai-analytics-search-spinner').style.display = 'none';
 		}).catch(function () {
+			if (thisRequest !== requestId) {
+				return;
+			}
+
 			showLoading(false);
-			document.querySelector('.mai-analytics-search-spinner').style.display = 'none';
+			renderCards(null);
+			renderTable({ items: [] }, 'Could not load the data. Reload the page to try again.');
 		});
 	}
 
 	/**
-	 * Render table rows using safe DOM methods.
+	 * Read the filters that apply to the active tab. Posts-only filters keep
+	 * their values while another tab is open, but aren't sent or linked.
 	 */
-	function renderTable(data) {
+	function getFilters() {
+		var filters = { postType: '', taxonomy: '', terms: [], authors: [], publishedDays: null };
+
+		if ('posts' === activeTab) {
+			filters.postType      = ptSelect ? ptSelect.getValue() : '';
+			filters.terms         = termSelect ? termSelect.getValue() : [];
+			filters.authors       = authorSelect ? authorSelect.getValue() : [];
+			filters.publishedDays = publishedDaysFilter ? publishedDaysFilter.getValue() : 0;
+		}
+
+		if ('posts' === activeTab || 'terms' === activeTab) {
+			filters.taxonomy = taxSelect ? taxSelect.getValue() : '';
+		}
+
+		return filters;
+	}
+
+	/**
+	 * Mirror the table's state into the address bar so a view can be
+	 * bookmarked or shared. replaceState, so filter changes don't fill Back
+	 * history, and defaults are left out to keep links short.
+	 *
+	 * Only the keys listed here are touched. `page`, and `post_type` when the
+	 * menu sits under Mai Ads, stay as WordPress set them. The filters use
+	 * `type` and `tax` because wp-admin reads `post_type` and `taxonomy` on
+	 * every admin page to pick the menu parent.
+	 */
+	function syncUrl(filters, perPage) {
+		var url   = new URL(window.location.href);
+		var query = url.searchParams;
+
+		['subtab', 'orderby', 'order', 'paged', 'per_page', 'search', 'type', 'tax', 'terms', 'authors', 'published'].forEach(function (key) {
+			query.delete(key);
+		});
+
+		query.set('subtab', activeTab);
+
+		if ('views' !== currentOrderby)  query.set('orderby', currentOrderby);
+		if ('desc' !== currentOrder)     query.set('order', currentOrder);
+		if (currentPage > 1)             query.set('paged', currentPage);
+		if ('25' !== perPage)            query.set('per_page', perPage);
+		if (searchQuery)                 query.set('search', searchQuery);
+		if (filters.postType)            query.set('type', filters.postType);
+		if (filters.taxonomy)            query.set('tax', filters.taxonomy);
+		if (filters.terms.length)        query.set('terms', filters.terms.join(','));
+		if (filters.authors.length)      query.set('authors', filters.authors.join(','));
+
+		if (null !== filters.publishedDays && filters.publishedDays !== publishedDaysFilter.defaultDays) {
+			query.set('published', filters.publishedDays);
+		}
+
+		// Commas are fine in a query string and keep ID lists readable.
+		url.search = query.toString().replace(/%2C/gi, ',');
+
+		window.history.replaceState(null, '', url);
+	}
+
+	/**
+	 * Fill the cards from a response's totals. Null shows an ellipsis.
+	 */
+	function renderCards(totals) {
+		['views', 'trending_views', 'trending_count'].forEach(function (key) {
+			var value = document.querySelector('[data-card="' + key + '"] .mai-analytics-card__value');
+
+			if (value) {
+				value.textContent = totals ? formatNumber(totals[key] || 0) : '…';
+			}
+		});
+	}
+
+	/**
+	 * Name the trending count card for the active tab, e.g. "Trending Terms".
+	 */
+	function updateTrendingLabel() {
+		var card   = document.querySelector('[data-card="trending_count"]');
+		var labels = card ? JSON.parse(card.dataset.labels || '{}') : {};
+
+		if (card && labels[activeTab]) {
+			card.querySelector('.mai-analytics-card__label').textContent = labels[activeTab];
+		}
+	}
+
+	/**
+	 * Render table rows using safe DOM methods.
+	 *
+	 * @param {Object} data         The response, with an items array.
+	 * @param {string} emptyMessage Shown when there are no items.
+	 */
+	function renderTable(data, emptyMessage) {
 		var table = document.querySelector('.mai-analytics-table');
 		var thead = table.querySelector('thead tr');
 		var tbody = table.querySelector('tbody');
@@ -323,6 +396,7 @@
 
 		if (!data.items || data.items.length === 0) {
 			table.style.display = 'none';
+			empty.querySelector('p').textContent = emptyMessage;
 			empty.style.display = '';
 			return;
 		}
@@ -355,9 +429,9 @@
 				caret.className = 'mai-analytics-caret';
 
 				if (isSorted) {
-					caret.textContent = 'asc' === currentOrder ? ' \u25B2' : ' \u25BC';
+					caret.textContent = 'asc' === currentOrder ? ' ▲' : ' ▼';
 				} else {
-					caret.textContent = ' \u25BC';
+					caret.textContent = ' ▼';
 				}
 
 				th.appendChild(caret);
@@ -483,7 +557,7 @@
 
 		// Previous.
 		if (currentPage > 1) {
-			btns.appendChild(createPageButton('\u2039 Prev', currentPage - 1));
+			btns.appendChild(createPageButton('‹ Prev', currentPage - 1));
 		}
 
 		// Page numbers (max 5 centered around current).
@@ -497,7 +571,7 @@
 
 		// Next.
 		if (currentPage < pages) {
-			btns.appendChild(createPageButton('Next \u203A', currentPage + 1));
+			btns.appendChild(createPageButton('Next ›', currentPage + 1));
 		}
 	}
 
@@ -522,36 +596,8 @@
 	}
 
 	/**
-	 * Show/hide each filter cell based on whether it carries the
-	 * `--<activeTab>` BEM modifier. Conditional sub-rules (term needs a
-	 * taxonomy, custom-days needs the "Custom Days" option) layer on top.
-	 */
-	function updateFilterVisibility() {
-		var modifier = 'mai-analytics-filters__field--' + activeTab;
-		var fields   = document.querySelectorAll('.mai-analytics-filters__field');
-
-		fields.forEach(function (field) {
-			var target  = field.closest('.ts-wrapper') || field;
-			var inTab   = field.classList.contains(modifier);
-
-			if (!inTab) {
-				target.style.display = 'none';
-				return;
-			}
-
-			// Term: only when a taxonomy is selected.
-			if (field.id === 'mai-analytics-term') {
-				var taxonomy = taxSelect ? taxSelect.getValue() : '';
-				target.style.display = taxonomy ? '' : 'none';
-				return;
-			}
-
-			target.style.display = '';
-		});
-	}
-
-	/**
-	 * Update the term dropdown based on selected taxonomy.
+	 * Reset the term dropdown after the taxonomy changes. Whether it shows is
+	 * CSS, keyed on the filters row's has-taxonomy class.
 	 */
 	function updateTermDropdown() {
 		if (!termSelect) {
@@ -559,34 +605,33 @@
 		}
 
 		var taxonomy = taxSelect ? taxSelect.getValue() : '';
-		var wrapper  = termSelect.wrapper;
 
-		if (!taxonomy) {
-			wrapper.style.display = 'none';
-			termSelect.clear(true);
-			termSelect.clearOptions();
-			return;
-		}
-
-		wrapper.style.display = '';
+		document.querySelector('.mai-analytics-filters').classList.toggle('has-taxonomy', !! taxonomy);
 		termSelect.clear(true);
 		termSelect.clearOptions();
-		termSelect.load('');
+
+		if (taxonomy) {
+			termSelect.load('');
+		}
 	}
 
 	/**
 	 * Initialize a Tom Select on a static single-select with a fixed list of
-	 * options. Keeps "All X" as the empty-value option (allowEmptyOption).
-	 * The caller supplies the change handler so each filter can layer in its
-	 * own side effects (e.g. the taxonomy filter resetting the term list).
+	 * options. Empty means "All X", shown through the placeholder. The caller
+	 * supplies the change handler so each filter can layer in its own side
+	 * effects (e.g. the taxonomy filter resetting the term list).
+	 *
+	 * @param {string}   elementId The select's id.
+	 * @param {boolean}  clearable Whether it can be emptied, which adds the × button.
+	 * @param {Function} onChange  Fires when the value changes.
 	 */
-	function initTomSelectStatic(elementId, onChange) {
+	function initTomSelectStatic(elementId, clearable, onChange) {
 		var el          = document.getElementById(elementId);
 		var placeholder = el.getAttribute('placeholder') || '';
 
 		var ts = new TomSelect(el, {
 			placeholder:  placeholder,
-			plugins:      ['clear_button'],
+			plugins:      clearable ? ['clear_button'] : [],
 			// Static lists are short (typically < 10) — search is more noise
 			// than help. Click + arrow-key navigation still work.
 			controlInput: null,
@@ -609,7 +654,7 @@
 	function initTomSelect(elementId, searchType, getExtraParams) {
 		var el = document.getElementById(elementId);
 
-		return new TomSelect(el, {
+		var ts = new TomSelect(el, {
 			valueField:       'id',
 			labelField:       'name',
 			searchField:      'name',
@@ -619,7 +664,12 @@
 			preload:          'focus',
 			loadThrottle:     300,
 			shouldLoad:       function () { return true; },
-			plugins:          ['remove_button', 'clear_button'],
+			hidePlaceholder:  true,
+			// Each tag has its own ×, so no clear-all button. checkbox_options
+			// lists every pick in the open dropdown, including any behind "+N".
+			// input_autogrow sizes the search box to what's typed, so it only
+			// takes room from the tags while you're typing.
+			plugins:          ['remove_button', 'checkbox_options', 'input_autogrow'],
 			load: function (query, callback) {
 				var params = new URLSearchParams({ type: searchType });
 				var extra  = getExtraParams();
@@ -645,37 +695,155 @@
 					return '<div>' + escape(data.name) + '</div>';
 				},
 				item: function (data, escape) {
-					return '<div>' + escape(data.name) + '</div>';
+					// The inner span lets a long name end in an ellipsis.
+					return '<div><span class="mai-analytics-tag">' + escape(data.name) + '</span></div>';
+				},
+				// Tom Select debounces the fetch by loadThrottle, then waits on
+				// the network. Its default spinner is a faint grey ring that
+				// reads as an empty list, so say what's happening in words.
+				loading: function () {
+					return '<div class="no-results">Loading…</div>';
+				},
+				no_results: function () {
+					return '<div class="no-results">No matches</div>';
 				},
 			},
 		});
+
+		keepTagsOnOneLine(ts);
+
+		return ts;
 	}
 
 	/**
-	 * Show or hide loading state.
+	 * Keep a multi-select one line tall. Tags that don't fit are hidden and
+	 * counted in a "+N" badge. The checkbox_options plugin lists every pick in
+	 * the open dropdown, so hidden tags can still be seen and unticked.
+	 *
+	 * @param {TomSelect} ts The multi-select.
+	 */
+	function keepTagsOnOneLine(ts) {
+		var control = ts.control;
+		var more    = document.createElement('span');
+
+		more.className = 'mai-analytics-more';
+		more.hidden    = true;
+
+		var isTag = function (node) {
+			return node.classList && node.classList.contains('item');
+		};
+
+		var fit = function () {
+			var items = Array.prototype.slice.call(control.querySelectorAll('.item'));
+
+			// Measure every tag at its natural width. Only the first tag may
+			// shrink, and only once the fit below has been decided.
+			items.forEach(function (item) {
+				item.hidden = false;
+				item.classList.remove('mai-analytics-tag-shrink');
+			});
+			more.hidden = true;
+			control.insertBefore(more, ts.control_input);
+
+			// Nothing to fit, or hidden (another tab, or no taxonomy picked yet).
+			// The resize observer runs this again once it shows.
+			if (!items.length || !control.clientWidth) {
+				return;
+			}
+
+			var style  = getComputedStyle(control);
+			var room   = control.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight) - searchRoom(ts.control_input);
+			var widths = items.map(outerWidth);
+			var total  = widths.reduce(function (sum, width) { return sum + width; }, 0);
+
+			if (total <= room) {
+				return;
+			}
+
+			// Measure the badge at its widest count, then fit tags beside it.
+			more.hidden      = false;
+			more.textContent = '+' + items.length;
+
+			var shown = 0;
+			var used  = outerWidth(more);
+
+			while (shown < items.length && used + widths[shown] <= room) {
+				used += widths[shown];
+				shown++;
+			}
+
+			// Always show one tag. CSS ends a long name with an ellipsis, and
+			// when that one tag is the only pick there's nothing to count.
+			shown = Math.max(1, shown);
+
+			more.hidden      = shown >= items.length;
+			more.textContent = '+' + (items.length - shown);
+			items.forEach(function (item, index) { item.hidden = index >= shown; });
+			items[0].classList.add('mai-analytics-tag-shrink');
+		};
+
+		// Watch the tags themselves, not Tom Select events, so a silent
+		// clear(true) (as when the taxonomy changes) still updates the badge.
+		new MutationObserver(function (mutations) {
+			var tagsChanged = mutations.some(function (mutation) {
+				return Array.prototype.some.call(mutation.addedNodes, isTag)
+					|| Array.prototype.some.call(mutation.removedNodes, isTag);
+			});
+
+			if (tagsChanged) {
+				fit();
+			}
+		}).observe(control, { childList: true });
+
+		// Typing widens the search box, and Tom Select clearing it (after a pick,
+		// or on blur) shrinks it back. input_autogrow listens to the same events
+		// and was registered first, so the width is already updated here.
+		['input', 'update', 'blur'].forEach(function (type) {
+			ts.control_input.addEventListener(type, fit);
+		});
+
+		new ResizeObserver(fit).observe(control);
+		fit();
+	}
+
+	/**
+	 * An element's width plus its left and right margins.
+	 */
+	function outerWidth(el) {
+		var style = getComputedStyle(el);
+
+		return el.getBoundingClientRect().width + parseFloat(style.marginLeft) + parseFloat(style.marginRight);
+	}
+
+	/**
+	 * Room to keep free for the search box inside a multi-select, plus its
+	 * margins. input_autogrow writes the typed text's width to the input's
+	 * inline style. That's read instead of the rendered width, because the
+	 * rendered box can be squeezed while every tag is briefly shown for measuring.
+	 */
+	function searchRoom(input) {
+		var style = getComputedStyle(input);
+		var width = Math.max(parseFloat(style.minWidth) || 0, parseFloat(input.style.width) || 0);
+
+		return width + parseFloat(style.marginLeft) + parseFloat(style.marginRight);
+	}
+
+	/**
+	 * Show or hide the loading state. While loading, the table, empty state
+	 * and pagination are hidden and the cards go back to "…", so old totals
+	 * never sit next to a new filter. When loading ends, renderCards(),
+	 * renderTable() and renderPagination() decide what shows.
 	 */
 	function showLoading(show) {
 		document.querySelector('.mai-analytics-loading').style.display = show ? '' : 'none';
-		document.querySelector('.mai-analytics-table').style.display   = show ? 'none' : '';
 
-		// Only hide pagination when loading starts. renderPagination() controls whether it shows.
 		if (show) {
+			renderCards(null);
+			document.querySelector('.mai-analytics-table').style.display      = 'none';
+			document.querySelector('.mai-analytics-empty').style.display      = 'none';
 			document.querySelector('.mai-analytics-pagination').style.display = 'none';
-		}
-	}
-
-	/**
-	 * Set a summary card value.
-	 */
-	function setCardValue(key, value) {
-		var card = document.querySelector('[data-card="' + key + '"] .mai-analytics-card__value');
-		if (!card) return;
-
-		// Last sync may contain HTML for the time span.
-		if (key === 'last_sync' && typeof value === 'string' && value.indexOf('<') !== -1) {
-			card.innerHTML = value; // Safe — generated by our formatDate(), not user input.
 		} else {
-			card.textContent = value;
+			document.querySelector('.mai-analytics-search-spinner').style.display = 'none';
 		}
 	}
 
@@ -700,42 +868,11 @@
 	}
 
 	/**
-	 * Decode HTML entities in a string.
-	 * Uses a textarea element which safely decodes entities without executing scripts.
+	 * Decode HTML entities in a string. DOMParser builds an inert document,
+	 * so no scripts run while decoding.
 	 */
 	function decodeHtml(str) {
-		var el = document.createElement('textarea');
-		el.textContent = str;
-		// Textarea's value decodes entities set via textContent in reverse —
-		// use the DOM parser approach instead.
 		var doc = new DOMParser().parseFromString(str, 'text/html');
 		return doc.body.textContent || str;
-	}
-
-	/**
-	 * Format a date string for display.
-	 */
-	function formatDate(str) {
-		var d = new Date(str.replace(' ', 'T'));
-
-		if (isNaN(d.getTime())) {
-			return str;
-		}
-
-		var time = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
-			.replace(/AM|PM/, function (m) { return m.toLowerCase(); });
-
-		var now     = new Date();
-		var isToday = d.getFullYear() === now.getFullYear()
-			&& d.getMonth() === now.getMonth()
-			&& d.getDate() === now.getDate();
-
-		if (isToday) {
-			return time;
-		}
-
-		var date = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-
-		return date + '<span class="mai-analytics-card__time">' + time + '</span>';
 	}
 })();

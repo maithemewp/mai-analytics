@@ -5,6 +5,13 @@ namespace Mai\Analytics;
 class Admin {
 
 	/**
+	 * The Posts tab's publish date window, in days, when the URL doesn't set one.
+	 *
+	 * @since 1.3.6
+	 */
+	private const DEFAULT_PUBLISHED_DAYS = 30;
+
+	/**
 	 * Registers the admin menu page and asset enqueue hook.
 	 */
 	public function __construct() {
@@ -88,14 +95,14 @@ class Admin {
 			'tom-select',
 			MAI_ANALYTICS_PLUGIN_URL . 'assets/css/tom-select.min.css',
 			[],
-			'2.4.1'
+			'2.6.2'
 		);
 
 		wp_enqueue_script(
 			'tom-select',
 			MAI_ANALYTICS_PLUGIN_URL . 'assets/js/tom-select.complete.min.js',
 			[],
-			'2.4.1',
+			'2.6.2',
 			true
 		);
 
@@ -117,14 +124,17 @@ class Admin {
 			true
 		);
 
+		$is_settings = 'settings' === ( $_GET['tab'] ?? '' );
+
 		wp_localize_script( 'mai-analytics-admin', 'maiAnalytics', [
 			'restBase'   => esc_url_raw( rest_url( 'mai-analytics/v1/admin/' ) ),
 			'nonce'      => wp_create_nonce( 'wp_rest' ),
 			'dataSource' => Settings::get( 'data_source' ),
+			'hasApp'     => ! $is_settings && $this->has_app_traffic(),
 		] );
 
 		// Settings tab assets.
-		if ( 'settings' === ( $_GET['tab'] ?? '' ) ) {
+		if ( $is_settings ) {
 			// Rows are hidden by default and revealed to match whatever the data
 			// source dropdown is showing right now, so the page reflects an
 			// unsaved selection without a round trip.
@@ -161,6 +171,121 @@ class Admin {
 				'publisherMatomo' => Publisher::get_copyable_matomo_settings(),
 			] );
 		}
+	}
+
+	/**
+	 * Whether the site has any app traffic at all.
+	 *
+	 * App-less sites (the vast majority) get the Web/App breakdown columns
+	 * hidden in the dashboard, since they would just repeat `views, views, 0`.
+	 * Cached for 5 minutes to keep dashboard load fast on big sites.
+	 *
+	 * @since 1.3.6
+	 *
+	 * @return bool
+	 */
+	private function has_app_traffic(): bool {
+		$has_app = get_transient( 'mai_analytics_has_app' );
+
+		if ( false !== $has_app ) {
+			return (bool) $has_app;
+		}
+
+		global $wpdb;
+
+		$app_total = (int) $wpdb->get_var( "SELECT COALESCE(SUM(meta_value), 0) FROM $wpdb->postmeta WHERE meta_key = 'mai_views_app'" );
+
+		if ( 0 === $app_total ) {
+			$app_total = (int) $wpdb->get_var( "SELECT COALESCE(SUM(meta_value), 0) FROM $wpdb->termmeta WHERE meta_key = 'mai_views_app'" );
+		}
+
+		if ( 0 === $app_total ) {
+			$app_total = (int) $wpdb->get_var( "SELECT COALESCE(SUM(meta_value), 0) FROM $wpdb->usermeta WHERE meta_key = 'mai_views_app'" );
+		}
+
+		if ( 0 === $app_total ) {
+			$app_total = (int) array_sum( (array) get_option( 'mai_analytics_post_type_views_app', [] ) );
+		}
+
+		$has_app = $app_total > 0;
+
+		set_transient( 'mai_analytics_has_app', $has_app ? 1 : 0, 5 * MINUTE_IN_SECONDS );
+
+		return $has_app;
+	}
+
+	/**
+	 * Reads the dashboard's filters from the URL, so a view can be linked.
+	 *
+	 * Uses `type` and `tax` rather than `post_type` and `taxonomy`, because
+	 * wp-admin/admin.php reads those two on every admin page to set the
+	 * current screen, which changes the menu parent. Sort order and page
+	 * number are read by the JS, which owns them.
+	 *
+	 * @since 1.3.6
+	 *
+	 * @return array{
+	 *     type: string,
+	 *     type_label: string,
+	 *     tax: string,
+	 *     tax_label: string,
+	 *     terms: array<int, string>,
+	 *     authors: array<int, string>,
+	 *     published: int,
+	 *     search: string,
+	 *     per_page: int,
+	 * }
+	 */
+	private function get_dashboard_state(): array {
+		// Query values can arrive as arrays (?type[]=x), so only scalars count.
+		$get = static fn( string $key ): string => is_scalar( $_GET[ $key ] ?? null ) ? (string) wp_unslash( $_GET[ $key ] ) : '';
+		$ids = static fn( string $key ): array => array_values( array_unique( array_filter( array_map( 'absint', explode( ',', $get( $key ) ) ) ) ) );
+
+		$per_page = absint( $get( 'per_page' ) );
+
+		$state = [
+			'type'       => '',
+			'type_label' => '',
+			'tax'        => '',
+			'tax_label'  => '',
+			'terms'      => [],
+			'authors'    => [],
+			'published'  => '' !== $get( 'published' ) ? min( 365, absint( $get( 'published' ) ) ) : self::DEFAULT_PUBLISHED_DAYS,
+			'search'     => sanitize_text_field( $get( 'search' ) ),
+			'per_page'   => in_array( $per_page, [ 25, 50, 100 ], true ) ? $per_page : 25,
+		];
+
+		$post_type = get_post_type_object( sanitize_key( $get( 'type' ) ) );
+
+		if ( $post_type && $post_type->public ) {
+			$state['type']       = $post_type->name;
+			$state['type_label'] = $post_type->labels->name;
+		}
+
+		$taxonomy = get_taxonomy( sanitize_key( $get( 'tax' ) ) );
+
+		if ( $taxonomy && $taxonomy->public ) {
+			$state['tax']       = $taxonomy->name;
+			$state['tax_label'] = $taxonomy->labels->name;
+
+			foreach ( $ids( 'terms' ) as $term_id ) {
+				$term = get_term( $term_id, $taxonomy->name );
+
+				if ( $term instanceof \WP_Term ) {
+					$state['terms'][ $term->term_id ] = $term->name;
+				}
+			}
+		}
+
+		foreach ( $ids( 'authors' ) as $user_id ) {
+			$user = get_userdata( $user_id );
+
+			if ( $user ) {
+				$state['authors'][ $user->ID ] = $user->display_name;
+			}
+		}
+
+		return $state;
 	}
 
 	/**
@@ -273,27 +398,47 @@ class Admin {
 			'archives' => __( 'Archives', 'mai-analytics' ),
 		];
 
+		// Trending count label per sub-tab. The JS swaps it on tab change.
+		$trending_labels = [
+			'posts'    => __( 'Trending Posts', 'mai-analytics' ),
+			'terms'    => __( 'Trending Terms', 'mai-analytics' ),
+			'authors'  => __( 'Trending Authors', 'mai-analytics' ),
+			'archives' => __( 'Trending Archives', 'mai-analytics' ),
+		];
+
+		$state = $this->get_dashboard_state();
+
+		$published_presets = [
+			7   => __( '7 days', 'mai-analytics' ),
+			14  => __( '14 days', 'mai-analytics' ),
+			30  => __( '30 days', 'mai-analytics' ),
+			60  => __( '60 days', 'mai-analytics' ),
+			90  => __( '90 days', 'mai-analytics' ),
+			365 => __( '1 year', 'mai-analytics' ),
+			0   => __( 'All time', 'mai-analytics' ),
+		];
+
+		$is_custom_days = ! array_key_exists( $state['published'], $published_presets );
+
+		$last_sync = $is_external
+			? (int) get_option( 'mai_analytics_provider_last_sync', 0 )
+			: (int) get_option( 'mai_analytics_synced', 0 );
+
 		$this->render_provider_error_notice();
 		?>
-		<!-- Summary Cards -->
-		<div class="mai-analytics-cards">
-			<div class="mai-analytics-card" data-card="total_views">
-				<span class="mai-analytics-card__value">—</span>
-				<span class="mai-analytics-card__label"><?php esc_html_e( 'Total Views', 'mai-analytics' ); ?></span>
-			</div>
-			<div class="mai-analytics-card" data-card="trending_views">
-				<span class="mai-analytics-card__value">—</span>
-				<span class="mai-analytics-card__label"><?php esc_html_e( 'Trending Views', 'mai-analytics' ); ?></span>
-			</div>
-			<div class="mai-analytics-card" data-card="trending_count">
-				<span class="mai-analytics-card__value">—</span>
-				<span class="mai-analytics-card__label"><?php esc_html_e( 'Trending Pages', 'mai-analytics' ); ?></span>
-			</div>
-			<div class="mai-analytics-card" data-card="last_sync">
-				<span class="mai-analytics-card__value">—</span>
-				<span class="mai-analytics-card__label"><?php esc_html_e( 'Last Sync', 'mai-analytics' ); ?></span>
-			</div>
-		</div>
+		<p class="mai-analytics-last-sync">
+			<?php
+			if ( $last_sync ) {
+				printf(
+					/* translators: %s: formatted date and time */
+					esc_html__( 'Last synced %s', 'mai-analytics' ),
+					esc_html( wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $last_sync ) )
+				);
+			} else {
+				esc_html_e( 'Not synced yet.', 'mai-analytics' );
+			}
+			?>
+		</p>
 
 		<!-- Tabs -->
 		<nav class="nav-tab-wrapper mai-analytics-tabs">
@@ -302,38 +447,70 @@ class Admin {
 			<?php endforeach; ?>
 		</nav>
 
-		<!-- Filters -->
-		<div class="mai-analytics-filters">
-			<select id="mai-analytics-post-type" class="mai-analytics-filters__field mai-analytics-filters__field--posts" placeholder="<?php esc_attr_e( 'All Post Types', 'mai-analytics' ); ?>"></select>
-			<select id="mai-analytics-taxonomy" class="mai-analytics-filters__field mai-analytics-filters__field--posts mai-analytics-filters__field--terms" placeholder="<?php esc_attr_e( 'All Taxonomies', 'mai-analytics' ); ?>"></select>
-			<select id="mai-analytics-term" class="mai-analytics-filters__field mai-analytics-filters__field--posts" placeholder="<?php esc_attr_e( 'Search terms...', 'mai-analytics' ); ?>" multiple></select>
-			<select id="mai-analytics-author" class="mai-analytics-filters__field mai-analytics-filters__field--posts" placeholder="<?php esc_attr_e( 'All Authors', 'mai-analytics' ); ?>" multiple></select>
-			<div class="mai-analytics-filters__field mai-analytics-filters__field--posts mai-analytics-filters__published">
-				<select id="mai-analytics-published-days" placeholder="<?php esc_attr_e( 'All Publish Dates', 'mai-analytics' ); ?>">
-					<option value="" hidden></option>
-					<option value="3"><?php esc_html_e( '3 days', 'mai-analytics' ); ?></option>
-					<option value="7"><?php esc_html_e( '7 days (1 week)', 'mai-analytics' ); ?></option>
-					<option value="14"><?php esc_html_e( '14 days (2 weeks)', 'mai-analytics' ); ?></option>
-					<option value="21"><?php esc_html_e( '21 days (3 weeks)', 'mai-analytics' ); ?></option>
-					<option value="28"><?php esc_html_e( '28 days (4 weeks)', 'mai-analytics' ); ?></option>
-					<option value="60"><?php esc_html_e( '60 days (2 months)', 'mai-analytics' ); ?></option>
-					<option value="90"><?php esc_html_e( '90 days (3 months)', 'mai-analytics' ); ?></option>
-					<option value="custom"><?php esc_html_e( 'Custom Days', 'mai-analytics' ); ?></option>
+		<!-- Totals for whatever the table below lists. -->
+		<div class="mai-analytics-cards">
+			<div class="mai-analytics-card" data-card="views">
+				<span class="mai-analytics-card__value">…</span>
+				<span class="mai-analytics-card__label"><?php esc_html_e( 'Total Views', 'mai-analytics' ); ?></span>
+			</div>
+			<div class="mai-analytics-card" data-card="trending_views">
+				<span class="mai-analytics-card__value">…</span>
+				<span class="mai-analytics-card__label"><?php esc_html_e( 'Trending Views', 'mai-analytics' ); ?></span>
+			</div>
+			<div class="mai-analytics-card" data-card="trending_count" data-labels="<?php echo esc_attr( wp_json_encode( $trending_labels ) ); ?>">
+				<span class="mai-analytics-card__value">…</span>
+				<span class="mai-analytics-card__label"><?php echo esc_html( $trending_labels[ $subtab ] ); ?></span>
+			</div>
+		</div>
+
+		<!-- Filters. Rendered from the URL, so a linked view shows its filters on first paint. -->
+		<div class="mai-analytics-filters<?php echo $state['tax'] ? ' has-taxonomy' : ''; ?>" data-tab="<?php echo esc_attr( $subtab ); ?>">
+			<select id="mai-analytics-post-type" class="mai-analytics-select mai-analytics-filters__field mai-analytics-filters__field--posts" placeholder="<?php esc_attr_e( 'All Post Types', 'mai-analytics' ); ?>">
+				<?php if ( $state['type'] ) : ?>
+					<option value="<?php echo esc_attr( $state['type'] ); ?>" selected><?php echo esc_html( $state['type_label'] ); ?></option>
+				<?php endif; ?>
+			</select>
+			<select id="mai-analytics-taxonomy" class="mai-analytics-select mai-analytics-filters__field mai-analytics-filters__field--posts mai-analytics-filters__field--terms" placeholder="<?php esc_attr_e( 'All Taxonomies', 'mai-analytics' ); ?>">
+				<?php if ( $state['tax'] ) : ?>
+					<option value="<?php echo esc_attr( $state['tax'] ); ?>" selected><?php echo esc_html( $state['tax_label'] ); ?></option>
+				<?php endif; ?>
+			</select>
+			<select id="mai-analytics-term" class="mai-analytics-select mai-analytics-filters__field mai-analytics-filters__field--posts mai-analytics-filters__field--needs-taxonomy" placeholder="<?php esc_attr_e( 'Search terms...', 'mai-analytics' ); ?>" multiple>
+				<?php foreach ( $state['terms'] as $term_id => $term_name ) : ?>
+					<option value="<?php echo esc_attr( (string) $term_id ); ?>" selected><?php echo esc_html( $term_name ); ?></option>
+				<?php endforeach; ?>
+			</select>
+			<select id="mai-analytics-author" class="mai-analytics-select mai-analytics-filters__field mai-analytics-filters__field--posts" placeholder="<?php esc_attr_e( 'All Authors', 'mai-analytics' ); ?>" multiple>
+				<?php foreach ( $state['authors'] as $user_id => $display_name ) : ?>
+					<option value="<?php echo esc_attr( (string) $user_id ); ?>" selected><?php echo esc_html( $display_name ); ?></option>
+				<?php endforeach; ?>
+			</select>
+			<div class="mai-analytics-filters__field mai-analytics-filters__field--posts mai-analytics-filters__published<?php echo $is_custom_days ? ' is-custom' : ''; ?>">
+				<select id="mai-analytics-published-days" class="mai-analytics-select" data-default="<?php echo esc_attr( (string) self::DEFAULT_PUBLISHED_DAYS ); ?>" data-prefix="<?php esc_attr_e( 'Published:', 'mai-analytics' ); ?>">
+					<?php foreach ( $published_presets as $days => $label ) : ?>
+						<option value="<?php echo esc_attr( (string) $days ); ?>" <?php selected( ! $is_custom_days && $days === $state['published'] ); ?>><?php echo esc_html( $label ); ?></option>
+					<?php endforeach; ?>
+					<option value="custom" <?php selected( $is_custom_days ); ?>><?php esc_html_e( 'Custom', 'mai-analytics' ); ?></option>
 				</select>
-				<input type="number" id="mai-analytics-custom-days" class="mai-analytics-filters__custom-days" min="1" max="365" placeholder="<?php esc_attr_e( 'Days', 'mai-analytics' ); ?>">
+				<input type="number" id="mai-analytics-custom-days" class="mai-analytics-filters__custom-days" min="1" max="365" placeholder="<?php esc_attr_e( 'Days', 'mai-analytics' ); ?>" value="<?php echo $is_custom_days ? esc_attr( (string) $state['published'] ) : ''; ?>">
 			</div>
 		</div>
 
 		<!-- Table Controls -->
 		<div class="mai-analytics-table-controls">
 			<div class="mai-analytics-search-wrap">
-				<input type="text" id="mai-analytics-search" placeholder="<?php esc_attr_e( 'Search by title/name...', 'mai-analytics' ); ?>">
+				<input type="text" id="mai-analytics-search" placeholder="<?php esc_attr_e( 'Search by title/name...', 'mai-analytics' ); ?>" value="<?php echo esc_attr( $state['search'] ); ?>">
 				<span class="mai-analytics-search-spinner" style="display:none;"></span>
 			</div>
-			<select id="mai-analytics-per-page">
-				<option value="25"><?php esc_html_e( '25 per page', 'mai-analytics' ); ?></option>
-				<option value="50"><?php esc_html_e( '50 per page', 'mai-analytics' ); ?></option>
-				<option value="100"><?php esc_html_e( '100 per page', 'mai-analytics' ); ?></option>
+			<select id="mai-analytics-per-page" class="mai-analytics-select mai-analytics-table-controls__per-page">
+				<?php foreach ( [ 25, 50, 100 ] as $per_page ) : ?>
+					<option value="<?php echo esc_attr( (string) $per_page ); ?>" <?php selected( $state['per_page'], $per_page ); ?>>
+						<?php
+						/* translators: %d: number of rows per page */
+						echo esc_html( sprintf( __( '%d per page', 'mai-analytics' ), $per_page ) );
+						?>
+					</option>
+				<?php endforeach; ?>
 			</select>
 		</div>
 
@@ -345,7 +522,7 @@ class Admin {
 				<tbody></tbody>
 			</table>
 			<div class="mai-analytics-empty" style="display:none;">
-				<p><?php esc_html_e( 'No data yet. Views will appear here once visitors start browsing your site.', 'mai-analytics' ); ?></p>
+				<p></p>
 			</div>
 		</div>
 

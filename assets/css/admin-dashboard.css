@@ -1,15 +1,30 @@
 /* Mai Views Dashboard */
 
+/* Keep room for the scrollbar from the first paint. Where scrollbars always
+ * show, the page is short while the table loads, gains a scrollbar when the
+ * rows arrive, and every grid on the page narrows. */
+html {
+	scrollbar-gutter: stable;
+}
+
 .mai-analytics-wrap {
+	/* One height for every filter, the search field and per-page. */
+	--mai-analytics-control-height: 36px;
 	max-width: 1200px;
 }
 
-/* Summary Cards */
+/* Last sync line, above the sub-tabs. */
+.mai-analytics-last-sync {
+	margin: 0 0 12px;
+	color: #646970;
+}
+
+/* Cards. Totals for whatever the active sub-tab's table lists. */
 .mai-analytics-cards {
 	display: grid;
-	grid-template-columns: repeat(4, 1fr);
+	grid-template-columns: repeat(3, minmax(0, 1fr));
 	gap: 16px;
-	margin: 20px 0;
+	margin: 16px 0 4px;
 }
 
 .mai-analytics-card {
@@ -35,14 +50,6 @@
 	color: #646970;
 }
 
-.mai-analytics-card__time {
-	display: block;
-	font-size: 14px;
-	font-weight: 400;
-	color: #646970;
-	margin-top: 2px;
-}
-
 /* Tabs */
 .mai-analytics-tabs {
 	margin-top: 0;
@@ -52,20 +59,42 @@
 	cursor: pointer;
 }
 
-/* Filters — auto-fit grid so cells share width and wrap naturally.
- * Fixed row height + stretch alignment so every control fills the cell. */
+/* Filters. A fixed column count, never auto-fit, so the columns only change
+ * when you pick a taxonomy, not while the page loads. Fixed row height +
+ * stretch alignment so every control fills the cell, before and after Tom
+ * Select swaps in. */
 .mai-analytics-filters {
-	--mai-analytics-filters-row-height: 32px;
 	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-	grid-auto-rows: minmax(var(--mai-analytics-filters-row-height), auto);
+	grid-template-columns: repeat(4, minmax(0, 1fr));
+	grid-auto-rows: var(--mai-analytics-control-height);
 	gap: 8px;
 	padding: 12px 0;
 	align-items: stretch;
 }
 
+/* Picking a taxonomy adds the Terms filter, so the Posts row grows to five
+ * columns. The server renders has-taxonomy, so a linked view loads this way. */
+@media screen and (min-width: 1025px) {
+	.mai-analytics-filters[data-tab="posts"].has-taxonomy {
+		grid-template-columns: repeat(5, minmax(0, 1fr));
+	}
+}
+
+/* Which filters show is decided here, from the data-tab attribute and the
+ * has-taxonomy class. The server renders both, so the row is already right
+ * on first paint, and the JS only flips them. Tom Select copies each
+ * select's classes onto its wrapper, so these rules hide the wrapper too. */
+.mai-analytics-filters[data-tab="posts"] .mai-analytics-filters__field:not(.mai-analytics-filters__field--posts),
+.mai-analytics-filters[data-tab="terms"] .mai-analytics-filters__field:not(.mai-analytics-filters__field--terms),
+.mai-analytics-filters[data-tab="authors"] .mai-analytics-filters__field,
+.mai-analytics-filters[data-tab="archives"] .mai-analytics-filters__field,
+.mai-analytics-filters:not(.has-taxonomy) .mai-analytics-filters__field--needs-taxonomy {
+	display: none;
+}
+
 .mai-analytics-filters select {
 	width: 100%;
+	height: 100%;
 }
 
 /* Published-within filter — select + custom-days input share one grid cell. */
@@ -108,19 +137,40 @@
 	gap: 8px;
 }
 
+/* Same box for the native select and the Tom Select wrapper that replaces
+ * it, so the search field doesn't change width when the script starts. The
+ * wrapper selector needs the extra class to beat the shared height: 100%,
+ * which collapses here because the row has no set height. */
+.mai-analytics-table-controls .mai-analytics-table-controls__per-page,
+.mai-analytics-table-controls .ts-wrapper.mai-analytics-table-controls__per-page {
+	flex: 0 0 140px;
+	height: var(--mai-analytics-control-height);
+}
 
-/* Tom Select — match the WP-admin <select> it sits next to so it reads as
- * "a select you can also search." Stretches to fill the grid cell, with
- * matching border/radius/chevron. */
-.mai-analytics-filters .ts-wrapper {
+
+/* Tom Select. Every dropdown on the dashboard carries the mai-analytics-select
+ * class, which Tom Select copies onto its wrapper, so they all share one
+ * pattern: the WP-admin border and radius, a caret that always shows, and,
+ * on dropdowns that can be emptied, a × just left of the caret whenever a
+ * value is set.
+ *
+ * Tom Select sets the control's right padding itself, with !important, from
+ * --ts-pr-caret and --ts-pr-clear-button, so the room is reserved through
+ * those variables rather than with padding. */
+.ts-wrapper.mai-analytics-select {
+	--ts-pr-caret: 24px;
 	width: 100%;
 	height: 100%;
 }
 
-.mai-analytics-filters .ts-wrapper .ts-control {
+.ts-wrapper.mai-analytics-select.plugin-clear_button {
+	--ts-pr-clear-button: 26px;
+}
+
+.ts-wrapper.mai-analytics-select .ts-control {
 	min-height: 0;
 	height: 100%;
-	padding: 0 24px 0 8px;
+	padding: 0 0 0 8px;
 	border: 1px solid #8c8f94;
 	border-radius: 3px;
 	background-color: #fff;
@@ -137,7 +187,7 @@
 	flex-wrap: wrap;
 }
 
-.mai-analytics-filters .ts-wrapper .ts-control > input {
+.ts-wrapper.mai-analytics-select .ts-control > input {
 	font-size: 14px;
 	line-height: inherit;
 	margin: 0;
@@ -145,20 +195,99 @@
 
 /* Static (search-disabled) Tom Selects have no control input to host the
  * placeholder. Surface the data-placeholder we stashed in JS via ::before. */
-.mai-analytics-filters .ts-wrapper:not(.has-items) .ts-control[data-placeholder]::before {
+.ts-wrapper.mai-analytics-select:not(.has-items) .ts-control[data-placeholder]::before {
 	content: attr(data-placeholder);
 	color: #757575;
 	pointer-events: none;
 }
 
-/* Clear-button × replaces the chevron as the right-edge affordance when an
- * item is selected, so hide the background chevron to avoid overlap. */
-.mai-analytics-filters .ts-wrapper.has-items .ts-control {
-	background-image: none;
+/* On single selects that can be emptied, the × sits just left of the caret
+ * and shows whenever there's a value, not only on hover, so it works on
+ * touch. Terms and Authors have no clear-all ×, since each tag has its own. */
+/* The caret fills 5px to 21px from the right edge, so 28px leaves a gap. */
+.ts-wrapper.mai-analytics-select.plugin-clear_button .clear-button {
+	right: 28px;
+	font-size: 18px;
+	line-height: 1;
+	color: #646970;
 }
 
-.mai-analytics-filters .ts-wrapper.focus .ts-control,
-.mai-analytics-filters .ts-wrapper .ts-control:focus-within {
+.ts-wrapper.mai-analytics-select.plugin-clear_button.has-items .clear-button {
+	opacity: 1;
+}
+
+.ts-wrapper.mai-analytics-select.plugin-clear_button .clear-button:hover {
+	color: #d63638;
+}
+
+/* Terms and Authors stay one line tall. keepTagsOnOneLine() in the JS hides
+ * tags that don't fit and counts them in a "+N" badge. Tom Select's own CSS
+ * gives the search box a 7rem minimum width, which is what used to push it
+ * onto a second line. The input_autogrow plugin's CSS drops that minimum
+ * once there are tags and sizes the box to the typed text instead. */
+.ts-wrapper.mai-analytics-select.multi .ts-control,
+.ts-wrapper.mai-analytics-select.multi.has-items .ts-control {
+	flex-wrap: nowrap;
+	overflow: hidden;
+	padding-top: 0;
+	padding-bottom: 0;
+}
+
+/* Tags keep their natural width, so keepTagsOnOneLine() measures them right
+ * and they never squash. Only the first tag may shrink, when even it alone
+ * doesn't fit, and then its name ends in an ellipsis. */
+.ts-wrapper.mai-analytics-select.multi .ts-control > .item {
+	flex: 0 0 auto;
+	margin: 0 4px 0 0;
+	border-radius: 3px;
+}
+
+.ts-wrapper.mai-analytics-select.multi .ts-control > .item.mai-analytics-tag-shrink {
+	flex-shrink: 1;
+	min-width: 0;
+}
+
+/* A plain × inside each tag, without Tom Select's divider line. */
+.ts-wrapper.mai-analytics-select.plugin-remove_button .item .remove {
+	margin-left: 2px;
+	padding: 0 5px;
+	border-left: 0;
+	color: #646970;
+}
+
+.ts-wrapper.mai-analytics-select.plugin-remove_button .item .remove:hover {
+	background: none;
+	color: #d63638;
+}
+
+.ts-wrapper.mai-analytics-select.multi .ts-control > .item[hidden] {
+	display: none;
+}
+
+.mai-analytics-tag {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.mai-analytics-more {
+	flex: 0 0 auto;
+	margin-right: 4px;
+	padding: 2px 6px;
+	border-radius: 3px;
+	background: #dcdcde;
+	color: #1d2327;
+	font-size: 12px;
+	line-height: 1.4;
+	pointer-events: none;
+}
+
+.mai-analytics-more[hidden] {
+	display: none;
+}
+
+.ts-wrapper.mai-analytics-select.focus .ts-control,
+.ts-wrapper.mai-analytics-select .ts-control:focus-within {
 	border-color: #2271b1;
 	box-shadow: 0 0 0 1px #2271b1;
 	outline: 2px solid transparent;
@@ -177,9 +306,9 @@
 	padding: 4px 8px;
 	border: 1px solid #8c8f94;
 	border-radius: 3px;
-	font-size: 13px;
+	font-size: 14px;
 	line-height: 1.6;
-	height: 30px;
+	height: var(--mai-analytics-control-height);
 	background: #fff;
 }
 
@@ -224,6 +353,14 @@
 
 .mai-analytics-table a {
 	font-weight: 600;
+}
+
+/* Core zeroes the padding on th.sortable (list-tables.css) because its own
+ * headers pad an inner link. Ours have no link, so give back the cell
+ * padding (common.css) or Views and Trending sit flush against the edge. */
+.mai-analytics-table.widefat th.sortable,
+.mai-analytics-table.widefat th.sorted {
+	padding: 8px 10px;
 }
 
 .mai-analytics-table .sortable {
@@ -297,10 +434,17 @@
 	border-radius: 4px;
 }
 
-/* Responsive */
+/* Responsive. Fixed column counts per width, never auto-fit, so how many
+ * cells are visible can't change how wide they are. */
+@media screen and (max-width: 1024px) {
+	.mai-analytics-filters {
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+	}
+}
+
 @media screen and (max-width: 782px) {
-	.mai-analytics-cards {
-		grid-template-columns: repeat(2, 1fr);
+	.mai-analytics-filters {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
 	}
 
 	.mai-analytics-table-controls {
@@ -310,5 +454,12 @@
 
 	.mai-analytics-table-controls input[type="text"] {
 		max-width: none;
+	}
+}
+
+@media screen and (max-width: 600px) {
+	.mai-analytics-cards,
+	.mai-analytics-filters {
+		grid-template-columns: minmax(0, 1fr);
 	}
 }
