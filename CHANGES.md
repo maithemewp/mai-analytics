@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.3.6 (9/14/26)
+
+* Added: The dashboard address now follows the tab, sort, page, filters and search, so a bookmarked or shared link opens the same view.
+* Changed: The cards now sit under the Posts, Terms, Authors and Archives tabs and total whatever the table lists. Changing a filter, the search or the tab updates them, and the trending card is named for the tab, like "Trending Posts".
+* Changed: The Posts tab shows posts published in the last 30 days by default. The choices are 7, 14, 30, 60 and 90 days, 1 year, All time or Custom, and the dropdown reads "Published: 30 days" so it's clear it filters by publish date.
+* Changed: The last sync time moved from the cards to a line above the tabs.
+* Changed: Every filter, the search field and the per-page dropdown now share one style and height. Dropdowns always show their arrow, and ones you can empty show a × beside it.
+* Changed: Terms and Authors stay one line tall and show a count like "+2" for picks that don't fit. The open list has a checkbox for each option, so every pick can be seen and unticked.
+* Changed: The term and author dropdowns say "Loading…" while they fetch and "No matches" when nothing is found.
+* Changed: [Developers] Updated Tom Select to 2.6.2.
+* Changed: [Developers] Removed the `/admin/summary` REST endpoint. Card totals now come back as `totals` on each `/admin/top/*` response.
+* Fixed: The publish date filter could be off by several hours, because it compared the site's time zone against the database server's clock.
+* Fixed: The filters and cards jumped around while the page loaded.
+* Fixed: Changing filters quickly could leave the table showing results for an older filter.
+* Fixed: The dashboard could throw a JavaScript error the first time app traffic appeared.
+* Fixed: An empty result showed a stray table border and said "No data yet" even when the filters were the reason.
+* Fixed: Search on the Archives tab did nothing.
+* Fixed: The Archives tab could crash if its stored view counts were corrupted.
+* Fixed: The Views and Trending column headings had no padding.
+
 ## 1.3.5 (9/3/26)
 
 * Added: A "Copy from Mai Publisher" button on the settings page fills the Matomo URL, Site ID and Auth Token from Mai Publisher's Matomo Tracking config. It fills the fields only, so you can check the values before saving, and it appears only when copying would actually change something.
