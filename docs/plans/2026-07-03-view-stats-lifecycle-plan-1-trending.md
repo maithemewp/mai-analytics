@@ -1,6 +1,6 @@
 # Trending Lifecycle (Plan 1 of 2) Implementation Plan
 
-> **Status: implemented, with post-review hardening.** The tasks below are the plan as written; several decisions changed during code review. See **As-built deviations** in the spec (`docs/superpowers/specs/2026-07-03-view-stats-lifecycle-design.md`) for the authoritative final behavior. In short: the provider-health gate is "no unresolved provider error on file" (not the 5-min circuit-breaker window); missing `mai_views_synced_at` rows are kept, not deleted; the self-hosted stale prune is gated on a live buffer; the cron prune is bounded per request (default 5 batches ≈ 25k rows) and reschedules a `mai_analytics_prune_trending_now` continuation while the CLI drains fully; `prune_trending` takes explicit params instead of an `$opts` array; and a `Mai_Logger` summary + anomaly tripwire were added. Where a task below conflicts, the spec's deviations list wins.
+> **Status: implemented, with post-review hardening.** The tasks below are the plan as written; several decisions changed during code review. See **As-built deviations** in the spec (`docs/specs/2026-07-03-view-stats-lifecycle-design.md`) for the authoritative final behavior. In short: the provider-health gate is "no unresolved provider error on file" (not the 5-min circuit-breaker window); missing `mai_views_synced_at` rows are kept, not deleted; the self-hosted stale prune is gated on a live buffer; the cron prune is bounded per request (default 5 batches ≈ 25k rows) and reschedules a `mai_analytics_prune_trending_now` continuation while the CLI drains fully; `prune_trending` takes explicit params instead of an `$opts` array; and a `Mai_Logger` summary + anomaly tripwire were added. Where a task below conflicts, the spec's deviations list wins.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -10,7 +10,7 @@
 
 **Tech Stack:** PHP (WordPress plugin), PHPUnit 9.6 + WP test suite (`WP_UnitTestCase`), WP-CLI, `wpdb`.
 
-**Spec:** `docs/superpowers/specs/2026-07-03-view-stats-lifecycle-design.md`
+**Spec:** `docs/specs/2026-07-03-view-stats-lifecycle-design.md`
 
 ## Global Constraints
 

@@ -8,7 +8,7 @@
 
 **Tech Stack:** PHP (WordPress plugin), PHPUnit 9.6 + `WP_UnitTestCase`, WP-CLI, `wpdb`.
 
-**Spec:** `docs/superpowers/specs/2026-07-03-view-stats-lifecycle-design.md` (rollout sequencing step 3; the method names come from its "High-level methods" list).
+**Spec:** `docs/specs/2026-07-03-view-stats-lifecycle-design.md` (rollout sequencing step 3; the method names come from its "High-level methods" list).
 
 ## Global Constraints
 

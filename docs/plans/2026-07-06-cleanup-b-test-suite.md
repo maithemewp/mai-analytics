@@ -8,7 +8,7 @@
 
 **Tech Stack:** PHP, PHPUnit 9.6 + WP test suite (`WP_UnitTestCase`), `wpdb`.
 
-**Spec:** `docs/superpowers/specs/2026-07-03-view-stats-lifecycle-design.md`
+**Spec:** `docs/specs/2026-07-03-view-stats-lifecycle-design.md`
 
 ## Global Constraints
 
