@@ -1,23 +1,24 @@
 # Mai Logger
 
-A tiny, versioned logger for WordPress plugins. Drop-in via Composer. The newest installed version across all active plugins wins at runtime — no Strauss prefixing required.
+A tiny logger for WordPress plugins, installed with Composer. Each plugin can bundle its own copy, and [maithemewp/mai-package-loader](https://github.com/maithemewp/mai-package-loader) loads the newest one on the site, whichever plugin loads first.
 
 ## Install
 
-This package is distributed via GitHub, not Packagist. Add it as a VCS repository in your plugin's `composer.json`:
+This package is distributed through GitHub, not Packagist. Add its repository, and the loader's, to your plugin's `composer.json`. Composer only reads repository lists from the plugin itself, so both are listed:
 
 ```json
 {
     "repositories": [
-        { "type": "vcs", "url": "https://github.com/maithemewp/mai-logger" }
+        { "type": "vcs", "url": "https://github.com/maithemewp/mai-logger" },
+        { "type": "vcs", "url": "https://github.com/maithemewp/mai-package-loader" }
     ],
     "require": {
-        "maithemewp/mai-logger": "^0.1"
+        "maithemewp/mai-logger": "^0.2"
     }
 }
 ```
 
-Then `composer install`. Composer will fetch the latest tagged release.
+Then `composer install`. Needs PHP 8.1 or later.
 
 ### Local development of mai-logger itself
 
@@ -26,13 +27,17 @@ If you're hacking on this package locally and want a consuming plugin to pull fr
 ```json
 {
     "repositories": [
-        { "type": "path", "url": "/path/to/local/mai-logger", "options": { "symlink": false } }
+        { "type": "path", "url": "/path/to/local/mai-logger", "options": { "symlink": false } },
+        { "type": "path", "url": "/path/to/local/mai-package-loader", "options": { "symlink": false } }
     ],
     "require": {
-        "maithemewp/mai-logger": "@dev"
+        "maithemewp/mai-logger": "@dev",
+        "maithemewp/mai-package-loader": "@dev"
     }
 }
 ```
+
+The loader is listed too: Composer only honours `@dev` on the plugin's own requirements.
 
 Use `"symlink": false` (mirror mode), not symlink mode. Strauss has a known bug that deletes any `vendor/` subdirectory whose only contents are symlinks, which would nuke `vendor/maithemewp/` on every install. Mirror mode copies real files and avoids the problem. Run `composer update maithemewp/mai-logger` after each edit to propagate changes into the consumer's `vendor/`.
 
@@ -65,25 +70,24 @@ The constructor accepts either a plugin slug (used verbatim as the log-line pref
 
 ## Logging behavior
 
-| Level | Always logs | When `WP_DEBUG` on | Where |
-|---|---|---|---|
-| `error()` | Yes | — | Ray + WP-CLI + `debug.log` |
-| `warning()` | No | Yes | Ray + WP-CLI + `debug.log` |
-| `info()` | No | Yes | Ray + WP-CLI **only** |
-| `success()` | No | Yes | Ray + WP-CLI **only** |
+- **`error()`** logs even with `WP_DEBUG` off.
+  - Goes to Ray and WP-CLI.
+  - Goes to `debug.log` only when `WP_DEBUG_LOG` is on.
+- **`warning()`** needs `WP_DEBUG` on.
+  - Goes to Ray and WP-CLI.
+  - Goes to `debug.log` when `WP_DEBUG_LOG` is on too.
+- **`info()` and `success()`** need `WP_DEBUG` on.
+  - Go to Ray and WP-CLI only.
+
+Nothing is written to the log while `WP_DEBUG_LOG` is off, so a production site that has not turned on its debug log stays quiet. Under WP-CLI, every level goes to the console instead of `debug.log`.
 
 `info` and `success` deliberately never go to `debug.log` — they're for development output (Ray, WP-CLI), not production logs.
 
-## How version negotiation works
+## Several plugins bundling it
 
-Each plugin Composer-installs its own copy of `mai-logger` into its `vendor/`. When a plugin's `vendor/autoload.php` runs, this package's `init.php` is included automatically (via Composer's `"files"` autoload). That registers the bundled version into `Mai_Logger_Bootstrap`'s static registry.
+Each plugin installs its own copy into its `vendor/`. Every copy ships a `mai-package.php` declaring its version, and mai-package-loader loads `Mai_Logger` from the newest copy on the site, whichever plugin loads first. `tests/coexistence.sh` proves it with real Composer installs, against a 0.1.2 copy.
 
-The actual `Mai_Logger` class is **not** loaded via Composer's autoloader. It's loaded lazily by a custom autoloader that picks the highest registered version on first reference.
-
-Result:
-- Plugin A bundles v0.1, Plugin B bundles v0.2 → `new Mai_Logger()` always uses v0.2.
-- Bug fixes propagate the moment any plugin on the site is updated.
-- Logging works during activation and early boot — no hook timing required.
+Up to 0.1.2, copies used their own bootstrap, which in practice always loaded the first plugin's copy, because Composer runs a package's `files` entry only once per request. Those older copies still work alongside this one. The loader answers before their bootstrap does, so this copy wins wherever both are installed, unless an older plugin creates a logger while its own file is loading.
 
 ## API stability contract
 
@@ -94,21 +98,16 @@ This contract exists because all consuming plugins share one loaded class at run
 - Constructor signature is frozen: `( string $name_or_file )`.
 - If you ever truly need a breaking change, fork to a new class name (`Mai_Logger_V2`) and leave this one untouched.
 
-**`Mai_Logger_Bootstrap` (the registration class):**
-- The signature `register( string $version, string $path ): void` is frozen forever.
-- Older plugins out in the wild will keep calling this exact signature. Don't change it.
-
 **Versioning:**
 - Strict semver. Patch = bug fix only. Minor = additive only. Major = … see "fork to new class name" above.
-- Always tag releases and tell consumers to require a tagged constraint (e.g. `^0.1`). Tracking `dev-main` is fine for local development but ships unreleased code to production.
-- The version string registered with `Mai_Logger_Bootstrap` is the literal value hardcoded in this package's `init.php` — bump it in the same commit as any change to `Mai_Logger.php`. Otherwise the bootstrap will register a stale version and the negotiation will pick the wrong file.
+- Always tag releases and tell consumers to require a tagged constraint (e.g. `^0.2`). Tracking `dev-main` is fine for local development but ships unreleased code to production.
+- Bump the version in `mai-package.php` and `Mai_Logger::VERSION` together, in the same commit as any change to `Mai_Logger.php`. The loader picks copies by the `mai-package.php` version.
 
 ## Edge cases
 
-- **Same version registered twice** (two plugins bundle v0.1.0): second registration overwrites first with the same path. Harmless.
-- **Two plugins, same version string, different files** (someone forked): registration order decides. Fix: bump the version when you fork.
-- **One plugin requires another that requires mai-logger** (plain Composer, e.g. `mai-publisher` bundling `mai-analytics`): Composer flattens the dep tree, so a single copy lands in the parent plugin's `vendor/`. The shared registry works as designed — both plugins see the same loaded class. No isolation, no special handling needed.
-- **Consumer uses Strauss to prefix `vendor/`:** the prefixed copy lives in its own namespace and never registers with `Mai_Logger_Bootstrap`. That copy is fully isolated. Working as intended — Strauss exists specifically to enforce isolation. The maithemewp plugins do **not** use Strauss for inter-plugin bundling, so this case doesn't apply to them.
+- **Two plugins bundle the same version:** either copy loads. They are the same code.
+- **One plugin requires another that requires mai-logger** (plain Composer, such as mai-publisher bundling mai-analytics): Composer flattens the dependency tree, so one copy lands in the parent plugin's `vendor/`. No special handling needed.
+- **A consumer prefixes its `vendor/` with Strauss:** exclude `maithemewp/*` from prefixing, or Strauss renames the loader and starts a second one. The maithemewp plugins do not use Strauss for these libraries.
 
 ## License
 

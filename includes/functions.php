@@ -7,8 +7,8 @@ defined( 'ABSPATH' ) || die;
  * Gets the shared logger instance for this plugin.
  *
  * The Mai_Logger class itself is provided by the maithemewp/mai-logger
- * Composer package, which negotiates the highest installed version
- * across all active plugins on the site via Mai_Logger_Bootstrap.
+ * Composer package. mai-package-loader loads the newest copy bundled by
+ * any active plugin on the site.
  *
  * @return Mai_Logger
  */

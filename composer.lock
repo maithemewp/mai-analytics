@@ -4,26 +4,62 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "4c9b47a23fb86609940d4120f0435cdc",
+    "content-hash": "c4c131472c06b3d86772e2fdd0c9b412",
     "packages": [
         {
             "name": "maithemewp/mai-logger",
-            "version": "v0.1.2",
+            "version": "v0.2.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/maithemewp/mai-logger.git",
-                "reference": "267c5db29f076db0f9d452bc7496e83a50855bc1"
+                "reference": "a2bc94d3e57517da08907c6c14a0d2fabe36a3dd"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/maithemewp/mai-logger/zipball/267c5db29f076db0f9d452bc7496e83a50855bc1",
-                "reference": "267c5db29f076db0f9d452bc7496e83a50855bc1",
+                "url": "https://api.github.com/repos/maithemewp/mai-logger/zipball/a2bc94d3e57517da08907c6c14a0d2fabe36a3dd",
+                "reference": "a2bc94d3e57517da08907c6c14a0d2fabe36a3dd",
                 "shasum": ""
             },
             "require": {
-                "php": ">=7.4"
+                "maithemewp/mai-package-loader": "^0.1",
+                "php": ">=8.1"
             },
             "type": "library",
+            "license": [
+                "GPL-2.0-or-later"
+            ],
+            "description": "Versioned, drop-in logger for WordPress plugins. Newest installed version wins at runtime.",
+            "homepage": "https://github.com/maithemewp/mai-logger",
+            "support": {
+                "source": "https://github.com/maithemewp/mai-logger/tree/v0.2.0",
+                "issues": "https://github.com/maithemewp/mai-logger/issues"
+            },
+            "time": "2026-10-04T00:09:10+00:00"
+        },
+        {
+            "name": "maithemewp/mai-package-loader",
+            "version": "v0.1.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/maithemewp/mai-package-loader.git",
+                "reference": "c6661815c613ec47a83a3f6040311dfbe054a947"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/maithemewp/mai-package-loader/zipball/c6661815c613ec47a83a3f6040311dfbe054a947",
+                "reference": "c6661815c613ec47a83a3f6040311dfbe054a947",
+                "shasum": ""
+            },
+            "require": {
+                "php": ">=8.1"
+            },
+            "type": "library",
+            "extra": {
+                "branch-alias": {
+                    "dev-main": "0.1.x-dev",
+                    "dev-develop": "0.1.x-dev"
+                }
+            },
             "autoload": {
                 "files": [
                     "init.php"
@@ -32,13 +68,12 @@
             "license": [
                 "GPL-2.0-or-later"
             ],
-            "description": "Versioned, drop-in logger for WordPress plugins. Newest installed version wins at runtime.",
-            "homepage": "https://github.com/maithemewp/mai-logger",
+            "description": "Loads the newest copy of each shared mai library, whichever plugin loads first.",
             "support": {
-                "source": "https://github.com/maithemewp/mai-logger/tree/v0.1.2",
-                "issues": "https://github.com/maithemewp/mai-logger/issues"
+                "source": "https://github.com/maithemewp/mai-package-loader/tree/v0.1.0",
+                "issues": "https://github.com/maithemewp/mai-package-loader/issues"
             },
-            "time": "2026-07-08T21:01:11+00:00"
+            "time": "2026-10-03T23:22:07+00:00"
         },
         {
             "name": "yahnis-elsts/plugin-update-checker",

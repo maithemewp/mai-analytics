@@ -5,9 +5,7 @@
     "license": "GPL-2.0-or-later",
     "homepage": "https://github.com/maithemewp/mai-logger",
     "require": {
-        "php": ">=7.4"
-    },
-    "autoload": {
-        "files": ["init.php"]
+        "php": ">=8.1",
+        "maithemewp/mai-package-loader": "^0.1"
     }
 }
