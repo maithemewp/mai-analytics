@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.7 (10/3/26)
+
+* Changed: [Developers] Updated mai-logger to 0.2.0. When several plugins bundle it, the newest copy now loads, whichever plugin WordPress loads first. It loads through mai-package-loader 0.1.0, now bundled too.
+
 ## 1.3.6 (9/14/26)
 
 * Added: The dashboard address now follows the tab, sort, page, filters and search, so a bookmarked or shared link opens the same view.
