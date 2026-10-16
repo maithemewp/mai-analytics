@@ -3,7 +3,7 @@
         'name' => 'maithemewp/mai-analytics',
         'pretty_version' => 'dev-develop',
         'version' => 'dev-develop',
-        'reference' => 'c03bccd13b499336d3ff05cc19ff392782947b4b',
+        'reference' => 'bf3ba96f99ac72173edff47f1a4fd6e70ababe2d',
         'type' => 'wordpress-plugin',
         'install_path' => __DIR__ . '/../../',
         'aliases' => array(),
@@ -11,9 +11,9 @@
     ),
     'versions' => array(
         'bizbudding/deployable-guard' => array(
-            'pretty_version' => 'v1.0.0',
-            'version' => '1.0.0.0',
-            'reference' => 'e6612c5b0146ea42e775d8423527776c17a02d31',
+            'pretty_version' => 'v1.2.0',
+            'version' => '1.2.0.0',
+            'reference' => '7eaebbcdade5ecd9b8d7192c2ef57168b43311df',
             'type' => 'library',
             'install_path' => __DIR__ . '/../bizbudding/deployable-guard',
             'aliases' => array(),
@@ -31,7 +31,7 @@
         'maithemewp/mai-analytics' => array(
             'pretty_version' => 'dev-develop',
             'version' => 'dev-develop',
-            'reference' => 'c03bccd13b499336d3ff05cc19ff392782947b4b',
+            'reference' => 'bf3ba96f99ac72173edff47f1a4fd6e70ababe2d',
             'type' => 'wordpress-plugin',
             'install_path' => __DIR__ . '/../../',
             'aliases' => array(),
