@@ -114,6 +114,7 @@ class RestApi {
 				],
 				'terms' => [
 					'default'           => '',
+					'validate_callback' => [ IdList::class, 'within_limit' ],
 					'sanitize_callback' => 'sanitize_text_field',
 				],
 			],

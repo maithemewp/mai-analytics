@@ -769,6 +769,36 @@ class Test_Admin_REST_API extends WP_UnitTestCase {
 		$this->assertSame( '0', $response->get_headers()['X-WP-Total'] );
 	}
 
+	private function top_posts_with( string $arg, int $count ): WP_REST_Response {
+		$request = new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/top/posts' );
+		$request->set_param( 'taxonomy', 'category' );
+		$request->set_param( $arg, implode( ',', range( 1, $count ) ) );
+
+		return $this->server->dispatch( $request );
+	}
+
+	public function test_id_lists_take_at_most_100(): void {
+		wp_set_current_user( self::factory()->user->create( [ 'role' => 'editor' ] ) );
+
+		foreach ( [ 'term_id', 'author' ] as $arg ) {
+			$this->assertSame( 200, $this->top_posts_with( $arg, 100 )->get_status(), $arg );
+
+			$response = $this->top_posts_with( $arg, 101 );
+			$this->assertSame( 400, $response->get_status(), $arg );
+			$this->assertSame( ErrorCode::InvalidRequest->value, $response->get_data()['code'], $arg );
+			$this->assertArrayHasKey( $arg, $response->get_data()['data']['params'] );
+		}
+	}
+
+	public function test_signed_out_long_id_list_gets_permission_error(): void {
+		wp_set_current_user( 0 );
+
+		$response = $this->top_posts_with( 'term_id', 101 );
+
+		$this->assertSame( 401, $response->get_status() );
+		$this->assertSame( 'rest_forbidden', $response->get_data()['code'] );
+	}
+
 	public function test_top_posts_multi_term_filter(): void {
 		wp_set_current_user( self::factory()->user->create( [ 'role' => 'editor' ] ) );
 

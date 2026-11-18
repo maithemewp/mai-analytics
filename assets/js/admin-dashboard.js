@@ -658,7 +658,7 @@
 			valueField:       'id',
 			labelField:       'name',
 			searchField:      'name',
-			maxItems:         null,
+			maxItems:         100,
 			placeholder:      el.getAttribute('placeholder') || 'Search...',
 			openOnFocus:      true,
 			preload:          'focus',

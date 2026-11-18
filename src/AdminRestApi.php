@@ -62,10 +62,12 @@ class AdminRestApi {
 				],
 				'term_id' => [
 					'default'           => '',
+					'validate_callback' => [ IdList::class, 'within_limit' ],
 					'sanitize_callback' => 'sanitize_text_field',
 				],
 				'author' => [
 					'default'           => '',
+					'validate_callback' => [ IdList::class, 'within_limit' ],
 					'sanitize_callback' => 'sanitize_text_field',
 				],
 				'search' => [

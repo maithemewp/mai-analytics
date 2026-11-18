@@ -2,6 +2,7 @@
 
 use Mai\Analytics\Database;
 use Mai\Analytics\ErrorCode;
+use Mai\Analytics\IdList;
 
 class Test_REST_API extends WP_UnitTestCase {
 
@@ -305,6 +306,31 @@ class Test_REST_API extends WP_UnitTestCase {
 
 		$this->assertCount( 20, $data );
 		$this->assertLessThan( count( $data ), $ran );
+	}
+
+	public function test_trending_terms_limit(): void {
+		$request = new WP_REST_Request( 'GET', '/mai-analytics/v1/views/trending' );
+		$request->set_param( 'taxonomy', 'category' );
+		$request->set_param( 'terms', implode( ',', range( 1, 100 ) ) );
+
+		$this->assertSame( 200, $this->server->dispatch( $request )->get_status() );
+
+		$request->set_param( 'terms', implode( ',', range( 1, 101 ) ) );
+		$response = $this->server->dispatch( $request );
+		$data     = $response->get_data();
+
+		$this->assertSame( 400, $response->get_status() );
+		$this->assertSame( ErrorCode::InvalidRequest->value, $data['code'] );
+		$this->assertArrayHasKey( 'terms', $data['data']['params'] );
+	}
+
+	public function test_id_list_counting(): void {
+		$this->assertTrue( IdList::within_limit( '1,2,' ) );
+		$this->assertTrue( IdList::within_limit( 5 ) );
+		$this->assertTrue( IdList::within_limit( implode( ',', range( 1, 100 ) ) . ',,' ) );
+		$this->assertFalse( IdList::within_limit( implode( ',', range( 1, 101 ) ) ) );
+		$this->assertFalse( IdList::within_limit( [ 1, 2 ] ) );
+		$this->assertFalse( IdList::within_limit( null ) );
 	}
 
 	public function test_route_in_other_case_counts(): void {
