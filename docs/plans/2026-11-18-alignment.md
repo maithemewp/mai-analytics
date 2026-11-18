@@ -377,6 +377,7 @@ Expected: no output. Then, from the worktree folder, `php ~/Plugins/mai-analytic
   - `* Changed: [Developers] ID lists (trending terms, the dashboard's term and author filters) take at most 100 IDs.`
   - `* Changed: [Developers] The dashboard search takes page and per_page and sends X-WP-Total and X-WP-TotalPages.`
   - `* Fixed: View counts for drafts, private posts and other hidden items could be read by anyone. They now answer 404, and trending no longer lists them.`
+  - `* Changed: Views of an author archive for someone with no published posts are no longer counted, and their count is no longer public, so the counts can't be used to find which user IDs exist.`
   - `* Fixed: A view that failed to save was reported as saved.`
   - `* Fixed: Deactivating or uninstalling left two scheduled tasks behind.`
   - `* Fixed: The database version could be recorded when the table had not been created.`
