@@ -1,6 +1,7 @@
 <?php
 
 use Mai\Analytics\Database;
+use Mai\Analytics\ErrorCode;
 
 class Test_REST_API extends WP_UnitTestCase {
 
@@ -48,11 +49,37 @@ class Test_REST_API extends WP_UnitTestCase {
 		$this->assertEquals( 200, $this->server->dispatch( $request )->get_status() );
 	}
 
+	/**
+	 * Asserts a view route error: its status, code, data.status and success false.
+	 */
+	private function assertViewError( WP_REST_Response $response, ErrorCode $code ): void {
+		$data = $response->get_data();
+
+		$this->assertSame( $code->status(), $response->get_status() );
+		$this->assertSame( $code->value, $data['code'] );
+		$this->assertSame( $code->status(), $data['data']['status'] );
+		$this->assertFalse( $data['success'] );
+		$this->assertNotEmpty( $data['message'] );
+	}
+
+	private function view_request( string $path ): WP_REST_Request {
+		$request = new WP_REST_Request( 'POST', '/mai-analytics/v1/view/' . $path );
+		$request->set_header( 'User-Agent', 'Mozilla/5.0' );
+
+		return $request;
+	}
+
+	private function buffer_rows(): int {
+		global $wpdb;
+
+		return (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . Database::get_table_name() );
+	}
+
 	public function test_reject_invalid_post_id(): void {
 		$request = new WP_REST_Request( 'POST', '/mai-analytics/v1/view/post/999999' );
 		$request->set_header( 'User-Agent', 'Mozilla/5.0' );
 
-		$this->assertEquals( 404, $this->server->dispatch( $request )->get_status() );
+		$this->assertViewError( $this->server->dispatch( $request ), ErrorCode::NotFound );
 	}
 
 	public function test_reject_draft_post(): void {
@@ -60,7 +87,7 @@ class Test_REST_API extends WP_UnitTestCase {
 		$request = new WP_REST_Request( 'POST', '/mai-analytics/v1/view/post/' . $post_id );
 		$request->set_header( 'User-Agent', 'Mozilla/5.0' );
 
-		$this->assertEquals( 404, $this->server->dispatch( $request )->get_status() );
+		$this->assertViewError( $this->server->dispatch( $request ), ErrorCode::NotFound );
 	}
 
 	public function test_reject_bot_user_agent(): void {
@@ -68,7 +95,68 @@ class Test_REST_API extends WP_UnitTestCase {
 		$request = new WP_REST_Request( 'POST', '/mai-analytics/v1/view/post/' . $post_id );
 		$request->set_header( 'User-Agent', 'Googlebot/2.1' );
 
-		$this->assertEquals( 403, $this->server->dispatch( $request )->get_status() );
+		$this->assertViewError( $this->server->dispatch( $request ), ErrorCode::Bot );
+	}
+
+	public function test_reject_non_public_post_type_archive(): void {
+		register_post_type( 'mai_hidden_type', [ 'public' => false ] );
+
+		$response = $this->server->dispatch( $this->view_request( 'post_type/mai_hidden_type' ) );
+
+		$this->assertViewError( $response, ErrorCode::NotFound );
+	}
+
+	public function test_insert_failure_answers_503(): void {
+		global $wpdb;
+
+		$post_id    = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+		$suppressed = $wpdb->suppress_errors( true );
+		$prefix     = 'INSERT INTO `' . Database::get_table_name() . '`';
+		$break      = function ( $query ) use ( $prefix ) {
+			if ( str_starts_with( $query, $prefix ) ) {
+				return 'INSERT INTO `mai_analytics_missing_table`' . substr( $query, strlen( $prefix ) );
+			}
+
+			return $query;
+		};
+
+		add_filter( 'query', $break );
+
+		$post_response      = $this->server->dispatch( $this->view_request( 'post/' . $post_id ) );
+		$post_type_response = $this->server->dispatch( $this->view_request( 'post_type/post' ) );
+
+		remove_filter( 'query', $break );
+		$wpdb->suppress_errors( $suppressed );
+
+		foreach ( [ $post_response, $post_type_response ] as $response ) {
+			$this->assertViewError( $response, ErrorCode::DatabaseError );
+			$this->assertSame( 1, $response->get_data()['data']['retry_after'] );
+			$this->assertSame( '1', $response->get_headers()['Retry-After'] );
+		}
+	}
+
+	public function test_provider_mode_dedup_still_succeeds(): void {
+		add_filter( 'mai_analytics_data_source', fn() => 'matomo' );
+
+		$post_id = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+		Database::insert_view( $post_id, 'post' );
+
+		$response = $this->server->dispatch( $this->view_request( 'post/' . $post_id ) );
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertSame( [ 'success' => true ], $response->get_data() );
+	}
+
+	public function test_route_in_other_case_counts(): void {
+		$post_id = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+		$before  = $this->buffer_rows();
+		$request = new WP_REST_Request( 'POST', '/mai-analytics/v1/VIEW/post/' . $post_id );
+		$request->set_header( 'User-Agent', 'Mozilla/5.0' );
+
+		$response = $this->server->dispatch( $request );
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertSame( $before + 1, $this->buffer_rows() );
 	}
 
 	public function test_get_post_views(): void {

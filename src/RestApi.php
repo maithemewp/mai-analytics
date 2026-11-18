@@ -135,12 +135,12 @@ class RestApi {
 		$type = $this->get_type_from_route( $request->get_route() );
 
 		if ( ! $type ) {
-			return new WP_REST_Response( [ 'success' => false ], 400 );
+			return $this->invalid_request();
 		}
 
 		// Validate the object exists and is public.
 		if ( ! $this->validate_object( $id, $type ) ) {
-			return new WP_REST_Response( [ 'success' => false ], 404 );
+			return $this->not_found();
 		}
 
 		$source      = $request->get_param( 'source' ) ?: 'web';
@@ -150,20 +150,26 @@ class RestApi {
 		// is just a signal that gets deleted; the provider has its own bot filtering.
 		if ( 'self_hosted' === $data_source && Settings::get( 'exclude_bots' ) ) {
 			if ( BotFilter::is_bot( $request->get_header( 'user_agent' ) ) ) {
-				return new WP_REST_Response( [ 'success' => false ], 403 );
+				return $this->bot();
 			}
 		}
+
+		$inserted = null;
 
 		// External provider mode + web visit: dedup check before INSERT.
 		if ( 'self_hosted' !== $data_source && 'web' === $source ) {
 			$last_sync = (int) get_option( 'mai_analytics_provider_last_sync', 0 );
 
 			if ( ! Database::is_queued( $id, $type, $last_sync ) ) {
-				Database::insert_view( $id, $type, $source );
+				$inserted = Database::insert_view( $id, $type, $source );
 			}
 		} else {
 			// Self-hosted (any source) OR external + app → buffer INSERT (every view counted).
-			Database::insert_view( $id, $type, $source );
+			$inserted = Database::insert_view( $id, $type, $source );
+		}
+
+		if ( false === $inserted ) {
+			return $this->database_error();
 		}
 
 		// Fallback sync: if cron is failing, trigger sync after response.
@@ -184,7 +190,7 @@ class RestApi {
 		$type = $this->get_type_from_route( $request->get_route() );
 
 		if ( ! $type ) {
-			return new WP_REST_Response( [ 'success' => false ], 400 );
+			return $this->invalid_request();
 		}
 
 		[ $views, $trending ] = match ( $type ) {
@@ -218,7 +224,7 @@ class RestApi {
 		$post_type_obj = get_post_type_object( $post_type );
 
 		if ( ! $post_type_obj || ! $post_type_obj->public ) {
-			return new WP_REST_Response( [ 'success' => false ], 404 );
+			return $this->not_found();
 		}
 
 		$source      = $request->get_param( 'source' ) ?: 'web';
@@ -227,20 +233,26 @@ class RestApi {
 		// Bot filtering — only in self-hosted mode.
 		if ( 'self_hosted' === $data_source && Settings::get( 'exclude_bots' ) ) {
 			if ( BotFilter::is_bot( $request->get_header( 'user_agent' ) ) ) {
-				return new WP_REST_Response( [ 'success' => false ], 403 );
+				return $this->bot();
 			}
 		}
+
+		$inserted = null;
 
 		// External provider mode + web visit: dedup check before INSERT.
 		if ( 'self_hosted' !== $data_source && 'web' === $source ) {
 			$last_sync = (int) get_option( 'mai_analytics_provider_last_sync', 0 );
 
 			if ( ! Database::is_queued( 0, 'post_type', $last_sync ) ) {
-				Database::insert_view( 0, 'post_type', $source, $post_type );
+				$inserted = Database::insert_view( 0, 'post_type', $source, $post_type );
 			}
 		} else {
 			// Self-hosted (any source) OR external + app → buffer INSERT.
-			Database::insert_view( 0, 'post_type', $source, $post_type );
+			$inserted = Database::insert_view( 0, 'post_type', $source, $post_type );
+		}
+
+		if ( false === $inserted ) {
+			return $this->database_error();
 		}
 
 		// Fallback sync: if cron is failing, trigger sync after response.
@@ -402,11 +414,56 @@ class RestApi {
 	 * @return string|false The object type ('post', 'term', or 'user'), or false if not found.
 	 */
 	private function get_type_from_route( string $route ): string|false {
-		if ( preg_match( '#/views?/(post|term|user)/#', $route, $matches ) ) {
-			return $matches[1];
+		// Core matches routes without case, so this does too.
+		if ( preg_match( '#/views?/(post|term|user)/#i', $route, $matches ) ) {
+			return strtolower( $matches[1] );
 		}
 
 		return false;
+	}
+
+	/**
+	 * Builds the error for a request the route can't place.
+	 *
+	 * @since 1.3.8
+	 *
+	 * @return WP_REST_Response
+	 */
+	private function invalid_request(): WP_REST_Response {
+		return Errors::response( ErrorCode::InvalidRequest, __( 'Invalid request.', 'mai-analytics' ), [], [ 'success' => false ] );
+	}
+
+	/**
+	 * Builds the error for an item that is missing or hidden.
+	 *
+	 * @since 1.3.8
+	 *
+	 * @return WP_REST_Response
+	 */
+	private function not_found(): WP_REST_Response {
+		return Errors::response( ErrorCode::NotFound, __( 'Nothing to count here.', 'mai-analytics' ), [], [ 'success' => false ] );
+	}
+
+	/**
+	 * Builds the error for a view refused as a bot.
+	 *
+	 * @since 1.3.8
+	 *
+	 * @return WP_REST_Response
+	 */
+	private function bot(): WP_REST_Response {
+		return Errors::response( ErrorCode::Bot, __( 'Views from bots are not counted.', 'mai-analytics' ), [], [ 'success' => false ] );
+	}
+
+	/**
+	 * Builds the error for a view that could not be saved.
+	 *
+	 * @since 1.3.8
+	 *
+	 * @return WP_REST_Response
+	 */
+	private function database_error(): WP_REST_Response {
+		return Errors::response( ErrorCode::DatabaseError, __( 'The view could not be saved. Try again.', 'mai-analytics' ), [], [ 'success' => false ] );
 	}
 
 	/**
