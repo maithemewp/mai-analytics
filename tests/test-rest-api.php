@@ -289,6 +289,54 @@ class Test_REST_API extends WP_UnitTestCase {
 		$this->assertSame( [ $author ], array_column( $this->trending( 'user', 10 ), 'id' ) );
 	}
 
+	/**
+	 * Views a batch of new posts, each fewer times than any earlier one.
+	 *
+	 * @return int[] The post IDs.
+	 */
+	private function viewed_posts( int $count, int $most ): array {
+		$ids = [];
+
+		for ( $i = 0; $i < $count; $i++ ) {
+			$ids[] = $id = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+
+			for ( $v = 0; $v < $most - $i; $v++ ) {
+				Database::insert_view( $id, 'post' );
+			}
+		}
+
+		return $ids;
+	}
+
+	private function trending_queries( int $per_page ): int {
+		global $wpdb;
+
+		wp_cache_flush();
+		$before = $wpdb->num_queries;
+		$this->trending( 'post', $per_page );
+
+		return $wpdb->num_queries - $before;
+	}
+
+	public function test_trending_primes_only_what_it_returns(): void {
+		$top = $this->viewed_posts( 5, 60 );
+		$few = $this->trending_queries( 5 );
+
+		// Twenty more rows that the over-fetch reads but the cut drops.
+		$rest = $this->viewed_posts( 20, 40 );
+		$many = $this->trending_queries( 5 );
+
+		$this->assertSame( $few, $many );
+
+		foreach ( $rest as $id ) {
+			$this->assertFalse( wp_cache_get( $id, 'post_meta' ), "post $id meta" );
+		}
+
+		foreach ( $top as $id ) {
+			$this->assertNotFalse( wp_cache_get( $id, 'post_meta' ), "post $id meta" );
+		}
+	}
+
 	public function test_trending_checks_in_bulk(): void {
 		global $wpdb;
 

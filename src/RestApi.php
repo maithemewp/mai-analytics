@@ -361,6 +361,8 @@ class RestApi {
 
 		$results = array_slice( array_values( $results ), 0, $per_page );
 
+		$this->prime_for_output( $type, array_map( fn( $r ) => (int) ( $r->object_id ?? 0 ), $results ) );
+
 		$data = array_map( fn( $row ) => $this->enrich_result( $row, $type ), $results );
 
 		return new WP_REST_Response( $data );
@@ -520,8 +522,8 @@ class RestApi {
 	/**
 	 * Returns the IDs from a list that pass the visibility rule, checked in bulk.
 	 *
-	 * Primes the caches first so the per-item checks run no queries of their own.
-	 * Users are counted with one count_many_users_posts() call.
+	 * Primes only what the checks read, so the five-fold over-fetch loads no
+	 * meta or terms. prime_for_output() loads those for the rows returned.
 	 *
 	 * @since 1.3.8
 	 *
@@ -543,21 +545,88 @@ class RestApi {
 
 		switch ( $type ) {
 			case 'post':
-				_prime_post_caches( $ids );
+				_prime_post_caches( $ids, false, false );
 				return array_values( array_filter( $ids, fn( $id ) => $this->validate_object( $id, 'post' ) ) );
 
 			case 'term':
-				_prime_term_caches( $ids );
+				_prime_term_caches( $ids, false );
 				return array_values( array_filter( $ids, fn( $id ) => $this->validate_object( $id, 'term' ) ) );
 
 			case 'user':
-				cache_users( $ids );
-				$counts = count_many_users_posts( $ids, get_post_types( [ 'public' => true ] ), true );
-
-				return array_values( array_filter( $ids, fn( $id ) => get_userdata( $id ) && (int) ( $counts[ $id ] ?? 0 ) > 0 ) );
+				return $this->users_with_viewable_posts( $ids );
 		}
 
 		return [];
+	}
+
+	/**
+	 * Returns the user IDs that exist and have at least one published post in a
+	 * public post type, in one query.
+	 *
+	 * Joining the users table drops IDs whose user was deleted, so no user
+	 * objects or meta are loaded for the check.
+	 *
+	 * @since 1.3.8
+	 *
+	 * @param int[] $ids User IDs.
+	 *
+	 * @return int[] The IDs that pass, in the order given.
+	 */
+	private function users_with_viewable_posts( array $ids ): array {
+		global $wpdb;
+
+		$ids   = array_values( array_unique( array_filter( array_map( 'intval', $ids ) ) ) );
+		$types = array_values( get_post_types( [ 'public' => true ] ) );
+
+		if ( ! $ids || ! $types ) {
+			return [];
+		}
+
+		$id_holders   = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
+		$type_holders = implode( ',', array_fill( 0, count( $types ), '%s' ) );
+
+		$found = $wpdb->get_col(
+			$wpdb->prepare(
+				"SELECT DISTINCT p.post_author
+				 FROM $wpdb->posts p
+				 INNER JOIN $wpdb->users u ON u.ID = p.post_author
+				 WHERE p.post_author IN ($id_holders)
+				 AND p.post_type IN ($type_holders)
+				 AND p.post_status = 'publish'",
+				array_merge( $ids, $types )
+			)
+		);
+
+		$found = array_flip( array_map( 'intval', $found ) );
+
+		return array_values( array_filter( $ids, fn( $id ) => isset( $found[ $id ] ) ) );
+	}
+
+	/**
+	 * Primes the caches enrich_result() reads, for the rows being returned only.
+	 *
+	 * @since 1.3.8
+	 *
+	 * @param string $type The object type: 'post', 'term', 'user' or 'post_type'.
+	 * @param int[]  $ids  The object IDs being returned.
+	 *
+	 * @return void
+	 */
+	private function prime_for_output( string $type, array $ids ): void {
+		$ids = array_values( array_filter( $ids ) );
+
+		if ( ! $ids ) {
+			return;
+		}
+
+		if ( 'post' === $type ) {
+			// The posts are cached already, so _prime_post_caches() would skip
+			// them. Load their terms and meta for get_permalink() directly.
+			$posts = array_filter( array_map( 'get_post', $ids ) );
+			update_post_caches( $posts, 'any', true, true );
+		} elseif ( 'user' === $type ) {
+			cache_users( $ids );
+		}
 	}
 
 	/**
