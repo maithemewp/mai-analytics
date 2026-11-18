@@ -1,25 +1,41 @@
 # State
-Updated: 2026-11-18 by Claude (mai-analytics session)
+Updated: 2026-11-18 by Claude (mai-analytics build session)
 
 ## Now
-Version 1.3.7 is released and live. The alignment spec `docs/specs/2026-11-18-alignment.md` and plan `docs/plans/2026-11-18-alignment.md` are done. An independent reviewer checked the plan against the code and core, and every finding was fixed. mai-coordinator decided every open question, all open to Mike: 404 for hidden items, a user visible only with a published post, core's viewable helpers, the new error bodies, 501 for setup problems and 502 for provider failures, 503 for a failed view insert, paging on `/admin/search`, and the code names. Nothing is built.
+The alignment pass is built on branch `feat/alignment` (worktree `~/Plugins/_wip/analytics-alignment`), plan Tasks 0 to 8, one commit each. The suite passes: 256 tests, against a develop baseline of 205. Nothing is merged, versioned or released. Version stays 1.3.7.
+
+Draft changelog lines, for `CHANGES.md` on the release commit only, with its version and date:
+
+* Changed: [Developers] REST errors now carry a mai_analytics_* code and data.status. View errors keep "success": false and admin errors keep "message".
+* Changed: [Developers] Four error statuses changed: Sync Now answers 501 for a setup problem and 502 for a provider failure (was 500), Warm answers 501 in self-hosted mode (was 400) and 502 for a provider failure (was 500), and a view that fails to save answers 503 with Retry-After (was 200).
+* Changed: [Developers] Core's argument errors answer 400 mai_analytics_invalid_request, after the permission check, so a signed-out request still gets 401.
+* Changed: [Developers] ID lists (trending terms, the dashboard's term and author filters) take at most 100 IDs.
+* Changed: [Developers] The dashboard search takes page and per_page and sends X-WP-Total and X-WP-TotalPages.
+* Changed: [Developers] Warm refuses a negative cursor, total_updated or total_iterated with 400 instead of turning it positive.
+* Changed: Views of an author archive for someone with no published posts are no longer counted, and their count is no longer public, so the counts can't be used to find which user IDs exist.
+* Changed: Which posts, terms and archives are counted now follows WordPress's own "publicly viewable" rule, which only differs from before for post types, taxonomies or statuses registered with unusual settings.
+* Fixed: View counts for drafts, private posts and other hidden items could be read by anyone. They now answer 404, and trending no longer lists them.
+* Fixed: A view that failed to save was reported as saved.
+* Fixed: Deactivating left three scheduled tasks behind, and uninstalling left two.
+* Fixed: The database version could be recorded when the table had not been created.
+* Fixed: Sync Now answered a server error for a setup problem.
 
 ## Next
-1. Mike pastes the build prompt into a fresh session, which builds in the worktree `~/Plugins/_wip/analytics-alignment` on branch `feat/alignment` and stops at the plan's Task 9 gate.
-2. mai-coordinator grants the merge to `develop` and any use of the shared production-copy site.
+1. mai-coordinator reviews the branch and grants the merge to `develop`.
+2. Mike walks the code names. A rename changes only the `ErrorCode` case values.
 3. Mike decides the point release after the whole stack passes its tests.
 
 ## Blocked / waiting on
-- Mike starting the build session.
+- mai-coordinator's review and merge grant.
 
 ## Verify
-- `WP_TESTS_DIR=/tmp/wordpress-tests-lib vendor/bin/phpunit` after `composer install`. Read the shared production-copy site's `SITE-LOCK.md` first, and never run it while another session has a device run claimed.
-- `php vendor/bin/deployable-guard check --root=.` before any commit that touches `vendor/`, and put `vendor/` back with `composer install --no-dev` first.
+- `WP_TESTS_DIR=/tmp/wordpress-tests-lib vendor/bin/phpunit` after `composer install`. Read the Status of the shared production-copy site's `SITE-LOCK.md` and `uptime` first. Never run it during a device run or with the 1-minute load at 10 or more.
+- Afterwards put `vendor/` back with `composer install --no-dev`, then `git checkout -- vendor/composer/installed.json vendor/composer/installed.php`, because the committed copies were written by a dev install. Then `php vendor/bin/deployable-guard check --root=.`.
 
 ## Gotchas
-- The shared production-copy site loads this checkout. Keep it on `develop` with docs-only commits. Code work goes in a worktree on a feature branch.
-- Mai Publisher bundles this plugin. A site running only the bundled copy gets fixes when Mai Publisher ships a new bundled version, and never gets activation, deactivation or uninstall fixes.
-- Core validates REST args before the permission callback, so a signed-out bad request gets a 400 unless the plugin maps it.
+- The shared production-copy site loads the main checkout. Keep it on `develop` with docs-only commits. Code work goes in a worktree on a feature branch.
+- Mai Publisher bundles this plugin. A site running only the bundled copy gets fixes when Mai Publisher ships a new bundled version, and never gets activation, deactivation or uninstall fixes. `Plugin::deactivate()` is public so Mai Publisher can call it.
+- Every `mai_analytics_*` code string lives only in `src/ErrorCode.php`. Tests use `ErrorCode::X->value`.
 - maiexpowp switches views off on 404 `rest_no_route`, so never answer that code from plugin code.
 - The WordPress test library turns `CREATE` and `DROP TABLE` in a test into `TEMPORARY` forms, and restores hooks after every test. Fail queries with a `query` filter, and never guard a hook with a static "already added" flag.
-- A real activation loads the plugin after `plugins_loaded`, so `Plugin::init()` hasn't run. Activation code must register anything it needs itself, like the 15-minute cron schedule.
+- `register_post_status()` makes a status internal unless one of `public`, `internal`, `protected` or `private` is given (`wp-includes/post.php:1486-1488`), so a status with only `publicly_queryable` is not viewable.
