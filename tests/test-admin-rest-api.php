@@ -760,6 +760,28 @@ class Test_Admin_REST_API extends WP_UnitTestCase {
 		$this->assert_search_pages( [ 'type' => 'author', 'search' => 'Alpha' ] );
 	}
 
+	public function test_short_first_page_skips_the_count(): void {
+		global $wpdb;
+
+		wp_set_current_user( self::factory()->user->create( [ 'role' => 'editor' ] ) );
+
+		for ( $i = 1; $i <= 3; $i++ ) {
+			$user_id = self::factory()->user->create( [ 'display_name' => "Beta $i" ] );
+			$post_id = self::factory()->post->create( [ 'post_status' => 'publish', 'post_author' => $user_id ] );
+			update_post_meta( $post_id, 'mai_views', 5 );
+		}
+
+		$params = [ 'type' => 'author', 'search' => 'Beta' ];
+		$this->search( $params );
+
+		$before   = $wpdb->num_queries;
+		$response = $this->search( $params );
+
+		$this->assertSame( 1, $wpdb->num_queries - $before );
+		$this->assertSame( '3', $response->get_headers()['X-WP-Total'] );
+		$this->assertSame( '1', $response->get_headers()['X-WP-TotalPages'] );
+	}
+
 	public function test_search_terms_without_taxonomy_sends_zero_total(): void {
 		wp_set_current_user( self::factory()->user->create( [ 'role' => 'editor' ] ) );
 

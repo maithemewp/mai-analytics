@@ -771,8 +771,8 @@ class AdminRestApi {
 				 INNER JOIN $wpdb->postmeta pm ON p.ID = pm.post_id
 				 WHERE {$where}";
 
-			$total   = (int) $wpdb->get_var( "SELECT COUNT(DISTINCT u.ID) {$from}" );
-			$results = $wpdb->get_results(
+			$count_sql = "SELECT COUNT(DISTINCT u.ID) {$from}";
+			$results   = $wpdb->get_results(
 				$wpdb->prepare(
 					"SELECT DISTINCT u.ID as id, u.display_name as name
 					 {$from}
@@ -803,8 +803,8 @@ class AdminRestApi {
 				 INNER JOIN $wpdb->term_taxonomy tt ON t.term_id = tt.term_id
 				 WHERE {$where}";
 
-			$total   = (int) $wpdb->get_var( "SELECT COUNT(DISTINCT t.term_id) {$from}" );
-			$results = $wpdb->get_results(
+			$count_sql = "SELECT COUNT(DISTINCT t.term_id) {$from}";
+			$results   = $wpdb->get_results(
 				$wpdb->prepare(
 					"SELECT t.term_id as id, t.name
 					 {$from}
@@ -820,6 +820,12 @@ class AdminRestApi {
 			'id'   => (int) $r->id,
 			'name' => $r->name,
 		], $results );
+
+		// A short first page already holds every match, so skip the second
+		// pass over the join. The dashboard asks on every keystroke.
+		$total = ( 0 === $offset && count( $items ) < $per_page )
+			? count( $items )
+			: (int) $wpdb->get_var( $count_sql );
 
 		return $this->search_response( $items, $total, $per_page );
 	}
