@@ -16,3 +16,5 @@
 - Health reads `data_source` from the raw option, skipping the `mai_analytics_data_source` filter (`src/Health.php:83-84`).
 - The legacy meta-key probe only looks in postmeta (`src/Migration.php:122-129`).
 - Per-person views for "For You": a separate design later (Mike, 2026-11-18). Nothing built for it.
+- Two read-only `LIKE`s on meta names don't escape `_`: `src/Migration.php:123` and `src/Health.php:54`. A stray match can only make a probe or a count wrong.
+- The `[mai_views]` shortcode and `mai_analytics_get_count()` read any ID with no visibility check. Only staff can call them today.

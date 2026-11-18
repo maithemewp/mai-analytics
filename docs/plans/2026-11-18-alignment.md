@@ -23,7 +23,8 @@
 - No `vendor/` change is committed. `composer install` in the worktree adds dev packages and rewrites `vendor/composer/installed.php`; Task 9 puts it back.
 - Every shell command writes paths out in full, with no shell variables. An environment variable in front of a command, such as `WP_TESTS_DIR=/tmp/wordpress-tests-lib`, is fine.
 - Tests never `DROP` the buffer table to make something fail. The WordPress test library turns `CREATE TABLE` and `DROP TABLE` inside a test into their `TEMPORARY` forms (`_create_temporary_tables()` and `_drop_temporary_tables()` in `includes/abstract-testcase.php`; check them in `/tmp/wordpress-tests-lib` before writing these tests, this plan's author could not, the library was not installed), so a drop does not remove the real table and a later check still sees it. Fail a query with a `query` filter instead, as each task below says.
-- Before every PHPUnit run, read the Status section of the shared production-copy site's `SITE-LOCK.md` (in the site's root, `~/Herd/` plus the site's folder). If any session has a device run, benchmark or build claimed, wait. PHPUnit here uses its own test database, never the shared site, but the lock also guards the machine's load.
+- Before running the test suite, a benchmark or a build, read the Status section of the shared production-copy site's `SITE-LOCK.md` (in the site's root, `~/Herd/` plus the site's folder). Do not start while another session has a device run claimed. Suites running during a device run pushed the machine's load to 145 on 2026-11-18 and broke that run. PHPUnit here uses its own test database, never the shared site.
+- Two security checks every session was asked for on 2026-11-18 are folded into Task 3 (counts for hidden items) and Task 6 (unescaped `LIKE`). Fix what the spec covers, and list anything else in `TODO.md` and the report.
 
 ## Review Focus
 
@@ -50,12 +51,14 @@ Expected: `Preparing worktree (new branch 'feat/alignment')`. Every later step r
 - [ ] **Step 2: Install dev dependencies there.**
 
 ```bash
-composer install --working-dir=~/Plugins/_wip/analytics-alignment
+composer install -d ~/Plugins/_wip/analytics-alignment
 ```
 
 Expected: `vendor/bin/phpunit` exists. `git status --short` shows `vendor/composer/installed.php` and friends modified; that is expected until Task 9.
 
 - [ ] **Step 3: Check the WordPress test library.** `/tmp/wordpress-tests-lib/includes/functions.php` must exist. If not, run `bin/install-wp-tests.sh` with a local test database name, user and password (it never touches the shared site), and say which database you made.
+
+- [ ] **Step 3b: Prove how the test library treats `DROP TABLE`** before any task relies on it. Read `_create_temporary_tables()` and `_drop_temporary_tables()` in `/tmp/wordpress-tests-lib/includes/abstract-testcase.php` (`rg -n "temporary" /tmp/wordpress-tests-lib/includes/abstract-testcase.php`), and cite the lines in your report. If they do not exist or do not rewrite `DROP TABLE`, tell mai-coordinator before Task 2, since Tasks 2, 6 and 7 assume they do. The `query`-filter approach works either way, so keep it.
 
 - [ ] **Step 4: Baseline run** (after the `SITE-LOCK.md` check).
 
@@ -156,12 +159,13 @@ git commit -m "Give view errors plugin codes and report a failed view insert"
 - Test: `tests/test-rest-api.php`
 
 **Interfaces:**
-- Consumes: `validate_object( int $id, string $type ): bool` (`src/RestApi.php:420-437`, unchanged), `ErrorCode::NotFound`, `Errors::response()`.
+- Consumes: `validate_object( int $id, string $type ): bool` (`src/RestApi.php:420-437`), `ErrorCode::NotFound`, `Errors::response()`. Its `user` branch changes (spec, change 4, "user IDs"): a user is visible only when `count_user_posts( $id, get_post_types( [ 'public' => true ] ), true ) > 0`.
 - Produces: `private function is_public_post_type( string $post_type ): bool` in `RestApi`, used by both post type routes (move the check at `:218-222` into it).
 
 - [ ] **Step 1: Write the failing tests:**
   - `test_get_views_hides_unpublished`: signed out, `GET /views/post/{id}` for a draft, a private, a pending and a trashed post, and a post of a registered non-public type, each answer 404 `NotFound` with `success` false. Same as an editor.
-  - `test_get_views_missing_items`: a missing post ID, a term in a non-public taxonomy, a missing term and a missing user each answer 404 `NotFound`.
+  - `test_get_views_missing_items`: a missing post ID, a term in a non-public taxonomy, a missing term, a missing user and a user with no published posts each answer 404 `NotFound`. A user with one published post answers 200.
+  - `test_view_post_for_user_without_posts`: `POST /view/user/{id}` for a user with no published posts answers 404 `NotFound` and writes no buffer row.
   - `test_get_post_views` (`:74-84`) keeps passing unchanged: the post factory's default status is `publish`.
   - `test_get_post_type_views_hides_non_public`: a registered non-public post type answers 404 `NotFound`; `post` answers 200.
   - `test_trending_drops_hidden_posts`: publish 12 posts, give each views with `Database::insert_view()`, make the 3 most viewed private, then `GET /views/trending?type=post&per_page=5` returns 5 rows and none of the private IDs.
@@ -173,10 +177,12 @@ git commit -m "Give view errors plugin codes and report a failed view insert"
 
 - [ ] **Step 4: Run the tests.** Expected: pass, and the full suite passes. The Health check's REST probe asks about a published post (`src/Health.php:139-152`), so it is not affected.
 
-- [ ] **Step 5: Commit.**
+- [ ] **Step 5: Check the other count reads.** Confirm what the spec found: `rg -n "mai_views|mai_trending" ~/Plugins/_wip/analytics-alignment/src ~/Plugins/_wip/analytics-alignment/includes` and read every hit that answers a request. Only the shortcode and `mai_analytics_get_count()` read counts outside these routes, and both are PHP-only. Leave them, and add one `TODO.md` line if it is not there yet: "The `[mai_views]` shortcode and `mai_analytics_get_count()` read any ID with no visibility check. Only staff can call them today." Anything else that answers a signed-out caller with a hidden item's count is in scope: fix it here with a test, and say so in the report.
+
+- [ ] **Step 6: Commit.**
 
 ```bash
-git add src/RestApi.php tests/test-rest-api.php
+git add src/RestApi.php tests/test-rest-api.php TODO.md
 git commit -m "Stop showing view counts for items a caller may not see"
 ```
 
@@ -274,10 +280,12 @@ git commit -m "Refuse ID lists over 100"
 
 - [ ] **Step 4: Run the tests.** Expected: pass, and the full suite passes. Run `Test_Uninstall` last or alone if it leaves the table dropped for later tests; each other class's `setUp` calls `Database::create_table()`, so order should not matter, but check.
 
-- [ ] **Step 5: Commit.**
+- [ ] **Step 5: Check for other unescaped `LIKE`.** Run `rg -n "LIKE" ~/Plugins/_wip/analytics-alignment/src ~/Plugins/_wip/analytics-alignment/includes ~/Plugins/_wip/analytics-alignment/uninstall.php` and read every hit that matches option, transient or meta names without `esc_like()`. On 2026-11-18 there were two besides uninstall, both read-only: `src/Migration.php:123` (`meta_key LIKE 'mai_analytics_views%'`, the legacy-key probe) and `src/Health.php:54` (`meta_key LIKE 'mai_analytics_%'`, a count). A stray match there can only make a probe or a count wrong, never delete anything, so they stay out of this release. Add one `TODO.md` line for both. Any `LIKE` that deletes or updates is in scope: escape it here, with a test.
+
+- [ ] **Step 6: Commit.**
 
 ```bash
-git add src/Cron.php src/Plugin.php mai-analytics.php uninstall.php tests/test-cron.php tests/test-uninstall.php
+git add src/Cron.php src/Plugin.php mai-analytics.php uninstall.php tests/test-cron.php tests/test-uninstall.php TODO.md
 git commit -m "Clear every cron hook on deactivate and uninstall, escape uninstall's LIKE"
 ```
 
@@ -354,14 +362,14 @@ If Step 4 changed other test files, add them by name too.
 - [ ] **Step 2: Put `vendor/` back to production only.**
 
 ```bash
-composer install --no-dev --working-dir=~/Plugins/_wip/analytics-alignment
+composer install --no-dev -d ~/Plugins/_wip/analytics-alignment
 ```
 
 ```bash
 git -C ~/Plugins/_wip/analytics-alignment status --short vendor
 ```
 
-Expected: no output. Then `php ~/Plugins/mai-analytics/vendor/bin/deployable-guard check --root=~/Plugins/_wip/analytics-alignment` prints `OK: committed autoloader is deployable as-is.` Composer's classmap is PSR-4, so the three new classes need no autoloader change; the guard confirms it.
+Expected: no output. Then, from the worktree folder, `php ~/Plugins/mai-analytics/vendor/bin/deployable-guard check --root=.` (the binary is a dev package, so use the main checkout's copy) prints `OK: committed autoloader is deployable as-is.` Composer's classmap is PSR-4, so the three new classes need no autoloader change; the guard confirms it.
 
 - [ ] **Step 3: Rewrite `STATE.md`** on the branch: what was built, the test count, the open naming question, and the draft changelog lines below for whoever cuts the release. Add to `TODO.md`'s "Later" any follow-up you hit. Draft changelog lines (they go into `CHANGES.md` only on the release commit, with its version and date):
   - `* Changed: [Developers] REST errors now carry a mai_analytics_* code and data.status. View errors keep "success": false and admin errors keep "message".`
@@ -382,7 +390,7 @@ git commit -m "State after the alignment build"
 ```
 
 - [ ] **Step 5: Gate. Stop here.**
-  - Do not merge `feat/alignment` into `develop`, and do not push it, without mai-coordinator's grant.
+  - Pushing `feat/alignment` needs no one's grant (Mike's standing rule: pushes to branches never need asking). Never push `develop` or `main` from here.
   - Do not use the shared production-copy site in any way (no activation, WP-CLI, e2e or browser) without a claim from mai-coordinator.
   - No version bump, tag or release. A point release happens only on Mike's yes, and no tag questions until the whole stack passes its tests.
   - If Mike renames any code in his walk, change only the `ErrorCode` case values and rerun the suite.
