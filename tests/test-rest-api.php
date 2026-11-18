@@ -43,6 +43,7 @@ class Test_REST_API extends WP_UnitTestCase {
 
 	public function test_record_user_view(): void {
 		$user_id = self::factory()->user->create();
+		self::factory()->post->create( [ 'post_status' => 'publish', 'post_author' => $user_id ] );
 		$request = new WP_REST_Request( 'POST', '/mai-analytics/v1/view/user/' . $user_id );
 		$request->set_header( 'User-Agent', 'Mozilla/5.0' );
 
@@ -145,6 +146,165 @@ class Test_REST_API extends WP_UnitTestCase {
 
 		$this->assertSame( 200, $response->get_status() );
 		$this->assertSame( [ 'success' => true ], $response->get_data() );
+	}
+
+	private function get_views_at( string $path ): WP_REST_Response {
+		return $this->server->dispatch( new WP_REST_Request( 'GET', '/mai-analytics/v1/views/' . $path ) );
+	}
+
+	public function test_get_views_hides_unpublished(): void {
+		register_post_type( 'mai_hidden_type', [ 'public' => false ] );
+
+		$ids = [
+			self::factory()->post->create( [ 'post_status' => 'draft' ] ),
+			self::factory()->post->create( [ 'post_status' => 'private' ] ),
+			self::factory()->post->create( [ 'post_status' => 'pending' ] ),
+			self::factory()->post->create( [ 'post_status' => 'trash' ] ),
+			self::factory()->post->create( [ 'post_status' => 'publish', 'post_type' => 'mai_hidden_type' ] ),
+		];
+
+		foreach ( [ 0, self::factory()->user->create( [ 'role' => 'editor' ] ) ] as $user ) {
+			wp_set_current_user( $user );
+
+			foreach ( $ids as $id ) {
+				$this->assertViewError( $this->get_views_at( 'post/' . $id ), ErrorCode::NotFound );
+			}
+		}
+	}
+
+	public function test_get_views_missing_items(): void {
+		register_taxonomy( 'mai_hidden_tax', 'post', [ 'public' => false ] );
+		$hidden_term = self::factory()->term->create( [ 'taxonomy' => 'mai_hidden_tax' ] );
+		$no_posts    = self::factory()->user->create();
+		$author      = self::factory()->user->create();
+		self::factory()->post->create( [ 'post_status' => 'publish', 'post_author' => $author ] );
+
+		$this->assertViewError( $this->get_views_at( 'post/999999' ), ErrorCode::NotFound );
+		$this->assertViewError( $this->get_views_at( 'term/' . $hidden_term ), ErrorCode::NotFound );
+		$this->assertViewError( $this->get_views_at( 'term/999999' ), ErrorCode::NotFound );
+		$this->assertViewError( $this->get_views_at( 'user/999999' ), ErrorCode::NotFound );
+		$this->assertViewError( $this->get_views_at( 'user/' . $no_posts ), ErrorCode::NotFound );
+		$this->assertSame( 200, $this->get_views_at( 'user/' . $author )->get_status() );
+	}
+
+	public function test_view_post_for_user_without_posts(): void {
+		$user_id = self::factory()->user->create();
+		$before  = $this->buffer_rows();
+
+		$this->assertViewError( $this->server->dispatch( $this->view_request( 'user/' . $user_id ) ), ErrorCode::NotFound );
+		$this->assertSame( $before, $this->buffer_rows() );
+	}
+
+	public function test_get_post_type_views_hides_non_public(): void {
+		register_post_type( 'mai_hidden_type', [ 'public' => false ] );
+
+		$this->assertViewError( $this->get_views_at( 'post_type/mai_hidden_type' ), ErrorCode::NotFound );
+		$this->assertSame( 200, $this->get_views_at( 'post_type/post' )->get_status() );
+	}
+
+	public function test_queryable_non_public_type_is_counted(): void {
+		register_post_type( 'mai_queryable', [ 'public' => false, 'publicly_queryable' => true ] );
+		$post_id = self::factory()->post->create( [ 'post_type' => 'mai_queryable', 'post_status' => 'publish' ] );
+
+		$this->assertSame( 200, $this->server->dispatch( $this->view_request( 'post/' . $post_id ) )->get_status() );
+	}
+
+	public function test_public_non_queryable_type_is_not_counted(): void {
+		register_post_type( 'mai_unqueryable', [ 'public' => true, 'publicly_queryable' => false ] );
+		$post_id = self::factory()->post->create( [ 'post_type' => 'mai_unqueryable', 'post_status' => 'publish' ] );
+
+		$this->assertViewError( $this->server->dispatch( $this->view_request( 'post/' . $post_id ) ), ErrorCode::NotFound );
+	}
+
+	public function test_queryable_custom_status_is_counted(): void {
+		// Without public, internal, protected or private, core makes the status
+		// internal (wp-includes/post.php:1486-1488), so public is named here.
+		register_post_status( 'mai_showcase', [ 'public' => false, 'publicly_queryable' => true ] );
+		$post_id = self::factory()->post->create( [ 'post_status' => 'mai_showcase' ] );
+
+		$this->assertSame( 200, $this->server->dispatch( $this->view_request( 'post/' . $post_id ) )->get_status() );
+	}
+
+	public function test_password_protected_post_is_counted(): void {
+		$post_id = self::factory()->post->create( [ 'post_status' => 'publish', 'post_password' => 'secret' ] );
+
+		$this->assertSame( 200, $this->server->dispatch( $this->view_request( 'post/' . $post_id ) )->get_status() );
+	}
+
+	private function trending( string $type, int $per_page ): array {
+		$request = new WP_REST_Request( 'GET', '/mai-analytics/v1/views/trending' );
+		$request->set_param( 'type', $type );
+		$request->set_param( 'per_page', $per_page );
+
+		return $this->server->dispatch( $request )->get_data();
+	}
+
+	public function test_trending_drops_hidden_posts(): void {
+		$ids = [];
+
+		for ( $i = 0; $i < 12; $i++ ) {
+			$ids[ $i ] = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+
+			// The first posts get the most views.
+			for ( $v = 0; $v < 20 - $i; $v++ ) {
+				Database::insert_view( $ids[ $i ], 'post' );
+			}
+		}
+
+		$private = array_slice( $ids, 0, 3 );
+
+		foreach ( $private as $id ) {
+			wp_update_post( [ 'ID' => $id, 'post_status' => 'private' ] );
+		}
+
+		$data = $this->trending( 'post', 5 );
+
+		$this->assertCount( 5, $data );
+		$this->assertEmpty( array_intersect( $private, array_column( $data, 'id' ) ) );
+	}
+
+	public function test_trending_drops_hidden_terms_and_users(): void {
+		register_taxonomy( 'mai_soon_hidden', 'post', [ 'public' => true ] );
+		$term    = self::factory()->term->create( [ 'taxonomy' => 'mai_soon_hidden' ] );
+		$shown   = self::factory()->category->create();
+		$deleted = self::factory()->user->create();
+		$lonely  = self::factory()->user->create();
+		$author  = self::factory()->user->create();
+		self::factory()->post->create( [ 'post_status' => 'publish', 'post_author' => $author ] );
+		self::factory()->post->create( [ 'post_status' => 'publish', 'post_author' => $deleted ] );
+
+		foreach ( [ $term, $shown ] as $id ) {
+			Database::insert_view( $id, 'term' );
+		}
+
+		foreach ( [ $deleted, $lonely, $author ] as $id ) {
+			Database::insert_view( $id, 'user' );
+		}
+
+		register_taxonomy( 'mai_soon_hidden', 'post', [ 'public' => false ] );
+		wp_delete_user( $deleted );
+
+		$this->assertSame( [ $shown ], array_column( $this->trending( 'term', 10 ), 'id' ) );
+		$this->assertSame( [ $author ], array_column( $this->trending( 'user', 10 ), 'id' ) );
+	}
+
+	public function test_trending_checks_in_bulk(): void {
+		global $wpdb;
+
+		for ( $i = 0; $i < 20; $i++ ) {
+			$user = self::factory()->user->create();
+			self::factory()->post->create( [ 'post_status' => 'publish', 'post_author' => $user ] );
+			Database::insert_view( $user, 'user' );
+		}
+
+		wp_cache_flush();
+
+		$before = $wpdb->num_queries;
+		$data   = $this->trending( 'user', 20 );
+		$ran    = $wpdb->num_queries - $before;
+
+		$this->assertCount( 20, $data );
+		$this->assertLessThan( count( $data ), $ran );
 	}
 
 	public function test_route_in_other_case_counts(): void {

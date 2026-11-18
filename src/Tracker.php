@@ -81,7 +81,8 @@ class Tracker {
 				return false;
 			}
 
-			if ( ! in_array( $post->post_type, get_post_types( [ 'public' => true ] ), true ) ) {
+			// Core's rule for what a signed-out visitor may see.
+			if ( ! is_post_publicly_viewable( $post ) ) {
 				return false;
 			}
 
@@ -97,7 +98,7 @@ class Tracker {
 		if ( is_post_type_archive() ) {
 			$post_type_obj = get_queried_object();
 
-			if ( $post_type_obj && isset( $post_type_obj->name ) && $post_type_obj->public ) {
+			if ( $post_type_obj && isset( $post_type_obj->name ) && is_post_type_viewable( $post_type_obj ) ) {
 				return rest_url( 'mai-analytics/v1/view/post_type/' . $post_type_obj->name );
 			}
 
@@ -112,9 +113,7 @@ class Tracker {
 				return false;
 			}
 
-			$taxonomy = get_taxonomy( $term->taxonomy );
-
-			if ( ! $taxonomy || ! $taxonomy->public ) {
+			if ( ! is_taxonomy_viewable( $term->taxonomy ) ) {
 				return false;
 			}
 

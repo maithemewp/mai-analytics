@@ -193,6 +193,11 @@ class RestApi {
 			return $this->invalid_request();
 		}
 
+		// Same rule as the POST: a missing or hidden item answers 404.
+		if ( ! $this->validate_object( $id, $type ) ) {
+			return $this->not_found();
+		}
+
 		[ $views, $trending ] = match ( $type ) {
 			'post' => [ (int) get_post_meta( $id, 'mai_views', true ), (int) get_post_meta( $id, 'mai_trending', true ) ],
 			'term' => [ (int) get_term_meta( $id, 'mai_views', true ), (int) get_term_meta( $id, 'mai_trending', true ) ],
@@ -221,9 +226,7 @@ class RestApi {
 		$post_type = $request->get_param( 'post_type' );
 
 		// Validate the post type exists and is public.
-		$post_type_obj = get_post_type_object( $post_type );
-
-		if ( ! $post_type_obj || ! $post_type_obj->public ) {
+		if ( ! $this->is_public_post_type( (string) $post_type ) ) {
 			return $this->not_found();
 		}
 
@@ -270,6 +273,11 @@ class RestApi {
 	 */
 	public function get_post_type_views( WP_REST_Request $request ): WP_REST_Response {
 		$post_type = $request->get_param( 'post_type' );
+
+		if ( ! $this->is_public_post_type( (string) $post_type ) ) {
+			return $this->not_found();
+		}
+
 		$counts    = get_option( 'mai_analytics_post_type_views', [] );
 		$trending  = get_option( 'mai_analytics_post_type_trending', [] );
 
@@ -297,7 +305,10 @@ class RestApi {
 		$terms    = $request->get_param( 'terms' );
 		$hours    = $this->parse_period( $period );
 		$table    = Database::get_table_name();
-		$limit    = $taxonomy ? $per_page * 5 : $per_page;
+
+		// Over-fetch so rows dropped below (taxonomy filter, hidden items)
+		// rarely leave the list short.
+		$limit = $per_page * 5;
 
 		// Post type archives group by object_key; everything else by object_id.
 		if ( 'post_type' === $type ) {
@@ -342,12 +353,12 @@ class RestApi {
 			} );
 		}
 
-		$results = array_slice( array_values( $results ), 0, $per_page );
+		// Drop items a caller may not see, checked in bulk.
+		$key     = 'post_type' === $type ? 'object_key' : 'object_id';
+		$visible = array_flip( $this->visible_ids( $type, array_map( fn( $r ) => $r->{$key}, array_values( $results ) ) ) );
+		$results = array_filter( $results, fn( $row ) => isset( $visible[ 'post_type' === $type ? $row->object_key : (int) $row->object_id ] ) );
 
-		// Prime post caches in a single query to avoid N+1.
-		if ( 'post' === $type && $results ) {
-			_prime_post_caches( array_map( fn( $r ) => (int) $r->object_id, $results ) );
-		}
+		$results = array_slice( array_values( $results ), 0, $per_page );
 
 		$data = array_map( fn( $row ) => $this->enrich_result( $row, $type ), $results );
 
@@ -476,21 +487,76 @@ class RestApi {
 	 */
 	private function validate_object( int $id, string $type ): bool {
 		return match ( $type ) {
-			'post' => ( function() use ( $id ) {
-				$post = get_post( $id );
-				return $post
-					&& 'publish' === $post->post_status
-					&& in_array( $post->post_type, get_post_types( [ 'public' => true ] ), true );
-			} )(),
+			// Core's rules for what a signed-out visitor may see.
+			'post' => (bool) get_post( $id ) && is_post_publicly_viewable( $id ),
 			'term' => ( function() use ( $id ) {
 				$term = get_term( $id );
-				return $term
-					&& ! is_wp_error( $term )
-					&& in_array( $term->taxonomy, get_taxonomies( [ 'public' => true ] ), true );
+
+				// is_term_publicly_viewable() reads ->taxonomy without checking for a WP_Error.
+				return $term instanceof \WP_Term && is_term_publicly_viewable( $term );
 			} )(),
-			'user' => (bool) get_userdata( $id ),
+			// Core has no helper for users. A user is visible only with a published post.
+			'user' => (bool) get_userdata( $id ) && count_user_posts( $id, get_post_types( [ 'public' => true ] ), true ) > 0,
 			default => false,
 		};
+	}
+
+	/**
+	 * Checks whether a post type's archive may be counted and shown.
+	 *
+	 * @since 1.3.8
+	 *
+	 * @param string $post_type The post type name.
+	 *
+	 * @return bool
+	 */
+	private function is_public_post_type( string $post_type ): bool {
+		$post_type_obj = get_post_type_object( $post_type );
+
+		return $post_type_obj && is_post_type_viewable( $post_type_obj );
+	}
+
+	/**
+	 * Returns the IDs from a list that pass the visibility rule, checked in bulk.
+	 *
+	 * Primes the caches first so the per-item checks run no queries of their own.
+	 * Users are counted with one count_many_users_posts() call.
+	 *
+	 * @since 1.3.8
+	 *
+	 * @param string $type The object type: 'post', 'term', 'user' or 'post_type'.
+	 * @param array  $ids  Object IDs, or post type names for 'post_type'.
+	 *
+	 * @return array The visible IDs (ints), or names for 'post_type'.
+	 */
+	private function visible_ids( string $type, array $ids ): array {
+		if ( 'post_type' === $type ) {
+			return array_values( array_filter( array_map( 'strval', $ids ), fn( $name ) => $this->is_public_post_type( $name ) ) );
+		}
+
+		$ids = array_values( array_unique( array_filter( array_map( 'intval', $ids ) ) ) );
+
+		if ( ! $ids ) {
+			return [];
+		}
+
+		switch ( $type ) {
+			case 'post':
+				_prime_post_caches( $ids );
+				return array_values( array_filter( $ids, fn( $id ) => $this->validate_object( $id, 'post' ) ) );
+
+			case 'term':
+				_prime_term_caches( $ids );
+				return array_values( array_filter( $ids, fn( $id ) => $this->validate_object( $id, 'term' ) ) );
+
+			case 'user':
+				cache_users( $ids );
+				$counts = count_many_users_posts( $ids, get_post_types( [ 'public' => true ] ), true );
+
+				return array_values( array_filter( $ids, fn( $id ) => get_userdata( $id ) && (int) ( $counts[ $id ] ?? 0 ) > 0 ) );
+		}
+
+		return [];
 	}
 
 	/**
