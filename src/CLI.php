@@ -74,8 +74,11 @@ class CLI {
 			$cron_failed  = array_filter( $results['checks'], fn( $c ) => 'Cron scheduled' === $c['label'] && 'fail' === $c['status'] );
 
 			if ( $table_failed ) {
-				Database::create_table();
-				WP_CLI::log( WP_CLI::colorize( "  %C\u{2192} Fixed: created table%n" ) );
+				if ( Database::create_table() ) {
+					WP_CLI::log( WP_CLI::colorize( "  %C\u{2192} Fixed: created table%n" ) );
+				} else {
+					WP_CLI::log( WP_CLI::colorize( "  %R\u{2717}%n Table could not be created." ) );
+				}
 			}
 
 			if ( $cron_failed ) {

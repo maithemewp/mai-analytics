@@ -17,4 +17,5 @@
 - The legacy meta-key probe only looks in postmeta (`src/Migration.php:122-129`).
 - Per-person views for "For You": a separate design later (Mike, 2026-11-18). Nothing built for it.
 - Two read-only `LIKE`s on meta names don't escape `_`: `src/Migration.php:123` and `src/Health.php:54`. A stray match can only make a probe or a count wrong.
+- The `SHOW TABLES LIKE` checks don't escape `_` either: `Database::table_exists()` (on purpose, so a test's `query` filter can match the plain name), `maybe_migrate_old_table()` and `src/Health.php:45`. Core escapes its own (`wp-admin/includes/upgrade.php:2687`). A stray match could only report a table that isn't there.
 - The `[mai_views]` shortcode and `mai_analytics_get_count()` read any ID with no visibility check. Only staff can call them today.

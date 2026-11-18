@@ -8,6 +8,14 @@ class Database {
 	public const DB_VERSION_OPTION = 'mai_analytics_db_version';
 
 	/**
+	 * Transient set for an hour after the table could not be created, so a
+	 * broken database is not hit with dbDelta() on every page load.
+	 *
+	 * @since 1.3.8
+	 */
+	public const RETRY_TRANSIENT = 'mai_analytics_db_retry';
+
+	/**
 	 * Gets the full table name with prefix.
 	 *
 	 * @return string The prefixed database table name.
@@ -18,11 +26,32 @@ class Database {
 	}
 
 	/**
+	 * Checks whether the buffer table exists.
+	 *
+	 * Uses the same unescaped `SHOW TABLES LIKE` as maybe_migrate_old_table().
+	 *
+	 * @since 1.3.8
+	 *
+	 * @return bool
+	 */
+	public static function table_exists(): bool {
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		return (bool) $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', self::get_table_name() ) );
+	}
+
+	/**
 	 * Creates the buffer table using dbDelta for safe schema migrations.
 	 *
-	 * @return void
+	 * Records the db version only when the table exists afterwards. When it
+	 * doesn't, it logs an error and sets RETRY_TRANSIENT for an hour.
+	 *
+	 * @since 1.3.8 Returns whether the table exists.
+	 *
+	 * @return bool True when the table exists after dbDelta().
 	 */
-	public static function create_table(): void {
+	public static function create_table(): bool {
 		global $wpdb;
 
 		$table   = self::get_table_name();
@@ -43,7 +72,16 @@ class Database {
 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 		dbDelta( $sql );
 
+		if ( ! self::table_exists() ) {
+			mai_analytics_logger()->error( 'Could not create the mai_analytics_buffer table. Will try again in an hour.' );
+			set_transient( self::RETRY_TRANSIENT, 1, HOUR_IN_SECONDS );
+
+			return false;
+		}
+
 		update_option( self::DB_VERSION_OPTION, MAI_ANALYTICS_DB_VERSION );
+
+		return true;
 	}
 
 	/**
@@ -53,6 +91,11 @@ class Database {
 	 */
 	public static function maybe_update(): void {
 		self::maybe_migrate_old_table();
+
+		// A recent create failed. Wait for the retry window to pass.
+		if ( get_transient( self::RETRY_TRANSIENT ) ) {
+			return;
+		}
 
 		$installed = get_option( self::DB_VERSION_OPTION, '0' );
 
@@ -111,10 +154,10 @@ class Database {
 			}
 		}
 
-		// Migrate DB version from the Mai Views era.
+		// Migrate DB version from the Mai Views era, only once the new table exists.
 		$old_version = get_option( 'mai_views_db_version', '' );
 
-		if ( $old_version ) {
+		if ( $old_version && self::table_exists() ) {
 			update_option( self::DB_VERSION_OPTION, $old_version );
 			delete_option( 'mai_views_db_version' );
 		}

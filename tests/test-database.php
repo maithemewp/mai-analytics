@@ -68,6 +68,66 @@ class Test_Database extends WP_UnitTestCase {
 		$this->assertEquals( MAI_ANALYTICS_DB_VERSION, get_option( Database::DB_VERSION_OPTION ) );
 	}
 
+	/**
+	 * Makes the buffer table look missing and stops dbDelta() from running anything.
+	 */
+	private function break_table(): void {
+		$like = "SHOW TABLES LIKE '" . Database::get_table_name() . "'";
+
+		add_filter(
+			'query',
+			fn( $query ) => $like === $query ? "SHOW TABLES LIKE 'mai_analytics_none'" : $query
+		);
+		add_filter( 'dbdelta_queries', '__return_empty_array' );
+	}
+
+	public function test_create_table_records_version(): void {
+		delete_option( Database::DB_VERSION_OPTION );
+
+		$this->assertTrue( Database::create_table() );
+		$this->assertSame( MAI_ANALYTICS_DB_VERSION, get_option( Database::DB_VERSION_OPTION ) );
+	}
+
+	public function test_failed_create_does_not_record_version(): void {
+		delete_option( Database::DB_VERSION_OPTION );
+		delete_transient( Database::RETRY_TRANSIENT );
+		$this->break_table();
+
+		$this->assertFalse( Database::create_table() );
+		$this->assertFalse( get_option( Database::DB_VERSION_OPTION ) );
+		$this->assertNotFalse( get_transient( Database::RETRY_TRANSIENT ) );
+	}
+
+	public function test_maybe_update_waits_while_retry_is_set(): void {
+		delete_option( Database::DB_VERSION_OPTION );
+		set_transient( Database::RETRY_TRANSIENT, 1, HOUR_IN_SECONDS );
+
+		$calls = 0;
+		add_filter(
+			'dbdelta_queries',
+			function ( $queries ) use ( &$calls ) {
+				$calls++;
+				return $queries;
+			}
+		);
+
+		Database::maybe_update();
+
+		$this->assertSame( 0, $calls );
+	}
+
+	public function test_old_version_not_copied_without_table(): void {
+		update_option( 'mai_views_db_version', '1.0.2' );
+		delete_option( 'mai_analytics_table_migrated' );
+		delete_option( Database::DB_VERSION_OPTION );
+		delete_transient( Database::RETRY_TRANSIENT );
+		$this->break_table();
+
+		Database::maybe_update();
+
+		$this->assertNotSame( '1.0.2', get_option( Database::DB_VERSION_OPTION ) );
+	}
+
 	public function test_is_queued_returns_true_when_exists(): void {
 		$post_id   = self::factory()->post->create();
 		$last_sync = time() - 3600; // 1 hour ago.
