@@ -29,6 +29,7 @@ class Test_Admin_REST_API extends WP_UnitTestCase {
 		$response = $this->server->dispatch( $request );
 
 		$this->assertEquals( 401, $response->get_status() );
+		$this->assertSame( 'rest_forbidden', $response->get_data()['code'] );
 	}
 
 	public function test_subscriber_denied(): void {
@@ -38,6 +39,7 @@ class Test_Admin_REST_API extends WP_UnitTestCase {
 		$response = $this->server->dispatch( $request );
 
 		$this->assertEquals( 403, $response->get_status() );
+		$this->assertSame( 'rest_forbidden', $response->get_data()['code'] );
 	}
 
 	public function test_editor_allowed(): void {

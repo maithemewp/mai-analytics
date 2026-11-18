@@ -30,6 +30,7 @@ class Plugin {
 		self::apply_migrated_defaults();
 
 		new Meta();
+		add_action( 'rest_api_init', fn() => RestErrors::map( 'mai-analytics/v1', 'mai_analytics' ) );
 		new RestApi();
 		new AdminRestApi();
 		new Tracker();
