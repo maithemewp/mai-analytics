@@ -81,8 +81,9 @@ class Tracker {
 				return false;
 			}
 
-			// Core's rule for what a signed-out visitor may see.
-			if ( ! is_post_publicly_viewable( $post ) ) {
+			// Core's rule for what a signed-out visitor may see. Attachment pages
+			// were never counted, and stay uncounted.
+			if ( 'attachment' === $post->post_type || ! is_post_publicly_viewable( $post ) ) {
 				return false;
 			}
 

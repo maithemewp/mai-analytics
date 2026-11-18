@@ -226,6 +226,40 @@ class Test_REST_API extends WP_UnitTestCase {
 		$this->assertSame( 200, $this->server->dispatch( $this->view_request( 'post/' . $post_id ) )->get_status() );
 	}
 
+	public function test_attachments_are_not_counted(): void {
+		$parent   = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+		$attached = self::factory()->attachment->create( [ 'post_parent' => $parent, 'post_mime_type' => 'image/jpeg' ] );
+		$loose    = self::factory()->attachment->create( [ 'post_mime_type' => 'image/jpeg' ] );
+
+		foreach ( [ $attached, $loose ] as $id ) {
+			$this->assertViewError( $this->server->dispatch( $this->view_request( 'post/' . $id ) ), ErrorCode::NotFound );
+			$this->assertViewError( $this->get_views_at( 'post/' . $id ), ErrorCode::NotFound );
+		}
+	}
+
+	public function test_author_of_viewable_non_public_type_is_visible(): void {
+		register_post_type( 'mai_queryable', [ 'public' => false, 'publicly_queryable' => true ] );
+		$author = self::factory()->user->create();
+		self::factory()->post->create( [ 'post_type' => 'mai_queryable', 'post_status' => 'publish', 'post_author' => $author ] );
+
+		$this->assertSame( 200, $this->get_views_at( 'user/' . $author )->get_status() );
+	}
+
+	public function test_author_of_viewable_custom_status_is_visible(): void {
+		register_post_status( 'mai_showcase', [ 'public' => false, 'publicly_queryable' => true ] );
+		$author = self::factory()->user->create();
+		self::factory()->post->create( [ 'post_status' => 'mai_showcase', 'post_author' => $author ] );
+
+		$this->assertSame( 200, $this->get_views_at( 'user/' . $author )->get_status() );
+	}
+
+	public function test_author_of_only_attachments_is_hidden(): void {
+		$author = self::factory()->user->create();
+		self::factory()->attachment->create( [ 'post_author' => $author, 'post_mime_type' => 'image/jpeg' ] );
+
+		$this->assertViewError( $this->get_views_at( 'user/' . $author ), ErrorCode::NotFound );
+	}
+
 	public function test_password_protected_post_is_counted(): void {
 		$post_id = self::factory()->post->create( [ 'post_status' => 'publish', 'post_password' => 'secret' ] );
 

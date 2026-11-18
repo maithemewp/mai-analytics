@@ -56,12 +56,45 @@ class Test_Tracker extends WP_UnitTestCase {
 		$this->assertStringContainsString( 'view\/post\/' . $post_id, $this->beacon_at( get_permalink( $post_id ) ) );
 	}
 
+	/**
+	 * Returns the beacon for a singular request whose global post is the given one.
+	 *
+	 * Core drops the post_type query var of a type that is not publicly
+	 * queryable (wp-includes/class-wp.php:376-387), so such a post can't be
+	 * reached by URL. This loads an ordinary post, then swaps the global post,
+	 * so the tracker's own rule decides.
+	 */
+	private function beacon_for_global_post( int $post_id ): string {
+		$this->beacon_at( get_permalink( self::factory()->post->create( [ 'post_status' => 'publish' ] ) ) );
+
+		$GLOBALS['post'] = get_post( $post_id );
+
+		ob_start();
+		( new Tracker() )->output_beacon();
+
+		return (string) ob_get_clean();
+	}
+
 	public function test_no_beacon_for_public_non_queryable_type(): void {
 		register_post_type( 'mai_unqueryable', [ 'public' => true, 'publicly_queryable' => false ] );
 		$post_id = self::factory()->post->create( [ 'post_type' => 'mai_unqueryable', 'post_status' => 'publish' ] );
 
-		// Not queryable, so the front end can't show it. Ask for it by ID.
-		$this->assertSame( '', $this->beacon_at( home_url( '?post_type=mai_unqueryable&p=' . $post_id ) ) );
+		$this->assertSame( '', $this->beacon_for_global_post( $post_id ) );
+	}
+
+	public function test_beacon_for_published_post_with_global_set(): void {
+		$post_id = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+
+		$this->assertStringContainsString( 'view\/post\/' . $post_id, $this->beacon_for_global_post( $post_id ) );
+	}
+
+	public function test_no_beacon_for_attachments(): void {
+		$parent   = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+		$attached = self::factory()->attachment->create( [ 'post_parent' => $parent, 'post_mime_type' => 'image/jpeg' ] );
+		$loose    = self::factory()->attachment->create( [ 'post_mime_type' => 'image/jpeg' ] );
+
+		$this->assertSame( '', $this->beacon_for_global_post( $attached ) );
+		$this->assertSame( '', $this->beacon_for_global_post( $loose ) );
 	}
 
 	public function test_tracker_class_instantiates(): void {

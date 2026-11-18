@@ -490,16 +490,19 @@ class RestApi {
 	 */
 	private function validate_object( int $id, string $type ): bool {
 		return match ( $type ) {
-			// Core's rules for what a signed-out visitor may see.
-			'post' => (bool) get_post( $id ) && is_post_publicly_viewable( $id ),
+			// Core's rules for what a signed-out visitor may see. Attachments
+			// were never counted (they are `inherit`, which core resolves through
+			// the parent), and stay uncounted.
+			'post' => (bool) get_post( $id ) && 'attachment' !== get_post_type( $id ) && is_post_publicly_viewable( $id ),
 			'term' => ( function() use ( $id ) {
 				$term = get_term( $id );
 
 				// is_term_publicly_viewable() reads ->taxonomy without checking for a WP_Error.
 				return $term instanceof \WP_Term && is_term_publicly_viewable( $term );
 			} )(),
-			// Core has no helper for users. A user is visible only with a published post.
-			'user' => (bool) get_userdata( $id ) && count_user_posts( $id, get_post_types( [ 'public' => true ] ), true ) > 0,
+			// Core has no helper for users. A user is visible only with a post
+			// this rule would count.
+			'user' => [] !== $this->users_with_viewable_posts( [ $id ] ),
 			default => false,
 		};
 	}
@@ -560,11 +563,13 @@ class RestApi {
 	}
 
 	/**
-	 * Returns the user IDs that exist and have at least one published post in a
-	 * public post type, in one query.
+	 * Returns the user IDs that exist and have at least one post the post rule
+	 * would count, in one query.
 	 *
-	 * Joining the users table drops IDs whose user was deleted, so no user
-	 * objects or meta are loaded for the check.
+	 * Uses the same sets as validate_object()'s post rule: post types and
+	 * statuses core calls viewable (is_post_type_viewable(),
+	 * is_post_status_viewable()), without attachments. Joining the users table
+	 * drops IDs whose user was deleted, so no user objects or meta are loaded.
 	 *
 	 * @since 1.3.8
 	 *
@@ -575,15 +580,17 @@ class RestApi {
 	private function users_with_viewable_posts( array $ids ): array {
 		global $wpdb;
 
-		$ids   = array_values( array_unique( array_filter( array_map( 'intval', $ids ) ) ) );
-		$types = array_values( get_post_types( [ 'public' => true ] ) );
+		$ids      = array_values( array_unique( array_filter( array_map( 'intval', $ids ) ) ) );
+		$types    = array_values( array_filter( get_post_types(), fn( $type ) => 'attachment' !== $type && is_post_type_viewable( $type ) ) );
+		$statuses = array_values( array_filter( get_post_stati(), 'is_post_status_viewable' ) );
 
-		if ( ! $ids || ! $types ) {
+		if ( ! $ids || ! $types || ! $statuses ) {
 			return [];
 		}
 
-		$id_holders   = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
-		$type_holders = implode( ',', array_fill( 0, count( $types ), '%s' ) );
+		$id_holders     = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
+		$type_holders   = implode( ',', array_fill( 0, count( $types ), '%s' ) );
+		$status_holders = implode( ',', array_fill( 0, count( $statuses ), '%s' ) );
 
 		$found = $wpdb->get_col(
 			$wpdb->prepare(
@@ -592,8 +599,8 @@ class RestApi {
 				 INNER JOIN $wpdb->users u ON u.ID = p.post_author
 				 WHERE p.post_author IN ($id_holders)
 				 AND p.post_type IN ($type_holders)
-				 AND p.post_status = 'publish'",
-				array_merge( $ids, $types )
+				 AND p.post_status IN ($status_holders)",
+				array_merge( $ids, $types, $statuses )
 			)
 		);
 
