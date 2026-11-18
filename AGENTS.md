@@ -30,6 +30,14 @@ No filter, option, meta key, route, param or response field is renamed or remove
 - Check `$wpdb->last_error` after a query that can fail quietly.
 - No em-dashes in any string a person reads, logs included.
 
+## Tool calls
+
+Mike gets approval prompts for anything the permission check can't read, so (Mike, through mai-coordinator, 2026-11-18):
+
+- Edit files with the Read, Edit and Write tools, never with python, sed or heredocs in Bash.
+- Keep each Bash call to one plain command with full paths: no `&&` chains, no heredocs, no shell variables, no `$(...)`.
+- Commit with `git -C <full path> commit -q -m "..."` (one `-m` per paragraph), and push as its own call.
+
 ## Releases
 
 - The changelog is `CHANGES.md`: `## X.Y.Z (M/D/YY)` and bulleted `* Added:` / `* Changed:` / `* Fixed:` entries.
