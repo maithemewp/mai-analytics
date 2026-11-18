@@ -56,6 +56,44 @@ class Plugin {
 	}
 
 	/**
+	 * Runs on activation: creates the table and schedules cron.
+	 *
+	 * A real activation loads the plugin after plugins_loaded has fired, so
+	 * init() never ran. This registers the 15-minute schedule itself first,
+	 * because wp_schedule_event() refuses an unknown schedule.
+	 *
+	 * @since 1.3.8
+	 *
+	 * @return void
+	 */
+	public static function activate(): void {
+		Cron::add_schedule_filter();
+
+		Database::create_table();
+
+		if ( ! wp_next_scheduled( 'mai_analytics_cron_sync' ) ) {
+			wp_schedule_event( time(), 'mai_analytics_15min', 'mai_analytics_cron_sync' );
+		}
+
+		Cron::schedule_daily_prune();
+	}
+
+	/**
+	 * Runs on deactivation: clears every cron hook in Cron::HOOKS. Data stays.
+	 *
+	 * Public so a plugin that bundles this one, such as Mai Publisher, can call it.
+	 *
+	 * @since 1.3.8
+	 *
+	 * @return void
+	 */
+	public static function deactivate(): void {
+		foreach ( Cron::HOOKS as $hook ) {
+			wp_clear_scheduled_hook( $hook );
+		}
+	}
+
+	/**
 	 * Renders an admin notice when old Mai Publisher's views system is active.
 	 *
 	 * @return void

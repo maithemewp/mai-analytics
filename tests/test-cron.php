@@ -2,6 +2,7 @@
 
 use Mai\Analytics\Cron;
 use Mai\Analytics\Database;
+use Mai\Analytics\Plugin;
 use Mai\Analytics\Stats;
 
 class Test_Cron extends WP_UnitTestCase {
@@ -77,6 +78,45 @@ class Test_Cron extends WP_UnitTestCase {
 		$this->assertNotFalse( $first );
 		// Second call must not stack a second event.
 		$this->assertSame( $first, wp_next_scheduled( Cron::PRUNE_HOOK ) );
+	}
+
+	private function schedule_every_hook(): void {
+		foreach ( Cron::HOOKS as $hook ) {
+			wp_schedule_single_event( time() + HOUR_IN_SECONDS, $hook );
+		}
+	}
+
+	public function test_deactivate_clears_every_hook(): void {
+		update_option( 'mai_analytics_settings', [ 'data_source' => 'self_hosted' ] );
+		$post_id = self::factory()->post->create();
+		update_post_meta( $post_id, 'mai_views', 5 );
+		$this->schedule_every_hook();
+
+		Plugin::deactivate();
+
+		foreach ( Cron::HOOKS as $hook ) {
+			$this->assertFalse( wp_next_scheduled( $hook ), $hook );
+		}
+
+		$this->assertTrue( Database::table_exists() );
+		$this->assertNotFalse( get_option( 'mai_analytics_settings' ) );
+		$this->assertSame( '5', get_post_meta( $post_id, 'mai_views', true ) );
+	}
+
+	public function test_activate_schedules_sync_and_prune(): void {
+		foreach ( Cron::HOOKS as $hook ) {
+			wp_clear_scheduled_hook( $hook );
+		}
+
+		// A real activation runs before Plugin::init(), so the 15-minute schedule is unknown.
+		remove_all_filters( 'cron_schedules' );
+
+		Plugin::activate();
+
+		$this->assertNotFalse( wp_next_scheduled( 'mai_analytics_cron_sync' ) );
+		$this->assertNotFalse( wp_next_scheduled( Cron::PRUNE_HOOK ) );
+
+		wp_clear_scheduled_hook( 'mai_analytics_cron_sync' );
 	}
 
 	public function test_prune_trending_is_noop_when_disabled(): void {

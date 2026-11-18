@@ -22,6 +22,39 @@ class Cron {
 	public const PRUNE_NOW_HOOK = 'mai_analytics_prune_trending_now';
 
 	/**
+	 * Every cron hook the plugin schedules. Deactivation clears all of them.
+	 * uninstall.php writes the same names out, because it runs without the
+	 * plugin's autoloader.
+	 *
+	 * @since 1.3.8
+	 */
+	public const HOOKS = [
+		'mai_analytics_cron_sync',
+		ProviderSync::CATCHUP_HOOK,
+		self::PRUNE_HOOK,
+		self::PRUNE_NOW_HOOK,
+	];
+
+	/**
+	 * Registers the 15-minute schedule without the rest of the constructor's hooks.
+	 *
+	 * Activation needs it because a real activation loads the plugin after
+	 * plugins_loaded has fired, so Plugin::init() never ran, and
+	 * wp_schedule_event() refuses an unknown schedule.
+	 *
+	 * @since 1.3.8
+	 *
+	 * @return void
+	 */
+	public static function add_schedule_filter(): void {
+		// add_schedule() reads nothing from the instance, so skip the constructor
+		// and its sync, prune and admin_init hooks.
+		$cron = ( new \ReflectionClass( self::class ) )->newInstanceWithoutConstructor();
+
+		add_filter( 'cron_schedules', [ $cron, 'add_schedule' ] );
+	}
+
+	/**
 	 * Registers cron schedule, sync action, catchup action, and self-healing admin check.
 	 */
 	public function __construct() {

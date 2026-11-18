@@ -19,7 +19,6 @@ if ( defined( 'MAI_ANALYTICS_VERSION' ) ) {
 	return;
 }
 
-use Mai\Analytics\Database;
 use Mai\Analytics\Plugin;
 
 // Constants.
@@ -53,16 +52,12 @@ require_once __DIR__ . '/includes/functions.php';
 
 // Activation: create database table and schedule cron.
 register_activation_hook( __FILE__, function(): void {
-	Database::create_table();
-
-	if ( ! wp_next_scheduled( 'mai_analytics_cron_sync' ) ) {
-		wp_schedule_event( time(), 'mai_analytics_15min', 'mai_analytics_cron_sync' );
-	}
+	Plugin::activate();
 } );
 
-// Deactivation: clear scheduled cron.
+// Deactivation: clear every scheduled cron hook. Data stays.
 register_deactivation_hook( __FILE__, function(): void {
-	wp_clear_scheduled_hook( 'mai_analytics_cron_sync' );
+	Plugin::deactivate();
 } );
 
 // Initialize on plugins_loaded.
