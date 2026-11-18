@@ -1,7 +1,7 @@
 # mai-analytics alignment
 
 - Date: 2026-11-18
-- Status: Checked by mai-coordinator (2026-11-18). It decided four of the five open questions (see "Decided by mai-coordinator"). The code names are still Mike's, in his walk with mai-coordinator.
+- Status: Checked by mai-coordinator (2026-11-18), which decided every open question, the code names included (see "Decided by mai-coordinator" and "The code names"). Mike can reopen any.
 - Scope: mai-analytics' part of the 2026-11-18 alignment pass (Mike's option "B": the safe fixes and plugin error codes). Fleet rules: `~/LocalPackages/maiexpowp/CONVENTIONS.md`. Coordinator's file: `ALIGNMENT.md` on the shared production-copy site.
 - Code read: `develop` at 243b90d, version 1.3.7, db version 1.0.2, `Requires PHP: 8.1` (`mai-analytics.php:7-8`, `:26-27`). Core cited from the shared test site's WordPress 7.1.4 (`wp-includes/version.php:19`).
 - Release: one point release after 1.3.7. No version, tag or release is decided here.
@@ -85,7 +85,7 @@ Each change says what the code does today, what it will do, who notices, the tes
 - **Found in the same area:** `GET /views/trending` lists buffer rows from the last 6 hours to 7 days with each post's title and permalink (`:278-343`, `:373-376`). A post viewed while public and then made private, draft or trashed stays listed until its rows age out, with "Private: {title}" and its link. Deleted posts show an empty title. Terms moved to a private taxonomy and deleted users are listed too.
 - **Found in the same area: user IDs.** For users, `validate_object()` only asks whether the user exists (`:434`). Once a hidden item answers 404, `GET /views/user/{id}` would tell a signed-out caller which user IDs exist, including people with no published posts, whom core's own `wp/v2/users` hides from signed-out callers. `POST /view/user/{id}` already tells them today (404 for a missing user, 200 for one who exists). So a user is visible only when they have a published post in a public post type, checked with `count_user_posts( $id, get_post_types( [ 'public' => true ] ), true ) > 0`. That is close to core's rule, not the same: core's `wp/v2/users` shows signed-out callers authors with a published post in a post type shown in REST (`wp-includes/rest-api/endpoints/class-wp-rest-users-controller.php:322`), and this uses public post types, to match the rest of the plugin. This changes `validate_object()`, so it applies to the POST and trending too. Decided by mai-coordinator as part of the 404 ruling. Mike is told and can reopen it.
 - **The one case this stops counting: a profile view for a member with no published posts.** WordPress shows an author archive, not a 404, for any member of the site even with no posts (`wp-includes/class-wp.php:787-795`), and the beacon posts a view from every author archive (`src/Tracker.php:125-133`). From this release those views are refused with 404 and not counted, and that member's existing count is no longer readable from `GET /views/user/{id}`. A site that uses author archives as member profiles, for people who don't publish, loses those counts. Their stored meta stays and still shows in the admin dashboard. The member is counted again from their first published post.
-- **Core already has the visibility check, for posts, terms and post types.** `validate_object()` writes its own rule: status `publish` and a post type registered `public`, or a term in a `public` taxonomy (`src/RestApi.php:420-437`). The tracker uses the same `public` test (`src/Tracker.php:84`, `:100`, `:117`). Core's own words for "may a signed-out visitor see this" are `is_post_publicly_viewable()` (`wp-includes/post.php:2542`, which combines `is_post_type_viewable()` at `:2447` and `is_post_status_viewable()` at `:2491`), `is_term_publicly_viewable()` (`wp-includes/taxonomy.php:5168`) and `is_post_type_viewable()`. Proposed: use those in `validate_object()`, the post type check and the tracker, so the beacon, the POST and the GETs agree with core. Core has no such helper for users, so the user rule above stays. `is_term_publicly_viewable()` reads `->taxonomy` without checking for a `WP_Error` from `get_term()` (`taxonomy.php:5169-5175`), so the plugin checks `is_wp_error()` first. They differ from today's rule only on unusual registrations, and each difference changes what a live site counts, so this goes to mai-coordinator and Mike:
+- **Core already has the visibility check, for posts, terms and post types.** `validate_object()` writes its own rule: status `publish` and a post type registered `public`, or a term in a `public` taxonomy (`src/RestApi.php:420-437`). The tracker uses the same `public` test (`src/Tracker.php:84`, `:100`, `:117`). Core's own words for "may a signed-out visitor see this" are `is_post_publicly_viewable()` (`wp-includes/post.php:2542`, which combines `is_post_type_viewable()` at `:2447` and `is_post_status_viewable()` at `:2491`), `is_term_publicly_viewable()` (`wp-includes/taxonomy.php:5168`) and `is_post_type_viewable()`. Decided by mai-coordinator: use those in `validate_object()`, the post type check and the tracker, so the beacon, the POST and the GETs agree with core, as mai-collections and mai-reactions do. Core has no such helper for users, so the user rule above stays on top. `is_term_publicly_viewable()` reads `->taxonomy` without checking for a `WP_Error` from `get_term()` (`taxonomy.php:5169-5175`), so the plugin checks `is_wp_error()` first. A published post with a password is viewable to core and counted today, and stays counted. They differ from today's rule only on unusual registrations, each of which changes what a live site counts, and mai-coordinator is telling Mike:
   - A post status registered `publicly_queryable` (a custom status) would be counted. Today only `publish` is.
   - A post type or taxonomy registered `public: false` but `publicly_queryable: true` would be counted. Today it is not.
   - A post type or taxonomy registered `public: true` but `publicly_queryable: false` would no longer be counted. Such a type has no front-end page of its own, so the beacon rarely fires for it.
@@ -151,13 +151,13 @@ The new codes. Names are Mike's to approve (see "Questions for Mike"):
 - 400 `mai_analytics_invalid_request`: core's four argument errors (below), a list over 100, and the unreachable no-type case.
 - 404 `mai_analytics_not_found`: a view POST or a single-item GET for a missing or hidden item.
 - 403 `mai_analytics_bot`: a view refused as a bot.
-- 409 `mai_analytics_provider_unavailable`: `sync-now` with no provider set up or the provider unavailable. Today 500. It is a setup problem, not a server fault, and 409 says "fix the state, then try again".
-- 409 `mai_analytics_provider_mode_required`: `warm` in self-hosted mode. Today 400.
-- 502 `mai_analytics_provider_error`: `sync-now` and `warm` when the provider call failed. Today 500. The fault is upstream, which is what 502 means.
+- 501 `mai_analytics_provider_unavailable`: `sync-now` with no provider set up, or one that can't be reached to start. Today 500. It is a setup problem, not a server fault.
+- 501 `mai_analytics_provider_disabled`: `warm` while the site is not in provider mode. Today 400.
+- 502 `mai_analytics_provider_request_failed`: `sync-now` and `warm` when the provider call failed. Today 500. The fault is upstream, which is what 502 means.
 - 503 `mai_analytics_database_error` with `data.retry_after` 1 and a `Retry-After: 1` header (1 second, as mai-collections sends): a view POST whose insert failed. Today 200 `{ "success": true }`. Decided by mai-coordinator: it is the fleet's rule for a database failure.
-- Unchanged: `rest_forbidden` from the admin permission callbacks, as core builds it (mai-items-core's spec does the same).
+- Unchanged: `rest_forbidden` from the admin permission callbacks, as core builds it (mai-items-core's spec does the same). Also `rest_no_route`, which core answers before any plugin code runs, and which maiexpowp relies on to switch views off.
 
-The 409, the 502 and keeping `rest_forbidden` follow rules mai-coordinator is adding to CONVENTIONS.md in this pass, not rules that exist there today: 409 `{slug}_...` for a request refused because of the site's current setup, fixed by changing a setting and trying again, never retried by a client; 502 `{slug}_provider_error` for a failure in a service the plugin called; and capability-guarded admin routes keep core's `rest_forbidden`, with `{slug}_login_required` only for the gated tap. `rest_no_route`, which core answers before any plugin code runs, and which maiexpowp relies on to switch views off.
+The statuses follow core. Core answers 501 when a feature is off on a site (`application_passwords_disabled`, `wp-includes/rest-api/endpoints/class-wp-rest-application-passwords-controller.php:682-686`), so both setup answers are 501. A failure in a service the plugin called is 502. mai-coordinator is adding these to CONVENTIONS.md in this pass. They are not rules there today. It withdrew its earlier 409 rule for the whole pass. Capability-guarded admin routes keep core's `rest_forbidden`, with `{slug}_login_required` only for the gated tap.
 
 #### Core's argument errors, with permission first
 
@@ -189,9 +189,9 @@ What the copy must not drift from, until the swap:
 - **App (`useView`):** nothing. Every new answer is still dropped quietly; none is `rest_no_route`, so views never switch off by mistake. A 503 is not retried, because `useView` does not use `withRetry`.
 - **Admin dashboard:** nothing. It reads only `response.ok` on errors.
 - **Admin Sync Now:** the message is the same. It now reads as red through `data.code` too, as every error already did.
-- **Admin Warm:** the same. `res.ok` is still false on 409 and 502, and `message` is still there.
+- **Admin Warm:** the same. `res.ok` is still false on 501 and 502, and `message` is still there.
 - **Mai Publisher:** nothing. It calls no route.
-- **Third parties:** an error body gains `code` and `data`, keeps `success` or `message`, and four statuses change (sync-now 500 to 409 or 502, warm 400 to 409, warm 500 to 502, insert failure 200 to 503).
+- **Third parties:** an error body gains `code` and `data`, keeps `success` or `message`, and four statuses change (sync-now 500 to 501 or 502, warm 400 to 501, warm 500 to 502, insert failure 200 to 503).
 
 #### Tests
 
@@ -243,22 +243,24 @@ Mine, with the reason, so Mike can overrule any of them:
 On 2026-11-18, following Mike's choice of "the safe fixes and the error codes now" and the fleet's written rules. Mike can reopen any.
 
 - **Items a caller may not see** answer 404 `mai_analytics_not_found` from `GET /views/{post|term|user}/{id}` and `GET /views/post_type/{post_type}` (change 4).
-- **Error bodies gain `code` and `data`,** keep `success` or `message`, and four statuses change: sync-now 500 to 409 (setup) or 502 (provider), warm 400 to 409, warm 500 to 502 (change 7).
+- **Error bodies gain `code` and `data`,** keep `success` or `message`, and four statuses change: sync-now 500 to 501 (setup) or 502 (provider), warm 400 to 501, warm 500 to 502 (change 7). The statuses follow core: 501 when a feature is off on a site, 502 for a failed outside call.
+- **Core's visibility helpers.** `validate_object()`, the post type check and the tracker use `is_post_publicly_viewable()`, `is_term_publicly_viewable()` and `is_post_type_viewable()` (change 4), the rule mai-collections and mai-reactions adopted. It changes what a live site counts only on the unusual registrations change 4 lists. The user rule stays on top: a user counts only with a published post.
+- **The code names,** taken from core's words where core has one (see below).
 - **A failed view insert answers 503 `mai_analytics_database_error`** with `data.retry_after` and a `Retry-After` header (change 7).
 - **`/admin/search` gains `page`, `per_page` (default 50, at most 100) and the two total headers,** with the body unchanged (change 5).
 
+## The code names
+
+Decided by mai-coordinator from core's words (Mike's rule: don't guess a name core already has). Open to Mike.
+
+- `mai_analytics_invalid_request` (400): the fleet's code, mapped from core's `rest_invalid_param` family (`wp-includes/rest-api/class-wp-rest-request.php:881`).
+- `mai_analytics_not_found` (404): core's newer routes use `*_not_found`, such as `rest_template_not_found` (`wp-includes/rest-api/endpoints/class-wp-rest-templates-controller.php:341`). Its post, term and user routes use `rest_post_invalid_id` and the like (`class-wp-rest-posts-controller.php:555`), one code per object type. One `not_found` fits a plugin whose routes take four object types.
+- `mai_analytics_bot` (403): core has no code for a bot or crawler, so the plain word.
+- `mai_analytics_provider_unavailable` (501): no provider set up, or it can't be reached to start. "unavailable" is core's word (`fs_unavailable`, `wp-admin/includes/class-wp-upgrader.php:255`; `wp_is_application_passwords_available()`).
+- `mai_analytics_provider_disabled` (501): warm asked for while the site is not in provider mode. "disabled" is core's word for a feature turned off (`application_passwords_disabled`, `class-wp-rest-application-passwords-controller.php:682-686`).
+- `mai_analytics_provider_request_failed` (502): a failed call to the provider. Core's word is `http_request_failed` (`wp-includes/class-wp-http.php:295`).
+- `mai_analytics_database_error` (503): the fleet's code. Core's nearest are `db_insert_error` and `db_update_error` (`wp-includes/post.php:5035`, `:5003`).
+
 ## Questions for Mike
 
-Naming, so his. It goes into his one walk with mai-coordinator, not a second walk.
-
-1. **The code names.** Each is checked against what WordPress core calls the same thing (Mike's rule: don't guess a name core already has).
-   - **Fleet names, matching core or the fleet:**
-     - `mai_analytics_invalid_request` (400): the fleet's code, mapped from core's `rest_invalid_param` family (`wp-includes/rest-api/class-wp-rest-request.php:881`).
-     - `mai_analytics_not_found` (404): core's newer routes use `*_not_found`, such as `rest_template_not_found` (`wp-includes/rest-api/endpoints/class-wp-rest-templates-controller.php:341`). Its post, term and user routes use `rest_post_invalid_id` and the like (`class-wp-rest-posts-controller.php:555`), one code per object type. One `not_found` fits a plugin whose routes take four object types.
-     - `mai_analytics_database_error` (503): the fleet's code. Core's nearest are `db_insert_error` and `db_update_error` (`wp-includes/post.php:5035`, `:5003`).
-     - `mai_analytics_provider_error` (502): the name mai-coordinator is writing into CONVENTIONS for a failed call to an outside service. Core's word for that is `http_request_failed` (`wp-includes/class-wp-http.php:295`). The other choice is `mai_analytics_provider_request_failed`, which uses core's words.
-   - **New, so Mike's to pick:**
-     - **The bot refusal** (403). Core has no code for a bot or crawler. Choices: `mai_analytics_bot` (proposed), `mai_analytics_bot_refused`, `mai_analytics_not_counted`.
-     - **Sync with no working provider** (409). Core's word for a missing service or feature is "unavailable" or "disabled": `fs_unavailable` (`wp-admin/includes/class-wp-upgrader.php:255`), and `application_passwords_disabled` from `wp_is_application_passwords_available()` (`wp-includes/rest-api/endpoints/class-wp-rest-application-passwords-controller.php:682-686`). `mai_analytics_provider_unavailable` (proposed) uses core's word.
-     - **Warm in self-hosted mode** (409). Core has no "mode" word. Choices: `mai_analytics_provider_mode_required` (proposed), or `mai_analytics_warm_unavailable`, which uses core's "unavailable" for a feature this site's setup turns off.
-   - Note on status: core answers 501, not 409, when a feature is off on this site (`application_passwords_disabled` above). mai-coordinator is writing the 409 rule; this is for it to weigh.
+None open. mai-coordinator is telling Mike about each decision above, and he can reopen any.

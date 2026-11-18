@@ -18,7 +18,7 @@
 - `declare( strict_types=1 );` at the top of each new PHP file. Existing files are left as they are.
 - Nothing exposed is renamed or removed: no filter, option, meta key, route, param or response field. Changes only tighten or add.
 - An input over its limit is refused with 400, never clamped. An ID list takes at most 100 IDs.
-- The error code names below are the spec's proposals. Mike may rename them in his walk with mai-coordinator, so every code string lives only in `ErrorCode`. No other file writes a `mai_analytics_*` code as a literal string, tests included (tests use `ErrorCode::X->value`).
+- The error code names below were decided by mai-coordinator from core's words (spec, "The code names"). Mike can still rename them, so every code string lives only in `ErrorCode`. No other file writes a `mai_analytics_*` code as a literal string, tests included (tests use `ErrorCode::X->value`).
 - Names follow core. Before naming anything new that this plan does not already name, check what WordPress core calls the same thing and cite the file and line.
 - No em-dash (U+2014) in any string a person reads, logs included. Rewrite the sentence, don't swap in a semicolon or colon.
 - New classes, methods and constants get thorough PHPDoc: `@since 1.3.8`, `@param` lines, a blank line, then `@return`. (1.3.8 is the next point release. Nothing in this plan bumps the version.)
@@ -91,9 +91,9 @@ Expected: `~/Plugins/_wip/analytics-alignment/vendor/bin/phpunit` exists. `git -
     - `InvalidRequest = 'mai_analytics_invalid_request'`, 400
     - `NotFound = 'mai_analytics_not_found'`, 404
     - `Bot = 'mai_analytics_bot'`, 403
-    - `ProviderUnavailable = 'mai_analytics_provider_unavailable'`, 409
-    - `ProviderModeRequired = 'mai_analytics_provider_mode_required'`, 409
-    - `ProviderError = 'mai_analytics_provider_error'`, 502
+    - `ProviderUnavailable = 'mai_analytics_provider_unavailable'`, 501
+    - `ProviderDisabled = 'mai_analytics_provider_disabled'`, 501
+    - `ProviderRequestFailed = 'mai_analytics_provider_request_failed'`, 502
     - `DatabaseError = 'mai_analytics_database_error'`, 503
   - `ErrorCode::error( string $message, array $data = [] ): \WP_Error`. It always sets `status` from the case, overwriting any caller value, as mai-collections does (`~/Plugins/mai-collections/inc/classes/ErrorCode.php:46`).
   - `final class Errors` with `public static function response( ErrorCode $code, string $message, array $data = [], array $legacy = [] ): \WP_REST_Response`. Body: `$legacy` plus `code`, `message` and `data`, where `data` is `$data` with `status` set from the case (overwriting, like `ErrorCode::error()`). Response status is the case's status. For `DatabaseError` it also sets `data.retry_after` 1 and the header `Retry-After: 1`. A database error is always answered through `Errors::response()`, never `ErrorCode::error()`, because only the response can carry the header.
@@ -163,7 +163,8 @@ Expected: `~/Plugins/_wip/analytics-alignment/vendor/bin/phpunit` exists. `git -
 
 **Files:**
 - Modify: `src/RestApi.php` (`get_views()` `:182-203`, `get_post_type_views()` `:259-269`, `get_trending()` `:278-343`, `validate_object()` `:420-437`)
-- Modify: `src/Tracker.php` (only if mai-coordinator chooses core's viewable helpers, see Step 3)
+- Modify: `src/Tracker.php` (`get_beacon_url()` `:75-136`, its three visibility checks)
+- Test: `tests/test-tracker.php` too
 - Test: `tests/test-rest-api.php`
 
 **Interfaces:**
@@ -188,14 +189,14 @@ Expected: `~/Plugins/_wip/analytics-alignment/vendor/bin/phpunit` exists. `git -
 
 - [ ] **Step 3: Implement.**
   - `get_views()` returns the `NotFound` response when `validate_object()` is false. `get_post_type_views()` returns it when `is_public_post_type()` is false.
-  - **Which visibility rule.** The spec proposes core's helpers in place of the plugin's own rule: `is_post_publicly_viewable()` (`wp-includes/post.php:2542`), `is_term_publicly_viewable()` (`wp-includes/taxonomy.php:5168`, after checking `get_term()` is not a `WP_Error`) and `is_post_type_viewable()` (`post.php:2447`), in `validate_object()`, `is_public_post_type()` and the tracker's three checks (`src/Tracker.php:84`, `:100`, `:117`). That is waiting on mai-coordinator and Mike. If they have said yes before you reach this step, use core's helpers and add a test for each difference the spec lists. If not, keep today's `publish` and `public` rule, and say so in the report.
+  - **Core's visibility helpers** (decided by mai-coordinator, spec change 4) replace the plugin's own rule: `is_post_publicly_viewable()` (`wp-includes/post.php:2542`), `is_term_publicly_viewable()` (`wp-includes/taxonomy.php:5168`, after checking `get_term()` is not a `WP_Error`) and `is_post_type_viewable()` (`post.php:2447`), in `validate_object()`, `is_public_post_type()` (keep that method name, it is private) and the tracker's three checks (`src/Tracker.php:84`, `:100`, `:117`, where taxonomy archives use `is_taxonomy_viewable()`, `taxonomy.php:5147`). The user rule stays on top. A published post with a password stays counted, as it is today and as core treats it. Tests, one per difference the spec lists, in `tests/test-rest-api.php` and `tests/test-tracker.php`: a post type registered `public: false, publicly_queryable: true` is counted and gets a beacon; one registered `public: true, publicly_queryable: false` is not; a custom status registered `publicly_queryable: true` is counted; a password-protected published post is counted.
   - In `get_trending()`, the SQL limit is always `$per_page * 5`. After the existing taxonomy filter, keep only rows whose IDs `visible_ids()` returns, then cut to `$per_page`. `visible_ids()` loads in bulk: `_prime_post_caches()` for posts, `_prime_term_caches()` for terms, and for users `cache_users()` plus one `count_many_users_posts( $ids, $types, true )` call (`wp-includes/user.php:661`, which takes an array of types at `:691`) instead of `count_user_posts()` per row. Rows of type `post_type` use `is_public_post_type()` on `object_key`.
 
 - [ ] **Step 4: Run the tests.** Expected: pass, and the full suite passes. The Health check's REST probe asks about a published post (`src/Health.php:139-152`), so it is not affected.
 
 - [ ] **Step 5: Check the other count reads.** Confirm what the spec found: `rg -n "mai_views|mai_trending" ~/Plugins/_wip/analytics-alignment/src ~/Plugins/_wip/analytics-alignment/includes`, and read every hit that answers a request. Only the shortcode and `mai_analytics_get_count()` read counts outside these routes, both PHP-only, and `TODO.md` already lists them. Anything else that hands a signed-out caller a hidden item's count is in scope: fix it here with a test, and say so in the report.
 
-- [ ] **Step 6: Commit.** Add `src/RestApi.php tests/test-rest-api.php`, plus `src/Tracker.php` if Step 3 changed it. Subject: "Stop showing view counts for items a caller may not see".
+- [ ] **Step 6: Commit.** Add `src/RestApi.php src/Tracker.php tests/test-rest-api.php tests/test-tracker.php`. Subject: "Stop showing view counts for items a caller may not see".
 
 ---
 
@@ -210,10 +211,10 @@ Expected: `~/Plugins/_wip/analytics-alignment/vendor/bin/phpunit` exists. `git -
 - Consumes: `ErrorCode`, `Errors::response()`.
 
 - [ ] **Step 1: Write the failing tests** (as an administrator unless said):
-  - `test_sync_now_without_provider`: `data_source` set to a slug no provider has, `POST /admin/sync-now` answers 409 `ErrorCode::ProviderUnavailable->value` with a non-empty top-level `message`.
-  - `test_sync_now_provider_error`: a test provider added through `mai_analytics_providers` (one array arg, `src/ProviderSync.php:50-57`). It implements all six `WebViewProvider` methods (`src/WebViewProvider.php`), its slug matches `data_source`, and its `get_views()` calls `Sync::set_provider_error( 'down' )` and returns null. Copy the pattern at `tests/test-provider-sync.php:68-107`. Answers 502 `ErrorCode::ProviderError->value`, `message` `down`.
-  - `test_warm_in_self_hosted_mode`: answers 409 `ErrorCode::ProviderModeRequired->value`, `message` "Warm is only available in provider mode."
-  - `test_warm_provider_error_keeps_progress`: with the failing provider, answers 502 `ProviderError`, and the body still has top-level `message`, `done`, `total_updated` and `total_iterated`. There is always something to warm, because the default Uncategorized term is collected (`src/ProviderSync.php:903-906`).
+  - `test_sync_now_without_provider`: `data_source` set to a slug no provider has, `POST /admin/sync-now` answers 501 `ErrorCode::ProviderUnavailable->value` with a non-empty top-level `message`.
+  - `test_sync_now_provider_error`: a test provider added through `mai_analytics_providers` (one array arg, `src/ProviderSync.php:50-57`). It implements all six `WebViewProvider` methods (`src/WebViewProvider.php`), its slug matches `data_source`, and its `get_views()` calls `Sync::set_provider_error( 'down' )` and returns null. Copy the pattern at `tests/test-provider-sync.php:68-107`. Answers 502 `ErrorCode::ProviderRequestFailed->value`, `message` `down`.
+  - `test_warm_in_self_hosted_mode`: answers 501 `ErrorCode::ProviderDisabled->value`, `message` "Warm is only available in provider mode."
+  - `test_warm_provider_error_keeps_progress`: with the failing provider, answers 502 `ProviderRequestFailed`, and the body still has top-level `message`, `done`, `total_updated` and `total_iterated`. There is always something to warm, because the default Uncategorized term is collected (`src/ProviderSync.php:903-906`).
   - `test_warm_refuses_negative_args`: `cursor=-1` answers 400 `InvalidRequest`. The same for `total_updated=-1` and `total_iterated=-1`.
   - `test_search_terms_pages`: 60 terms named `Alpha 01` to `Alpha 60` in `category`, each with a published post. `GET /admin/search?type=term&taxonomy=category&search=Alpha` answers a bare array of 50 rows, `X-WP-Total` `'60'` and `X-WP-TotalPages` `'2'` (set as strings). `page=2` answers 10 rows. `per_page=101` answers 400 `InvalidRequest`. `per_page=100` answers 60 rows.
   - `test_search_authors_pages`: 60 users with display names `Alpha 01` to `Alpha 60`, each with a published post whose `mai_views` meta is above 0, because the author search only returns those (`src/AdminRestApi.php:739-742`). The same paging and headers as the terms test.
@@ -223,8 +224,8 @@ Expected: `~/Plugins/_wip/analytics-alignment/vendor/bin/phpunit` exists. `git -
 - [ ] **Step 3: Implement.**
   - Warm's three integer args get `'validate_callback' => 'rest_validate_request_arg'`, which enforces their declared `minimum` for `type: integer` (`wp-includes/rest-api.php:1452-1459`). Core validates before it sanitizes, so `absint` cannot hide `-1` (`class-wp-rest-server.php:1115-1121`).
   - Search gets `page` (`type` integer, `minimum` 1, `default` 1) and `per_page` (`type` integer, `minimum` 1, `maximum` 100, `default` 50), each with `rest_validate_request_arg`. Each query is paged with a `COUNT(DISTINCT ...)` on the same `WHERE`, then `LIMIT %d OFFSET %d` (not `SQL_CALC_FOUND_ROWS`, which MySQL deprecates). Set `X-WP-Total` and `X-WP-TotalPages` as strings. A `term` search with no or a non-public taxonomy still answers `[]`, with `X-WP-Total` `'0'`.
-  - `sync_now()`: the no-provider or unavailable branch answers `ProviderUnavailable` with today's reason as the message. Both stored-error branches answer `ProviderError` with the stored message. Success bodies are unchanged.
-  - `warm()`: self-hosted answers `ProviderModeRequired` with today's message. Both error branches answer `ProviderError`, passing today's payload (without `message`) as `$legacy`, so the progress fields stay top level.
+  - `sync_now()`: the no-provider or unavailable branch answers `ProviderUnavailable` with today's reason as the message. Both stored-error branches answer `ProviderRequestFailed` with the stored message. Success bodies are unchanged.
+  - `warm()`: self-hosted answers `ProviderDisabled` with today's message. Both error branches answer `ProviderRequestFailed`, passing today's payload (without `message`) as `$legacy`, so the progress fields stay top level.
   - Fix the three docblocks: search "Up to `per_page` matching results (50 by default)", `get_source_breakdown` "Only queries the current page's IDs (at most 100)", `seed --days` default 30.
 
 - [ ] **Step 4: Run the tests.** Expected: pass, and the full suite passes.
@@ -369,14 +370,15 @@ php ~/Plugins/mai-analytics/vendor/bin/deployable-guard check --root=../_wip/ana
 
 Expected: `OK: committed autoloader is deployable as-is.` The new classes need no autoloader change, because autoload is PSR-4 only (`composer.json`).
 
-- [ ] **Step 3: Rewrite `STATE.md`** on the branch: what was built, the test count, the open naming question, which visibility rule Task 3 used, and the draft changelog lines below for whoever cuts the release. Add to `TODO.md`'s "Later" any follow-up you hit. Draft changelog lines (they go into `CHANGES.md` only on the release commit, with its version and date):
+- [ ] **Step 3: Rewrite `STATE.md`** on the branch: what was built, the test count, and the draft changelog lines below for whoever cuts the release. Add to `TODO.md`'s "Later" any follow-up you hit. Draft changelog lines (they go into `CHANGES.md` only on the release commit, with its version and date):
   - `* Changed: [Developers] REST errors now carry a mai_analytics_* code and data.status. View errors keep "success": false and admin errors keep "message".`
-  - `* Changed: [Developers] Four error statuses changed: Sync Now answers 409 for a setup problem and 502 for a provider failure (was 500), Warm answers 409 in self-hosted mode (was 400) and 502 for a provider failure (was 500), and a view that fails to save answers 503 with Retry-After (was 200).`
+  - `* Changed: [Developers] Four error statuses changed: Sync Now answers 501 for a setup problem and 502 for a provider failure (was 500), Warm answers 501 in self-hosted mode (was 400) and 502 for a provider failure (was 500), and a view that fails to save answers 503 with Retry-After (was 200).`
   - `* Changed: [Developers] Core's argument errors answer 400 mai_analytics_invalid_request, after the permission check, so a signed-out request still gets 401.`
   - `* Changed: [Developers] ID lists (trending terms, the dashboard's term and author filters) take at most 100 IDs.`
   - `* Changed: [Developers] The dashboard search takes page and per_page and sends X-WP-Total and X-WP-TotalPages.`
   - `* Changed: [Developers] Warm refuses a negative cursor, total_updated or total_iterated with 400 instead of turning it positive.`
   - `* Changed: Views of an author archive for someone with no published posts are no longer counted, and their count is no longer public, so the counts can't be used to find which user IDs exist.`
+  - `* Changed: Which posts, terms and archives are counted now follows WordPress's own "publicly viewable" rule, which only differs from before for post types, taxonomies or statuses registered with unusual settings.`
   - `* Fixed: View counts for drafts, private posts and other hidden items could be read by anyone. They now answer 404, and trending no longer lists them.`
   - `* Fixed: A view that failed to save was reported as saved.`
   - `* Fixed: Deactivating left three scheduled tasks behind, and uninstalling left two.`
@@ -391,4 +393,4 @@ Expected: `OK: committed autoloader is deployable as-is.` The new classes need n
   - Do not use the shared production-copy site in any way (no activation, WP-CLI, e2e or browser) without a claim from mai-coordinator.
   - No version bump, tag or release. Those need Mike's yes, and no tag questions until the whole stack passes its tests.
   - If Mike renames any code in his walk, change only the `ErrorCode` case values and rerun the suite.
-  - Report to mai-coordinator: the branch, its last commit, the test count, the test library check from Task 0, which visibility rule Task 3 used, and anything that did not go as this plan says.
+  - Report to mai-coordinator: the branch, its last commit, the test count, the test library check from Task 0, and anything that did not go as this plan says.
