@@ -38,12 +38,20 @@ Mike gets approval prompts for anything the permission check can't read, so (Mik
 - Keep each Bash call to one plain command with full paths: no `&&` chains, no heredocs, no shell variables, no `$(...)`.
 - Commit with `git -C <full path> commit -q -m "..."` (one `-m` per paragraph), and push as its own call.
 
+## Names
+
+Don't guess a name when WordPress already names the thing another way (Mike, 2026-11-18: "Similar to how we went from cap to max"). Before proposing a name for a hook, arg, error code, function or option, check what core calls the same thing and cite the file and line. Use core's word, or say there is none.
+
+## Waiting on Mike
+
+When work is waiting on Mike, end the turn with the `wrap_up` tool carrying one question in `ask`, one or two buttons in `actions`, and `blocked: true`, so the session shows as waiting on him instead of sitting idle. Don't set `blocked` when waiting on another session.
+
 ## Releases
 
 - The changelog is `CHANGES.md`: `## X.Y.Z (M/D/YY)` and bulleted `* Added:` / `* Changed:` / `* Fixed:` entries.
 - The version lives in two places in `mai-analytics.php`: the header and `MAI_ANALYTICS_VERSION`.
 - Point releases only, and only when asked. Tags are `vX.Y.Z`, and the plugin updater ships from `main`.
-- Push to `develop` only. Never push, merge into or tag `main` without Mike's yes, and no tag questions until the whole stack passes its tests.
+- Feature branches may be pushed without asking (Mike's rule, through mai-coordinator, 2026-11-18). Never push, merge into or tag `main` without Mike's yes, and no tag questions until the whole stack passes its tests. While the alignment pass runs, merging into `develop` needs mai-coordinator's grant, because the shared production-copy site loads it.
 
 ## Shared test site
 
