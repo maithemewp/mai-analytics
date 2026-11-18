@@ -32,7 +32,21 @@ Draft changelog lines, for `CHANGES.md` on the release commit only, with its ver
 - `WP_TESTS_DIR=/tmp/wordpress-tests-lib vendor/bin/phpunit` after `composer install`. Read the Status of the shared production-copy site's `SITE-LOCK.md` and `uptime` first. Never run it during a device run or with the 1-minute load at 10 or more.
 - Afterwards put `vendor/` back with `composer install --no-dev`, then `git checkout -- vendor/composer/installed.json vendor/composer/installed.php`, because the committed copies were written by a dev install. Then `php vendor/bin/deployable-guard check --root=.`.
 
+## Vendor: dev install against no-dev install
+Checked 2026-11-18 on this branch. `.gitignore` tracks only `vendor/autoload.php`, `vendor/composer/`, `vendor/maithemewp/` and `vendor/yahnis-elsts/`.
+
+- **Committed today:** the four autoloader files (`vendor/composer/autoload_static.php`, `autoload_psr4.php`, `autoload_classmap.php`, `autoload_files.php`) are production-only, with no dev package in them. `vendor/composer/installed.php` and `installed.json` are dev-install metadata: `'dev' => true` and every dev package listed (phpunit, yoast polyfills, deployable-guard, sebastian/*). These two are Composer's install record, read by `Composer\InstalledVersions`, not by class loading.
+- **`composer install` (with dev)** rewrites all four autoloader files to add the dev packages, and changes `installed.php` (its reference hash). That is the state that must never be committed.
+- **`composer install --no-dev`** leaves the four autoloader files equal to the committed ones, and rewrites `installed.php` and `installed.json` to the production record (`'dev' => false`, no dev packages).
+
+What a release must do:
+1. Run `composer install --no-dev` in the release checkout.
+2. Run `git status --short vendor`. Only `vendor/composer/installed.php` and `installed.json` may show, and only until the TODO decision below is made. Any `autoload_*.php` in that list means a dev autoloader. Stop.
+3. Run `php vendor/bin/deployable-guard check --root=.` from a checkout that still has the guard (the no-dev install removes it from this one). It must print "OK: committed autoloader is deployable as-is."
+4. Open decision, in TODO.md: commit the no-dev `installed.php` and `installed.json`, or stop tracking them as 370e6e3 once did for `installed.php`. Until then, restore them with `git checkout -- vendor/composer/installed.json vendor/composer/installed.php` and commit no `vendor/` change.
+
 ## Gotchas
+- For Tasks 1 to 4 and 6 to 8 the code was written before the tests ran, because a device run on the shared site blocked every suite for about 50 minutes. Task 5 went red, then green. All 256 tests pass at 7b1270b.
 - The shared production-copy site loads the main checkout. Keep it on `develop` with docs-only commits. Code work goes in a worktree on a feature branch.
 - Mai Publisher bundles this plugin. A site running only the bundled copy gets fixes when Mai Publisher ships a new bundled version, and never gets activation, deactivation or uninstall fixes. `Plugin::deactivate()` is public so Mai Publisher can call it.
 - Every `mai_analytics_*` code string lives only in `src/ErrorCode.php`. Tests use `ErrorCode::X->value`.
