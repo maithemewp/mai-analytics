@@ -2,7 +2,7 @@
 Updated: 2026-11-18 by Claude (mai-analytics build session)
 
 ## Now
-The alignment pass is built on branch `feat/alignment` (worktree `~/Plugins/_wip/analytics-alignment`), plan Tasks 0 to 8, one commit each. The suite passes: 256 tests, against a develop baseline of 205. Nothing is merged, versioned or released. Version stays 1.3.7.
+The alignment pass is built, plan Tasks 0 to 8, one commit each, plus the fixes from an independent review: the db retry transient is read only when the version is behind, trending primes meta and terms only for the rows it returns, attachments stay uncounted (mai-coordinator's decision), and the author rule uses the post rule's viewable sets. The suite passes: 265 tests, against a develop baseline of 205. develop is fast-forwarded to it locally, with mai-coordinator's grant, and not pushed. Nothing is versioned or released. Version stays 1.3.7.
 
 Draft changelog lines, for `CHANGES.md` on the release commit only, with its version and date:
 
@@ -13,7 +13,7 @@ Draft changelog lines, for `CHANGES.md` on the release commit only, with its ver
 * Changed: [Developers] The dashboard search takes page and per_page and sends X-WP-Total and X-WP-TotalPages.
 * Changed: [Developers] Warm refuses a negative cursor, total_updated or total_iterated with 400 instead of turning it positive.
 * Changed: Views of an author archive for someone with no published posts are no longer counted, and their count is no longer public, so the counts can't be used to find which user IDs exist.
-* Changed: Which posts, terms and archives are counted now follows WordPress's own "publicly viewable" rule, which only differs from before for post types, taxonomies or statuses registered with unusual settings.
+* Changed: Which posts, terms and archives are counted now follows WordPress's own "publicly viewable" rule, which only differs from before for post types, taxonomies or statuses registered with unusual settings. Attachment pages are still not counted.
 * Fixed: View counts for drafts, private posts and other hidden items could be read by anyone. They now answer 404, and trending no longer lists them.
 * Fixed: A view that failed to save was reported as saved.
 * Fixed: Deactivating left three scheduled tasks behind, and uninstalling left two.
@@ -21,12 +21,12 @@ Draft changelog lines, for `CHANGES.md` on the release commit only, with its ver
 * Fixed: Sync Now answered a server error for a setup problem.
 
 ## Next
-1. mai-coordinator reviews the branch and grants the merge to `develop`.
+1. Mike says whether to push `develop`. It also carries the spec and plan commits that were already ahead of `origin/develop`.
 2. Mike walks the code names. A rename changes only the `ErrorCode` case values.
 3. Mike decides the point release after the whole stack passes its tests.
 
 ## Blocked / waiting on
-- mai-coordinator's review and merge grant.
+- Mike's yes to push `develop`.
 
 ## Verify
 - `WP_TESTS_DIR=/tmp/wordpress-tests-lib vendor/bin/phpunit` after `composer install`. Read the Status of the shared production-copy site's `SITE-LOCK.md` and `uptime` first. Never run it during a device run or with the 1-minute load at 10 or more.
