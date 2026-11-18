@@ -57,7 +57,7 @@ class CLI {
 				WP_CLI::log( WP_CLI::colorize( "%B=== {$current_section} ===%n" ) );
 			}
 
-			$detail = $c['detail'] ? " — {$c['detail']}" : '';
+			$detail = $c['detail'] ? " ({$c['detail']})" : '';
 
 			$line = match ( $c['status'] ) {
 				'pass' => WP_CLI::colorize( "  %G\u{2713}%n {$c['label']}{$detail}" ),

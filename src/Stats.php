@@ -417,9 +417,9 @@ class Stats {
 
 		$note = '';
 		if ( $is_provider && ! $provider_healthy ) {
-			$note = ' [provider unhealthy — stale prune skipped]';
+			$note = ' [provider unhealthy, so the stale prune was skipped]';
 		} elseif ( 'self_hosted' === $source && ! $buffer_live ) {
-			$note = ' [buffer not live — stale prune skipped]';
+			$note = ' [buffer not live, so the stale prune was skipped]';
 		}
 
 		$logger = new \Mai_Logger( 'mai-analytics' );
@@ -459,7 +459,7 @@ class Stats {
 
 		if ( $fraction > 0 && $before > 0 && ( $stale_deleted / $before ) >= $fraction ) {
 			$logger->warning( sprintf(
-				'Trending prune removed %d of %d trending rows (%d%%) via staleness in one run — verify this was intended.',
+				'Trending prune removed %d of %d trending rows (%d%%) via staleness in one run. Check this was intended.',
 				$stale_deleted,
 				$before,
 				(int) round( ( $stale_deleted / $before ) * 100 )

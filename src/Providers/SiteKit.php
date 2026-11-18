@@ -401,7 +401,7 @@ class SiteKit implements WebViewProvider {
 			// set_last_error() is the only way it reaches a human.
 			$error = sprintf(
 				/* translators: %s: the underlying PHP error message. */
-				__( 'Could not build the Site Kit Analytics module — check for a Mai Analytics update. Details: %s', 'mai-analytics' ),
+				__( 'Could not build the Site Kit Analytics module. Check for a Mai Analytics update. Details: %s', 'mai-analytics' ),
 				$e->getMessage()
 			);
 

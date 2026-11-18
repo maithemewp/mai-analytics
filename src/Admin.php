@@ -356,7 +356,7 @@ class Admin {
 			<p style="margin:0.5em 0;">
 				<strong><?php esc_html_e( 'Provider error:', 'mai-analytics' ); ?></strong>
 				<?php echo esc_html( $err['message'] ); ?>
-				<em style="opacity:.7;">— <?php echo esc_html( $age ); ?></em>
+				<em style="opacity:.7;">(<?php echo esc_html( $age ); ?>)</em>
 			</p>
 			<button type="button" class="button button-small mai-analytics-provider-error__dismiss"><?php esc_html_e( 'Dismiss', 'mai-analytics' ); ?></button>
 		</div>

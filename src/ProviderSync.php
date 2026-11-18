@@ -197,7 +197,7 @@ class ProviderSync {
 				// signal is still consumed. Logged so a systemic cause (e.g. a bad
 				// object_type entering the buffer) is discoverable.
 				mai_analytics_logger()->error( sprintf(
-					'ProviderSync::process_batch() could not resolve a path for object_type=%s object_id=%d — skipping provider fetch for this object.',
+					'ProviderSync::process_batch() could not resolve a path for object_type=%s object_id=%d. Skipping the provider fetch for this object.',
 					$obj->object_type,
 					(int) $obj->object_id
 				) );
@@ -664,7 +664,7 @@ class ProviderSync {
 				// this warm pass (not counted in $iterated/$updated) rather than
 				// losing a queued signal. Logged so a systemic cause is discoverable.
 				mai_analytics_logger()->error( sprintf(
-					'ProviderSync::process_warm_batch() could not resolve a path for object_type=%s object_id=%d — skipping this object.',
+					'ProviderSync::process_warm_batch() could not resolve a path for object_type=%s object_id=%d. Skipping this object.',
 					$obj->object_type,
 					(int) $obj->object_id
 				) );
