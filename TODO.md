@@ -4,6 +4,10 @@
 
 - Built on `feat/alignment`, Tasks 0 to 8. Waiting on mai-coordinator's review and merge grant, then Mike's walk of the code names and the release decision.
 
+## Do at the release
+
+- Commit the no-dev `vendor/composer/installed.php` and `installed.json`. The committed copies were written by a dev install (`'dev' => true`, dev packages listed). Keep both tracked (mai-coordinator, 2026-11-18), because mai-package-loader reads `installed.php` at runtime. Steps and the loader lines are in STATE.md, "Vendor".
+
 ## Later
 
 - Swap `src/RestErrors.php` for `Mai\Items\RestErrors` from mai-items-core once that library is tagged and the PHP floor question (8.1 here, 8.2 there) is settled with Mike.
@@ -18,5 +22,4 @@
 - Per-person views for "For You": a separate design later (Mike, 2026-11-18). Nothing built for it.
 - Two read-only `LIKE`s on meta names don't escape `_`: `src/Migration.php:123` and `src/Health.php:54`. A stray match can only make a probe or a count wrong.
 - The `SHOW TABLES LIKE` checks don't escape `_` either: `Database::table_exists()` (on purpose, so a test's `query` filter can match the plain name), `maybe_migrate_old_table()` and `src/Health.php:45`. Core escapes its own (`wp-admin/includes/upgrade.php:2687`). A stray match could only report a table that isn't there.
-- The committed `vendor/composer/installed.php` and `installed.json` were written by a dev install (`'dev' => true`, dev packages listed), though 370e6e3 once stopped tracking `installed.php`. `composer install --no-dev` rewrites both. Decide whether to commit the production copies or stop tracking them, and check deployable-guard either way.
 - The `[mai_views]` shortcode and `mai_analytics_get_count()` read any ID with no visibility check. Only staff can call them today.

@@ -43,7 +43,9 @@ What a release must do:
 1. Run `composer install --no-dev` in the release checkout.
 2. Run `git status --short vendor`. Only `vendor/composer/installed.php` and `installed.json` may show, and only until the TODO decision below is made. Any `autoload_*.php` in that list means a dev autoloader. Stop.
 3. Run `php vendor/bin/deployable-guard check --root=.` from a checkout that still has the guard (the no-dev install removes it from this one). It must print "OK: committed autoloader is deployable as-is."
-4. Open decision, in TODO.md: commit the no-dev `installed.php` and `installed.json`, or stop tracking them as 370e6e3 once did for `installed.php`. Until then, restore them with `git checkout -- vendor/composer/installed.json vendor/composer/installed.php` and commit no `vendor/` change.
+4. Commit the no-dev `vendor/composer/installed.php` and `installed.json` on the release commit. Decided by mai-coordinator, 2026-11-18: keep both tracked, in their no-dev form. On a feature branch, restore them with `git checkout -- vendor/composer/installed.json vendor/composer/installed.php` and commit no `vendor/` change.
+
+Why `installed.php` stays tracked: mai-package-loader, which loads the bundled mai-logger, reads it at runtime (`vendor/maithemewp/mai-package-loader/init.php:603`). It takes each `maithemewp/*` copy and its install path from the record (`:647-654`), and a newer copy of the loader's version from it too (`:660-664`). Without the file the loader still works: it lists `vendor/maithemewp/*/` on disk instead (`:605-628`). But then it can only see a newer loader copy that ships `takeover.php`, and misses any package installed outside the default path.
 
 ## Gotchas
 - For Tasks 1 to 4 and 6 to 8 the code was written before the tests ran, because a device run on the shared site blocked every suite for about 50 minutes. Task 5 went red, then green. All 256 tests pass at 7b1270b.
