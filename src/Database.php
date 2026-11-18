@@ -92,16 +92,20 @@ class Database {
 	public static function maybe_update(): void {
 		self::maybe_migrate_old_table();
 
-		// A recent create failed. Wait for the retry window to pass.
+		$installed = get_option( self::DB_VERSION_OPTION, '0' );
+
+		if ( ! version_compare( $installed, MAI_ANALYTICS_DB_VERSION, '<' ) ) {
+			return;
+		}
+
+		// A recent create failed. Wait for the retry window to pass. Read only
+		// when the version is behind, since this runs on every request and a
+		// missing transient costs a query without a persistent object cache.
 		if ( get_transient( self::RETRY_TRANSIENT ) ) {
 			return;
 		}
 
-		$installed = get_option( self::DB_VERSION_OPTION, '0' );
-
-		if ( version_compare( $installed, MAI_ANALYTICS_DB_VERSION, '<' ) ) {
-			self::create_table();
-		}
+		self::create_table();
 	}
 
 	/**

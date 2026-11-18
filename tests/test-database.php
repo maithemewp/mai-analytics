@@ -116,6 +116,24 @@ class Test_Database extends WP_UnitTestCase {
 		$this->assertSame( 0, $calls );
 	}
 
+	public function test_maybe_update_runs_no_query_when_current(): void {
+		global $wpdb;
+
+		update_option( 'mai_analytics_table_migrated', true );
+		update_option( Database::DB_VERSION_OPTION, MAI_ANALYTICS_DB_VERSION );
+		delete_transient( Database::RETRY_TRANSIENT );
+
+		// The retry transient is normally missing, and a missing option costs a
+		// SELECT. Load the version options first, so only the transient could query.
+		get_option( 'mai_analytics_table_migrated' );
+		get_option( Database::DB_VERSION_OPTION );
+
+		$before = $wpdb->num_queries;
+		Database::maybe_update();
+
+		$this->assertSame( $before, $wpdb->num_queries );
+	}
+
 	public function test_old_version_not_copied_without_table(): void {
 		update_option( 'mai_views_db_version', '1.0.2' );
 		delete_option( 'mai_analytics_table_migrated' );
