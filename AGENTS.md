@@ -15,6 +15,7 @@ No filter, option, meta key, route, param or response field is renamed or remove
 - Mai Publisher bundles this plugin through Composer and loads its copy when no standalone copy is active (`mai-publisher.php:128-132`). Its `/v1/seller` endpoint reads `Settings::get_reporting_snapshot()`. Mai Publisher's releases are David's: never tag or touch its `main`.
 - The app counts views through maiexpowp's `useView`, `POST /view/{type}/{id}` with `source=app`, and treats 404 `rest_no_route` as the feature being off.
 - The website beacon and the admin screens in this repo.
+- Not maiexpowp-plugin. It is kept only for one older live app, gets bug and security fixes only, and is removed once that app is rebuilt on mai-auth. mai-analytics never accounts for it.
 
 ## Layout
 

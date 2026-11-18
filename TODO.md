@@ -2,7 +2,7 @@
 
 ## Alignment pass (2026-11-18)
 
-- Spec: `docs/specs/2026-11-18-alignment.md`. Next: mai-coordinator's check, then Mike's walk of its "Questions for Mike", then a plan in `docs/plans/`.
+- Spec `docs/specs/2026-11-18-alignment.md` (checked), plan `docs/plans/2026-11-18-alignment.md`. Waiting on mai-coordinator's plan review and Mike's answer on the code names, then a build prompt.
 
 ## Later
 

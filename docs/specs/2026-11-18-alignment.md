@@ -1,10 +1,21 @@
 # mai-analytics alignment
 
 - Date: 2026-11-18
-- Status: Draft. Waiting on mai-coordinator's check, then Mike's walk of "Questions for Mike".
+- Status: Checked by mai-coordinator (2026-11-18). It decided four of the five open questions (see "Decided by mai-coordinator"). The code names are still Mike's, in his walk with mai-coordinator.
 - Scope: mai-analytics' part of the 2026-11-18 alignment pass (Mike's option "B": the safe fixes and plugin error codes). Fleet rules: `~/LocalPackages/maiexpowp/CONVENTIONS.md`. Coordinator's file: `ALIGNMENT.md` on the shared production-copy site.
 - Code read: `develop` at 243b90d, version 1.3.7, db version 1.0.2, `Requires PHP: 8.1` (`mai-analytics.php:7-8`, `:26-27`). Core cited from the shared test site's WordPress 7.1.4 (`wp-includes/version.php:19`).
 - Release: one point release after 1.3.7. No version, tag or release is decided here.
+
+## What "fixed" means on a site running Mai Publisher
+
+Mai Publisher bundles mai-analytics (1.3.7 today) and loads its own copy whenever no standalone mai-analytics is active (`mai-publisher.php:128-132`). So a site running only the bundled copy gets nothing from this release until Mai Publisher updates its bundled version and ships. Mai Publisher's releases are David's, not ours.
+
+Even after that update, the bundled copy's activation, deactivation and uninstall hooks never fire, because WordPress registers them against a vendor file it never activates or uninstalls. On those sites:
+
+- **Can never reach them through the bundled copy:** the cron cleanup on deactivation and uninstall (change 1), activation scheduling the daily prune (change 1), the uninstall wildcard fix and everything else in `uninstall.php`.
+- **Reaches them once Mai Publisher ships the new bundled version:** everything that runs while the plugin loads. That is the db version check (change 3), the hidden-item fix (change 4), the quiet limits (change 5), the em-dash rewrites (change 6), the 100-ID limits and the error codes (changes 2 and 7). It is the whole REST layer and the schema check.
+
+A standalone install gets all of it on update.
 
 ## Rules this follows
 
@@ -72,10 +83,10 @@ Each change says what the code does today, what it will do, who notices, the tes
 
 - **Today:** `GET /views/{post|term|user}/{id}` reads the meta by ID with no check (`src/RestApi.php:182-203`), so a signed-out caller gets the counts of a draft, private, pending, trashed or deleted post, a term in a private taxonomy, or a missing user (zeros for the last). `POST /view/...` checks first (`:142`, `validate_object()` at `:420-437`). Verified. `GET /views/post_type/{post_type}` also has no public check (`:259-269`); a private post type has no stored count, because the POST refuses it (`:220`), so it answers zeros.
 - **Found in the same area:** `GET /views/trending` lists buffer rows from the last 6 hours to 7 days with each post's title and permalink (`:278-343`, `:373-376`). A post viewed while public and then made private, draft or trashed stays listed until its rows age out, with "Private: {title}" and its link. Deleted posts show an empty title. Terms moved to a private taxonomy and deleted users are listed too.
-- **Will do:** the single-item GETs use the same visibility rule as the POST, `validate_object()`, and the post type GET uses the POST's public post type check. For an item that fails, see "Questions for Mike", the first question: 404 `mai_analytics_not_found` (recommended) or 200 with zeros. Trending drops every row that fails `validate_object()`, whichever answer Mike picks for the single GETs, and always over-fetches five times `per_page` (today only when `taxonomy` is set, `:288`) before cutting to `per_page`, so dropped rows rarely leave the list short. No signed-in exception: an editor sees counts for unpublished items in the dashboard, and one rule for everyone keeps the public answer the same for every caller, which matters because these routes send no `Cache-Control`.
+- **Will do:** the single-item GETs use the same visibility rule as the POST, `validate_object()`, and the post type GET uses the POST's public post type check. An item that fails answers 404 `mai_analytics_not_found` (decided by mai-coordinator: CONVENTIONS says 404 is "the item doesn't exist or isn't visible", the POST already answers it, and a missing and a hidden item answer the same). Trending drops every row that fails `validate_object()`, and always over-fetches five times `per_page` (today only when `taxonomy` is set, `:288`) before cutting to `per_page`, so dropped rows rarely leave the list short. No signed-in exception: an editor sees counts for unpublished items in the dashboard, and one rule for everyone keeps the public answer the same for every caller, which matters because these routes send no `Cache-Control`.
 - **Who notices:** a caller asking for a hidden item. Nobody in the stack calls these GETs except the plugin's own health check, which asks about a published post (`src/Health.php:139-152`). A third party listing trending sees hidden items drop out.
-- **Tests:** signed out, a draft, a private post, a trashed post, a post in a non-public type, a term in a non-public taxonomy and a missing user each answer the chosen not-visible answer, and the same for a signed-in editor. A published post answers its counts. Trending with a viewed post that is then made private does not list it, and still returns `per_page` rows when enough visible ones exist.
-- **Safe:** it closes a leak. What each answer breaks is in the question.
+- **Tests:** signed out, a draft, a private post, a trashed post, a post in a non-public type, a term in a non-public taxonomy and a missing user each answer 404 `mai_analytics_not_found` with `success: false`, and the same for a signed-in editor. A post type that is not public answers the same. A published post answers its counts. Trending with a viewed post that is then made private does not list it, and still returns `per_page` rows when enough visible ones exist.
+- **Safe:** it closes a leak. A caller that asks for a deleted or unpublished item and expected 200 zeros now gets a 404. No caller in the stack does that.
 
 ### 5. Quiet limits
 
@@ -127,16 +138,18 @@ Every plugin error body is `{ "code", "message", "data": { "status" } }`, the sh
 
 So the view and warm errors are built as a `WP_REST_Response` with that body and status, not a `WP_Error`, because core's conversion would drop the extra fields. One helper, `Errors::response( ErrorCode $code, string $message, array $data = [], array $legacy = [] )`, builds them, with `ErrorCode` an enum of the codes below (the pattern mai-collections uses in `inc/classes/ErrorCode.php`).
 
-The new codes. Names are Mike's to approve (see the third question):
+The new codes. Names are Mike's to approve (see "Questions for Mike"):
 
 - 400 `mai_analytics_invalid_request`: core's four argument errors (below), a list over 100, and the unreachable no-type case.
-- 404 `mai_analytics_not_found`: a view POST for a missing or hidden item, and the single-item GETs if Mike picks 404.
+- 404 `mai_analytics_not_found`: a view POST or a single-item GET for a missing or hidden item.
 - 403 `mai_analytics_bot`: a view refused as a bot.
 - 409 `mai_analytics_provider_unavailable`: `sync-now` with no provider set up or the provider unavailable. Today 500. It is a setup problem, not a server fault, and 409 says "fix the state, then try again".
 - 409 `mai_analytics_provider_mode_required`: `warm` in self-hosted mode. Today 400.
 - 502 `mai_analytics_provider_error`: `sync-now` and `warm` when the provider call failed. Today 500. The fault is upstream, which is what 502 means.
-- 503 `mai_analytics_database_error` with `data.retry_after` 5 and a `Retry-After: 5` header: a view POST whose insert failed. Today 200 `{ "success": true }`. See the fourth question.
-- Unchanged: `rest_forbidden` from the admin permission callbacks, as core builds it (mai-items-core's spec does the same). `rest_no_route`, which core answers before any plugin code runs, and which maiexpowp relies on to switch views off.
+- 503 `mai_analytics_database_error` with `data.retry_after` 1 and a `Retry-After: 1` header (1 second, as mai-collections sends): a view POST whose insert failed. Today 200 `{ "success": true }`. Decided by mai-coordinator: it is the fleet's rule for a database failure.
+- Unchanged: `rest_forbidden` from the admin permission callbacks, as core builds it (mai-items-core's spec does the same).
+
+The 409, the 502 and keeping `rest_forbidden` follow rules mai-coordinator is adding to CONVENTIONS.md in this pass, not rules that exist there today: 409 `{slug}_...` for a request refused because of the site's current setup, fixed by changing a setting and trying again, never retried by a client; 502 `{slug}_provider_error` for a failure in a service the plugin called; and capability-guarded admin routes keep core's `rest_forbidden`, with `{slug}_login_required` only for the gated tap. `rest_no_route`, which core answers before any plugin code runs, and which maiexpowp relies on to switch views off.
 
 #### Core's argument errors, with permission first
 
@@ -153,7 +166,13 @@ The mapping is copied into mai-analytics as `src/RestErrors.php` (`Mai\Analytics
 
 - mai-items-core needs PHP 8.2 (its spec, line 102). mai-analytics declares 8.1 (`mai-analytics.php:8`), and raising a live plugin's floor is Mike's call, not part of this pass.
 - mai-items-core has no tagged release, and mai-analytics is live and also bundled inside Mai Publisher, so a dependency would reach client sites through two plugins at once.
-- The copy is about 40 lines with the same contract tests, so swapping to the library later is a one-line change once the floor allows it. That later swap goes in `TODO.md`.
+- The copy is about 40 lines, so swapping to the library later is a small change once the floor allows it. That later swap goes in `TODO.md`.
+
+What the copy must not drift from, until the swap:
+
+- The same `CORE_CODES`, in the same order: `rest_invalid_param`, `rest_missing_callback_param`, `rest_invalid_json`, `rest_invalid_params`.
+- The same steps: one `rest_request_before_callbacks` filter at priority 99, the namespace matched without case, the permission callback called once, `false` turned into core's `rest_forbidden`, a `WP_Error` passed through as it is, and a passing request's core error turned into 400 `{slug}_invalid_request` keeping core's message, `params` and `details`.
+- Pinned by the library's contract test cases for error mapping (its spec, "Contract tests": a bad JSON body is 400 `{slug}_invalid_request`; a signed-out caller with a bad arg gets the permission error and the callback ran once; a route matched in other case is still mapped; a route outside the namespace and any other error code pass through), rewritten by hand into `tests/test-rest-errors.php` against mai-analytics' own routes, since the library's `contract/` suite cannot be loaded on 8.1. When the library's spec changes those cases, this copy changes with them.
 
 #### Who notices
 
@@ -170,7 +189,7 @@ The mapping is copied into mai-analytics as `src/RestErrors.php` (`Mai\Analytics
 Contract tests against the real routes, no mocks, one per row above:
 
 - Each plugin error answers its code, status and `data.status`, and keeps `success: false` (view routes), `message` (admin routes) and the progress fields (warm).
-- An insert failure (the table dropped) answers 503 `mai_analytics_database_error` with `data.retry_after` 5 and a `Retry-After: 5` header.
+- An insert failure (the table dropped) answers 503 `mai_analytics_database_error` with `data.retry_after` 1 and a `Retry-After: 1` header.
 - `per_page=0` on trending, `source=bad` on a view POST, `/admin/search` with no `type`, and a malformed JSON body on a view POST each answer 400 `mai_analytics_invalid_request` with core's `params`.
 - Signed out, `per_page=500` on `/admin/top/posts` answers 401 `rest_forbidden`; as a subscriber, 403 `rest_forbidden`; as an editor, 400 `mai_analytics_invalid_request`. The permission callback ran once (counted with a `user_has_cap` filter).
 - `/view/post/abc` still answers 404 `rest_no_route`.
@@ -210,14 +229,20 @@ Mine, with the reason, so Mike can overrule any of them:
 - Activation also schedules the daily prune (change 1).
 - The bugs marked in or out above.
 
+## Decided by mai-coordinator
+
+On 2026-11-18, following Mike's choice of "the safe fixes and the error codes now" and the fleet's written rules. Mike can reopen any.
+
+- **Items a caller may not see** answer 404 `mai_analytics_not_found` from `GET /views/{post|term|user}/{id}` and `GET /views/post_type/{post_type}` (change 4).
+- **Error bodies gain `code` and `data`,** keep `success` or `message`, and four statuses change: sync-now 500 to 409 (setup) or 502 (provider), warm 400 to 409, warm 500 to 502 (change 7).
+- **A failed view insert answers 503 `mai_analytics_database_error`** with `data.retry_after` and a `Retry-After` header (change 7).
+- **`/admin/search` gains `page`, `per_page` (default 50, at most 100) and the two total headers,** with the body unchanged (change 5).
+
 ## Questions for Mike
 
-Each changes what a live site or app receives, or is naming. Walk one at a time.
+Naming, so his. It goes into his one walk with mai-coordinator, not a second walk.
 
-1. **What a caller gets for an item it may not see,** from `GET /views/{post|term|user}/{id}` and `GET /views/post_type/{post_type}`.
-   - **404 `mai_analytics_not_found`** (recommended). Matches the view POST and CONVENTIONS ("404: the item doesn't exist or isn't visible"). A missing and a hidden item answer the same, so nothing leaks. Breaks: a caller that asks for a deleted or unpublished item and expects 200 zeros now gets an error. No caller in the stack does that.
-   - **200 with zeros.** The smallest change for a live route: missing items already answer zeros today, so hidden ones would just join them. Breaks nothing that works today. But GET and POST then disagree about the same item, and the plugin stays the one exception to the fleet's 404 rule.
-2. **Error bodies and four status changes.** Every error gains `code` and `data`, keeps `success` or `message`. Statuses: sync-now 500 to 409 (setup) or 502 (provider), warm 400 to 409, warm 500 to 502. Recommended: yes. Every known caller is checked and unaffected.
-3. **The code names:** `mai_analytics_invalid_request`, `mai_analytics_not_found`, `mai_analytics_bot`, `mai_analytics_provider_unavailable`, `mai_analytics_provider_mode_required`, `mai_analytics_provider_error`, `mai_analytics_database_error`. The first two and the last match the fleet's pattern. The other four are new; alternatives for the bot one are `mai_analytics_bot_refused` or `mai_analytics_not_counted`.
-4. **A failed view insert answers 503 with `Retry-After`** instead of today's 200 `{ "success": true }`. Recommended: yes. It stops a lost view looking counted, and the app and beacon ignore it. The alternative is to leave it reporting success.
-5. **`/admin/search` gains `page`, `per_page` (default 50, at most 100) and the two total headers.** Recommended: yes. The body and the dashboard's results stay the same. The alternative is to keep the silent 50 and only fix the docblock.
+1. **The code names:** `mai_analytics_invalid_request`, `mai_analytics_not_found`, `mai_analytics_bot`, `mai_analytics_provider_unavailable`, `mai_analytics_provider_mode_required`, `mai_analytics_provider_error`, `mai_analytics_database_error`. `invalid_request`, `not_found`, `provider_error` and `database_error` follow the fleet's pattern. The other three are new:
+   - The bot refusal: `mai_analytics_bot` (proposed), `mai_analytics_bot_refused` or `mai_analytics_not_counted`.
+   - Sync with no working provider: `mai_analytics_provider_unavailable` (proposed) or `mai_analytics_provider_not_ready`.
+   - Warm in self-hosted mode: `mai_analytics_provider_mode_required` (proposed) or `mai_analytics_wrong_mode`.
