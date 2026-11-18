@@ -153,6 +153,19 @@ class AdminRestApi {
 					'default'           => '',
 					'sanitize_callback' => 'sanitize_text_field',
 				],
+				'page' => [
+					'type'              => 'integer',
+					'default'           => 1,
+					'minimum'           => 1,
+					'validate_callback' => 'rest_validate_request_arg',
+				],
+				'per_page' => [
+					'type'              => 'integer',
+					'default'           => 50,
+					'minimum'           => 1,
+					'maximum'           => 100,
+					'validate_callback' => 'rest_validate_request_arg',
+				],
 			],
 		] );
 
@@ -174,18 +187,21 @@ class AdminRestApi {
 					'type'              => 'integer',
 					'default'           => 0,
 					'minimum'           => 0,
+					'validate_callback' => 'rest_validate_request_arg',
 					'sanitize_callback' => 'absint',
 				],
 				'total_updated' => [
 					'type'              => 'integer',
 					'default'           => 0,
 					'minimum'           => 0,
+					'validate_callback' => 'rest_validate_request_arg',
 					'sanitize_callback' => 'absint',
 				],
 				'total_iterated' => [
 					'type'              => 'integer',
 					'default'           => 0,
 					'minimum'           => 0,
+					'validate_callback' => 'rest_validate_request_arg',
 					'sanitize_callback' => 'absint',
 				],
 				'force' => [
@@ -721,15 +737,18 @@ class AdminRestApi {
 	 *
 	 * @param WP_REST_Request $request The incoming request with type, taxonomy, and search params.
 	 *
-	 * @return WP_REST_Response Up to 20 matching results.
+	 * @return WP_REST_Response Up to `per_page` matching results (50 by default), with
+	 *                          X-WP-Total and X-WP-TotalPages headers.
 	 */
 	public function search( WP_REST_Request $request ): WP_REST_Response {
 		global $wpdb;
 
-		$type     = $request->get_param( 'type' );
-		$search   = $request->get_param( 'search' );
-		$taxonomy = $request->get_param( 'taxonomy' );
+		$type       = $request->get_param( 'type' );
+		$search     = $request->get_param( 'search' );
+		$taxonomy   = $request->get_param( 'taxonomy' );
 		$has_search = strlen( $search ) >= 2;
+		$per_page   = (int) $request->get_param( 'per_page' );
+		$offset     = ( (int) $request->get_param( 'page' ) - 1 ) * $per_page;
 
 		if ( 'author' === $type ) {
 			// Match get_filters() — surface authors of viewed posts, not authors
@@ -745,24 +764,31 @@ class AdminRestApi {
 				$where .= $wpdb->prepare( ' AND u.display_name LIKE %s', '%' . $wpdb->esc_like( $search ) . '%' );
 			}
 
-			$results = $wpdb->get_results(
-				"SELECT DISTINCT u.ID as id, u.display_name as name
-				 FROM $wpdb->users u
+			$from = "FROM $wpdb->users u
 				 INNER JOIN $wpdb->posts p ON u.ID = p.post_author
 				 INNER JOIN $wpdb->postmeta pm ON p.ID = pm.post_id
-				 WHERE {$where}
-				 ORDER BY u.display_name ASC
-				 LIMIT 50"
+				 WHERE {$where}";
+
+			$total   = (int) $wpdb->get_var( "SELECT COUNT(DISTINCT u.ID) {$from}" );
+			$results = $wpdb->get_results(
+				$wpdb->prepare(
+					"SELECT DISTINCT u.ID as id, u.display_name as name
+					 {$from}
+					 ORDER BY u.display_name ASC
+					 LIMIT %d OFFSET %d",
+					$per_page,
+					$offset
+				)
 			);
 		} else {
 			if ( ! $taxonomy ) {
-				return new WP_REST_Response( [] );
+				return $this->search_response( [], 0, $per_page );
 			}
 
 			$public_taxonomies = get_taxonomies( [ 'public' => true ] );
 
 			if ( ! in_array( $taxonomy, $public_taxonomies, true ) ) {
-				return new WP_REST_Response( [] );
+				return $this->search_response( [], 0, $per_page );
 			}
 
 			$where = $wpdb->prepare( 'tt.taxonomy = %s AND tt.count > 0', $taxonomy );
@@ -771,13 +797,20 @@ class AdminRestApi {
 				$where .= $wpdb->prepare( ' AND t.name LIKE %s', '%' . $wpdb->esc_like( $search ) . '%' );
 			}
 
-			$results = $wpdb->get_results(
-				"SELECT t.term_id as id, t.name
-				 FROM $wpdb->terms t
+			$from = "FROM $wpdb->terms t
 				 INNER JOIN $wpdb->term_taxonomy tt ON t.term_id = tt.term_id
-				 WHERE {$where}
-				 ORDER BY t.name ASC
-				 LIMIT 50"
+				 WHERE {$where}";
+
+			$total   = (int) $wpdb->get_var( "SELECT COUNT(DISTINCT t.term_id) {$from}" );
+			$results = $wpdb->get_results(
+				$wpdb->prepare(
+					"SELECT t.term_id as id, t.name
+					 {$from}
+					 ORDER BY t.name ASC
+					 LIMIT %d OFFSET %d",
+					$per_page,
+					$offset
+				)
 			);
 		}
 
@@ -786,7 +819,26 @@ class AdminRestApi {
 			'name' => $r->name,
 		], $results );
 
-		return new WP_REST_Response( $items );
+		return $this->search_response( $items, $total, $per_page );
+	}
+
+	/**
+	 * Builds a search response: the bare array body plus the total headers.
+	 *
+	 * @since 1.3.8
+	 *
+	 * @param array $items    The rows for this page.
+	 * @param int   $total    The number of matching rows across every page.
+	 * @param int   $per_page The page size.
+	 *
+	 * @return WP_REST_Response
+	 */
+	private function search_response( array $items, int $total, int $per_page ): WP_REST_Response {
+		$response = new WP_REST_Response( $items );
+		$response->header( 'X-WP-Total', (string) $total );
+		$response->header( 'X-WP-TotalPages', (string) (int) ceil( $total / max( 1, $per_page ) ) );
+
+		return $response;
 	}
 
 	/**
@@ -810,7 +862,7 @@ class AdminRestApi {
 				? $provider->get_unavailable_reason()
 				: __( 'No provider configured.', 'mai-analytics' );
 
-			return new WP_REST_Response( [ 'message' => $reason ], 500 );
+			return Errors::response( ErrorCode::ProviderUnavailable, (string) $reason );
 		}
 
 		// Quick health check: try a small provider query to verify auth works.
@@ -820,7 +872,7 @@ class AdminRestApi {
 		$error = Sync::get_last_error()['message'];
 
 		if ( $error ) {
-			return new WP_REST_Response( [ 'message' => $error ], 500 );
+			return Errors::response( ErrorCode::ProviderRequestFailed, (string) $error );
 		}
 
 		$last_sync  = get_option( 'mai_analytics_provider_last_sync', 0 );
@@ -838,7 +890,7 @@ class AdminRestApi {
 		$error = Sync::get_last_error()['message'];
 
 		if ( $error ) {
-			return new WP_REST_Response( [ 'message' => $error ], 500 );
+			return Errors::response( ErrorCode::ProviderRequestFailed, (string) $error );
 		}
 
 		return new WP_REST_Response( [ 'message' => sprintf( __( 'Sync complete. Processed %d objects.', 'mai-analytics' ), $queue_size ) ] );
@@ -880,7 +932,7 @@ class AdminRestApi {
 	 */
 	public function warm( WP_REST_Request $request ): WP_REST_Response {
 		if ( 'self_hosted' === Settings::get( 'data_source' ) ) {
-			return new WP_REST_Response( [ 'message' => 'Warm is only available in provider mode.' ], 400 );
+			return Errors::response( ErrorCode::ProviderDisabled, 'Warm is only available in provider mode.' );
 		}
 
 		$cursor         = (int) $request->get_param( 'cursor' );
@@ -903,12 +955,15 @@ class AdminRestApi {
 				'done'           => true,
 				'total_updated'  => $total_updated,
 				'total_iterated' => $total_iterated,
-				'message'        => $error
-					? $error
-					: sprintf( 'Warm complete. Updated %d objects.', $total_updated ),
 			];
 
-			return new WP_REST_Response( $payload, $error ? 500 : 200 );
+			if ( $error ) {
+				return Errors::response( ErrorCode::ProviderRequestFailed, (string) $error, [], $payload );
+			}
+
+			$payload['message'] = sprintf( 'Warm complete. Updated %d objects.', $total_updated );
+
+			return new WP_REST_Response( $payload );
 		}
 
 		$batch_updated   = (int) ( $progress['updated'] ?? 0 );
@@ -936,8 +991,9 @@ class AdminRestApi {
 		$error = Sync::get_last_error()['message'];
 
 		if ( $error ) {
-			$payload['message'] = $error;
-			return new WP_REST_Response( $payload, 500 );
+			unset( $payload['message'] );
+
+			return Errors::response( ErrorCode::ProviderRequestFailed, (string) $error, [], $payload );
 		}
 
 		return new WP_REST_Response( $payload );
@@ -945,7 +1001,7 @@ class AdminRestApi {
 
 	/**
 	 * Gets web/app source breakdown for a set of object IDs from meta.
-	 * Only queries the current page's IDs (max 25) to avoid expensive joins.
+	 * Only queries the current page's IDs (at most 100) to avoid expensive joins.
 	 *
 	 * @param int[]  $ids         The object IDs to get source counts for.
 	 * @param string $object_type The object type: 'post', 'term', or 'user'.

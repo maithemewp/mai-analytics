@@ -1,6 +1,7 @@
 <?php
 
 use Mai\Analytics\Database;
+use Mai\Analytics\ErrorCode;
 use Mai\Analytics\Sync;
 
 class Test_Admin_REST_API extends WP_UnitTestCase {
@@ -602,6 +603,170 @@ class Test_Admin_REST_API extends WP_UnitTestCase {
 		$this->assertContains( $id1, $ids );
 		$this->assertContains( $id2, $ids );
 		$this->assertNotContains( $id3, $ids );
+	}
+
+	/**
+	 * Registers a provider whose every call fails with the stored error "down".
+	 */
+	private function register_failing_provider(): void {
+		add_filter( 'mai_analytics_providers', function () {
+			return [ new class() implements \Mai\Analytics\WebViewProvider {
+				public function get_slug(): string { return 'failing_provider'; }
+				public function get_label(): string { return 'Failing'; }
+				public function is_available(): bool { return true; }
+				public function get_batch_size(): int { return 50; }
+				public function get_settings_fields(): array { return []; }
+
+				public function get_views( array $paths, array $windows ): ?array {
+					Sync::set_provider_error( 'down' );
+					return null;
+				}
+			} ];
+		} );
+
+		update_option( 'mai_analytics_settings', [ 'data_source' => 'failing_provider', 'sync_user' => 1 ] );
+	}
+
+	private function as_admin(): void {
+		wp_set_current_user( self::factory()->user->create( [ 'role' => 'administrator' ] ) );
+	}
+
+	private function post_admin( string $route, array $params = [] ): WP_REST_Response {
+		$request = new WP_REST_Request( 'POST', '/mai-analytics/v1/admin/' . $route );
+
+		foreach ( $params as $key => $value ) {
+			$request->set_param( $key, $value );
+		}
+
+		return $this->server->dispatch( $request );
+	}
+
+	public function test_sync_now_without_provider(): void {
+		$this->as_admin();
+		update_option( 'mai_analytics_settings', [ 'data_source' => 'nobody_has_this' ] );
+
+		$response = $this->post_admin( 'sync-now' );
+		$data     = $response->get_data();
+
+		$this->assertSame( 501, $response->get_status() );
+		$this->assertSame( ErrorCode::ProviderUnavailable->value, $data['code'] );
+		$this->assertNotEmpty( $data['message'] );
+	}
+
+	public function test_sync_now_provider_error(): void {
+		$this->as_admin();
+		$this->register_failing_provider();
+
+		$response = $this->post_admin( 'sync-now' );
+		$data     = $response->get_data();
+
+		$this->assertSame( 502, $response->get_status() );
+		$this->assertSame( ErrorCode::ProviderRequestFailed->value, $data['code'] );
+		$this->assertSame( 'down', $data['message'] );
+	}
+
+	public function test_warm_in_self_hosted_mode(): void {
+		$this->as_admin();
+		update_option( 'mai_analytics_settings', [ 'data_source' => 'self_hosted' ] );
+
+		$response = $this->post_admin( 'warm' );
+		$data     = $response->get_data();
+
+		$this->assertSame( 501, $response->get_status() );
+		$this->assertSame( ErrorCode::ProviderDisabled->value, $data['code'] );
+		$this->assertSame( 'Warm is only available in provider mode.', $data['message'] );
+	}
+
+	public function test_warm_provider_error_keeps_progress(): void {
+		$this->as_admin();
+		$this->register_failing_provider();
+
+		$response = $this->post_admin( 'warm', [ 'force' => true ] );
+		$data     = $response->get_data();
+
+		$this->assertSame( 502, $response->get_status() );
+		$this->assertSame( ErrorCode::ProviderRequestFailed->value, $data['code'] );
+		$this->assertSame( 'down', $data['message'] );
+
+		foreach ( [ 'done', 'total_updated', 'total_iterated' ] as $key ) {
+			$this->assertArrayHasKey( $key, $data );
+		}
+	}
+
+	public function test_warm_refuses_negative_args(): void {
+		$this->as_admin();
+		$this->register_failing_provider();
+
+		foreach ( [ 'cursor', 'total_updated', 'total_iterated' ] as $arg ) {
+			$response = $this->post_admin( 'warm', [ $arg => -1 ] );
+
+			$this->assertSame( 400, $response->get_status(), $arg );
+			$this->assertSame( ErrorCode::InvalidRequest->value, $response->get_data()['code'], $arg );
+		}
+	}
+
+	private function search( array $params ): WP_REST_Response {
+		$request = new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/search' );
+
+		foreach ( $params as $key => $value ) {
+			$request->set_param( $key, $value );
+		}
+
+		return $this->server->dispatch( $request );
+	}
+
+	/**
+	 * Checks the paging of a search that has 60 matches.
+	 */
+	private function assert_search_pages( array $params ): void {
+		$response = $this->search( $params );
+		$headers  = $response->get_headers();
+
+		$this->assertTrue( array_is_list( $response->get_data() ) );
+		$this->assertCount( 50, $response->get_data() );
+		$this->assertSame( '60', $headers['X-WP-Total'] );
+		$this->assertSame( '2', $headers['X-WP-TotalPages'] );
+
+		$this->assertCount( 10, $this->search( $params + [ 'page' => 2 ] )->get_data() );
+
+		$over = $this->search( $params + [ 'per_page' => 101 ] );
+		$this->assertSame( 400, $over->get_status() );
+		$this->assertSame( ErrorCode::InvalidRequest->value, $over->get_data()['code'] );
+
+		$this->assertCount( 60, $this->search( $params + [ 'per_page' => 100 ] )->get_data() );
+	}
+
+	public function test_search_terms_pages(): void {
+		wp_set_current_user( self::factory()->user->create( [ 'role' => 'editor' ] ) );
+
+		for ( $i = 1; $i <= 60; $i++ ) {
+			$term_id = self::factory()->category->create( [ 'name' => sprintf( 'Alpha %02d', $i ) ] );
+			$post_id = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+			wp_set_object_terms( $post_id, $term_id, 'category' );
+		}
+
+		$this->assert_search_pages( [ 'type' => 'term', 'taxonomy' => 'category', 'search' => 'Alpha' ] );
+	}
+
+	public function test_search_authors_pages(): void {
+		wp_set_current_user( self::factory()->user->create( [ 'role' => 'editor' ] ) );
+
+		for ( $i = 1; $i <= 60; $i++ ) {
+			$user_id = self::factory()->user->create( [ 'display_name' => sprintf( 'Alpha %02d', $i ) ] );
+			$post_id = self::factory()->post->create( [ 'post_status' => 'publish', 'post_author' => $user_id ] );
+			update_post_meta( $post_id, 'mai_views', 5 );
+		}
+
+		$this->assert_search_pages( [ 'type' => 'author', 'search' => 'Alpha' ] );
+	}
+
+	public function test_search_terms_without_taxonomy_sends_zero_total(): void {
+		wp_set_current_user( self::factory()->user->create( [ 'role' => 'editor' ] ) );
+
+		$response = $this->search( [ 'type' => 'term', 'search' => 'News' ] );
+
+		$this->assertSame( [], $response->get_data() );
+		$this->assertSame( '0', $response->get_headers()['X-WP-Total'] );
 	}
 
 	public function test_top_posts_multi_term_filter(): void {

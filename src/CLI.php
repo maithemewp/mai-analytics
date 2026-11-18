@@ -404,7 +404,7 @@ class CLI {
 	 * : Max views per post (randomized 1 to this value). Default: 200.
 	 *
 	 * [--days=<count>]
-	 * : Spread views across this many days. Default: 7.
+	 * : Spread views across this many days. Default: 30.
 	 *
 	 * [--include-terms]
 	 * : Also seed views for terms on the selected posts.
