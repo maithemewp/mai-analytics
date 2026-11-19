@@ -199,7 +199,7 @@ Every route lives under `/wp-json/mai-analytics/v1`.
 
 ### Errors
 
-Every error carries `code`, `message` and `data.status`. Errors on the view routes also keep `"success": false`, and Warm errors keep its progress fields.
+Every error carries `code`, `message` and `data.status`. The plugin's own errors on the view routes (403, 404 and 503) also keep `"success": false`. Argument errors (400) and permission errors don't. A Warm provider error (502) keeps the progress fields.
 
 - **400 `mai_analytics_invalid_request`:** an argument is missing or wrong. A caller who fails the permission check gets core's 401 or 403 `rest_forbidden` first.
 - **403 `mai_analytics_bot`:** in self-hosted mode, a view from a bot user agent.
