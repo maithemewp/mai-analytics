@@ -74,25 +74,31 @@ class Database {
 
 		// dbDelta() runs several queries and reports none of their errors, and
 		// last_error only holds the last one. wpdb adds every failed query to
-		// this global (wp-includes/class-wpdb.php, print_error()), so count it.
+		// this global, even with errors suppressed (wp-includes/class-wpdb.php,
+		// print_error()), so read the entries dbDelta() added.
 		global $EZSQL_ERROR;
 
 		$errors_before = is_array( $EZSQL_ERROR ) ? count( $EZSQL_ERROR ) : 0;
 
 		dbDelta( $sql );
 
-		$errors_after = is_array( $EZSQL_ERROR ) ? count( $EZSQL_ERROR ) : 0;
-		$error        = $errors_after > $errors_before ? (string) ( $EZSQL_ERROR[ $errors_after - 1 ]['error_str'] ?? '' ) : $wpdb->last_error;
-		$failed       = $errors_after > $errors_before || '' !== $wpdb->last_error;
+		$added = is_array( $EZSQL_ERROR ) ? array_slice( $EZSQL_ERROR, $errors_before ) : [];
+
+		// dbDelta() first probes with DESCRIBE (wp-admin/includes/upgrade.php:3027),
+		// which fails on a fresh install before the CREATE that follows works.
+		$added = array_filter( $added, fn( $entry ) => ! str_starts_with( (string) ( $entry['query'] ?? '' ), 'DESCRIBE ' ) );
+		$last  = end( $added );
+		$error = $last ? (string) ( $last['error_str'] ?? '' ) : '';
 
 		if ( ! self::table_exists() ) {
+
 			mai_analytics_logger()->error( 'Could not create the mai_analytics_buffer table. Will try again in an hour.' );
 			set_transient( self::RETRY_TRANSIENT, 1, HOUR_IN_SECONDS );
 
 			return false;
 		}
 
-		if ( $failed ) {
+		if ( $added ) {
 			mai_analytics_logger()->error( sprintf( 'Could not update the mai_analytics_buffer table: %s. Will try again in an hour.', $error ) );
 			set_transient( self::RETRY_TRANSIENT, 1, HOUR_IN_SECONDS );
 

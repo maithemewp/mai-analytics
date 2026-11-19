@@ -202,6 +202,37 @@ class Test_Database extends WP_UnitTestCase {
 		$this->assertTrue( (bool) get_option( 'mai_analytics_table_migrated' ) );
 	}
 
+	public function test_fresh_install_create_is_success(): void {
+		global $wpdb;
+
+		delete_option( Database::DB_VERSION_OPTION );
+		delete_transient( Database::RETRY_TRANSIENT );
+
+		$table = Database::get_table_name();
+
+		// As on a fresh install: dbDelta()'s DESCRIBE probe finds no table, so it
+		// runs the CREATE. The CREATE is skipped here, since the table is real.
+		$fresh = function ( $query ) use ( $table ) {
+			if ( "DESCRIBE {$table};" === $query ) {
+				return 'DESCRIBE `mai_analytics_missing_table`;';
+			}
+
+			if ( str_starts_with( $query, "CREATE TABLE $table" ) || str_starts_with( $query, "CREATE TEMPORARY TABLE $table" ) ) {
+				return 'SELECT 1';
+			}
+
+			return $query;
+		};
+
+		add_filter( 'query', $fresh );
+		$created = Database::create_table();
+		remove_filter( 'query', $fresh );
+
+		$this->assertTrue( $created );
+		$this->assertSame( MAI_ANALYTICS_DB_VERSION, get_option( Database::DB_VERSION_OPTION ) );
+		$this->assertFalse( get_transient( Database::RETRY_TRANSIENT ) );
+	}
+
 	public function test_failed_query_in_dbdelta_is_not_success(): void {
 		global $wpdb;
 
