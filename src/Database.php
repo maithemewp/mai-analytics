@@ -196,14 +196,10 @@ class Database {
 				// phpcs:ignore WordPress.DB.DirectDatabaseQuery
 				$wpdb->query( "DROP TABLE `$old_table`" );
 			} else {
+				// Both names are built from the table prefix, like the copy above.
+				// prepare()'s %i would need WordPress 6.2.
 				// phpcs:ignore WordPress.DB.DirectDatabaseQuery
-				$wpdb->query(
-					$wpdb->prepare(
-						'RENAME TABLE %i TO %i',
-						$old_table,
-						$new_table
-					)
-				);
+				$wpdb->query( "RENAME TABLE `$old_table` TO `$new_table`" );
 
 				if ( $wpdb->last_error ) {
 					mai_analytics_logger()->error( sprintf( 'Could not rename %s to %s: %s. It will be tried again in an hour.', $old_table, $new_table, $wpdb->last_error ) );

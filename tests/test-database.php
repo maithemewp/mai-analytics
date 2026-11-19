@@ -238,6 +238,71 @@ class Test_Database extends WP_UnitTestCase {
 		$this->assertTrue( (bool) get_option( 'mai_analytics_table_migrated' ) );
 	}
 
+	/**
+	 * Runs the migration with the old Mai Views table present and the new
+	 * table missing, so it takes the rename branch.
+	 *
+	 * @param string $rename The query that stands in for the rename.
+	 *
+	 * @return string[] The rename queries the plugin sent.
+	 */
+	private function migrate_with_rename( string $rename ): array {
+		global $wpdb;
+
+		$old     = $wpdb->prefix . 'mai_views_buffer';
+		$new     = Database::get_table_name();
+		$renames = [];
+
+		delete_option( 'mai_analytics_table_migrated' );
+		delete_transient( Database::MIGRATE_RETRY_TRANSIENT );
+
+		$fake = function ( $query ) use ( $old, $new, $rename, &$renames ) {
+			if ( "SHOW TABLES LIKE '$old'" === $query ) {
+				return "SELECT '$old'";
+			}
+
+			if ( "SHOW TABLES LIKE '$new'" === $query ) {
+				return 'SELECT 1 FROM DUAL WHERE 1 = 0';
+			}
+
+			if ( str_starts_with( $query, 'RENAME TABLE' ) ) {
+				$renames[] = $query;
+				return $rename;
+			}
+
+			return $query;
+		};
+
+		$suppressed = $wpdb->suppress_errors( true );
+		add_filter( 'query', $fake );
+		Database::maybe_update();
+		remove_filter( 'query', $fake );
+		$wpdb->suppress_errors( $suppressed );
+
+		return $renames;
+	}
+
+	public function test_rename_quotes_names_without_identifier_placeholders(): void {
+		global $wpdb;
+
+		// %i needs WordPress 6.2 (class-wpdb.php:1442), and the plugin supports 6.1.
+		$renames = $this->migrate_with_rename( 'SELECT 1' );
+
+		$this->assertSame(
+			[ sprintf( 'RENAME TABLE `%s` TO `%s`', $wpdb->prefix . 'mai_views_buffer', Database::get_table_name() ) ],
+			$renames
+		);
+		$this->assertTrue( (bool) get_option( 'mai_analytics_table_migrated' ) );
+		$this->assertFalse( get_transient( Database::MIGRATE_RETRY_TRANSIENT ) );
+	}
+
+	public function test_failed_rename_waits_before_retrying(): void {
+		$this->migrate_with_rename( 'SELECT * FROM `mai_analytics_missing_table`' );
+
+		$this->assertFalse( get_option( 'mai_analytics_table_migrated' ) );
+		$this->assertNotFalse( get_transient( Database::MIGRATE_RETRY_TRANSIENT ) );
+	}
+
 	public function test_fresh_install_create_is_success(): void {
 		global $wpdb;
 
