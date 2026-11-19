@@ -27,20 +27,38 @@ class Test_Sync extends WP_UnitTestCase {
 		$this->assertEquals( 3, (int) get_post_meta( $post_id, 'mai_views', true ) );
 	}
 
-	public function test_failed_views_query_counts_them_next_run(): void {
+	/**
+	 * The three reads made before anything is written.
+	 *
+	 * @return array<string, array{0: string}>
+	 */
+	public function failing_reads(): array {
+		return [
+			'new views'      => [ 'COUNT(*) as cnt' ],
+			'trending'       => [ 'trending_count' ],
+			'older than the window' => [ 'viewed_at <= DATE_SUB' ],
+		];
+	}
+
+	/**
+	 * @dataProvider failing_reads
+	 */
+	public function test_failed_read_changes_nothing_and_counts_next_run( string $marker ): void {
 		global $wpdb;
 
 		$post_id  = self::factory()->post->create();
 		$previous = time() - HOUR_IN_SECONDS;
 
 		update_option( 'mai_analytics_synced', $previous, false );
+		update_post_meta( $post_id, 'mai_trending', 7 );
+		update_option( 'mai_analytics_post_type_trending', [ 'post' => 4 ], false );
 		Database::insert_view( $post_id, 'post' );
 		Database::insert_view( $post_id, 'post' );
 
 		$table      = Database::get_table_name();
 		$suppressed = $wpdb->suppress_errors( true );
-		$break      = function ( $query ) use ( $table ) {
-			if ( str_contains( $query, 'COUNT(*) as cnt' ) ) {
+		$break      = function ( $query ) use ( $table, $marker ) {
+			if ( str_contains( $query, $marker ) ) {
 				return str_replace( $table, 'mai_analytics_missing_table', $query );
 			}
 
@@ -54,6 +72,8 @@ class Test_Sync extends WP_UnitTestCase {
 
 		$this->assertSame( $previous, (int) get_option( 'mai_analytics_synced' ) );
 		$this->assertSame( '', get_post_meta( $post_id, 'mai_views', true ) );
+		$this->assertSame( '7', get_post_meta( $post_id, 'mai_trending', true ) );
+		$this->assertSame( [ 'post' => 4 ], get_option( 'mai_analytics_post_type_trending' ) );
 
 		// The lock stays until it expires, so a retry right away does nothing.
 		Sync::sync();
@@ -62,7 +82,8 @@ class Test_Sync extends WP_UnitTestCase {
 		delete_transient( 'mai_analytics_syncing' );
 		Sync::sync();
 
-		$this->assertSame( 2, (int) get_post_meta( $post_id, 'mai_views', true ) );
+		$this->assertSame( 2, (int) get_post_meta( $post_id, 'mai_views_web', true ) );
+		$this->assertSame( 2, (int) get_post_meta( $post_id, 'mai_trending', true ) );
 	}
 
 	public function test_sync_increments_existing_views(): void {

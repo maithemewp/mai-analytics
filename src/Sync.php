@@ -43,7 +43,8 @@ class Sync {
 			$retention_days = $trending_days;
 		}
 
-		// 1. Increment lifetime views by source for new views since last sync.
+		// Every read comes before any write, so a failed read changes nothing.
+		// New views since the last sync, by source.
 		$new_views = $wpdb->get_results(
 			$wpdb->prepare(
 				"SELECT object_id, object_type, object_key, source, COUNT(*) as cnt
@@ -54,23 +55,46 @@ class Sync {
 			)
 		);
 
-		// The views since the last sync could not be read. Put the boundary
-		// back, so the next run counts them, and stop before anything changes.
-		// The lock is left to expire on its own, so the fallbacks, which now
-		// see a stale sync, wait out its five minutes instead of retrying a
-		// failing sync on every view and admin page load.
 		if ( $wpdb->last_error ) {
-			mai_analytics_logger()->error( 'Sync could not read new views from the buffer: ' . $wpdb->last_error . '. They will be counted on the next run.' );
-
-			if ( false === $stored ) {
-				delete_option( 'mai_analytics_synced' );
-			} else {
-				update_option( 'mai_analytics_synced', $stored, false );
-			}
-
+			self::stop_after_read_error( $stored, 'new views', $wpdb->last_error );
 			return;
 		}
 
+		// The trending window (all sources merged).
+		$trending = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT object_id, object_type, object_key, COUNT(*) as trending_count
+				 FROM $table
+				 WHERE viewed_at > DATE_SUB(UTC_TIMESTAMP(), INTERVAL %d DAY)
+				 GROUP BY object_id, object_type, object_key",
+				$trending_days
+			)
+		);
+
+		if ( $wpdb->last_error ) {
+			self::stop_after_read_error( $stored, 'the trending window', $wpdb->last_error );
+			return;
+		}
+
+		// Objects with views older than the window, whose trending may need clearing.
+		$all_in_buffer = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT DISTINCT object_id, object_type
+				 FROM $table
+				 WHERE object_type != 'post_type'
+				 AND viewed_at <= DATE_SUB(UTC_TIMESTAMP(), INTERVAL %d DAY)
+				 AND viewed_at > DATE_SUB(UTC_TIMESTAMP(), INTERVAL %d DAY)",
+				$trending_days,
+				$retention_days
+			)
+		);
+
+		if ( $wpdb->last_error ) {
+			self::stop_after_read_error( $stored, 'the views older than the trending window', $wpdb->last_error );
+			return;
+		}
+
+		// 1. Increment lifetime views by source for new views since last sync.
 		if ( $new_views ) {
 			$pt_views     = get_option( 'mai_analytics_post_type_views', [] );
 			$pt_views_web = get_option( 'mai_analytics_post_type_views_web', [] );
@@ -109,17 +133,7 @@ class Sync {
 			update_option( 'mai_analytics_post_type_views_app', $pt_views_app, false );
 		}
 
-		// 2. Recalculate trending: query the trending window (all sources merged).
-		$trending = $wpdb->get_results(
-			$wpdb->prepare(
-				"SELECT object_id, object_type, object_key, COUNT(*) as trending_count
-				 FROM $table
-				 WHERE viewed_at > DATE_SUB(UTC_TIMESTAMP(), INTERVAL %d DAY)
-				 GROUP BY object_id, object_type, object_key",
-				$trending_days
-			)
-		);
-
+		// 2. Recalculate trending from the window read above.
 		$has_trending = [];
 		$pt_trending  = [];
 
@@ -147,18 +161,6 @@ class Sync {
 		update_option( 'mai_analytics_post_type_trending', $pt_trending, false );
 
 		// Zero out trending for non-archive objects that fell out of the trending window.
-		$all_in_buffer = $wpdb->get_results(
-			$wpdb->prepare(
-				"SELECT DISTINCT object_id, object_type
-				 FROM $table
-				 WHERE object_type != 'post_type'
-				 AND viewed_at <= DATE_SUB(UTC_TIMESTAMP(), INTERVAL %d DAY)
-				 AND viewed_at > DATE_SUB(UTC_TIMESTAMP(), INTERVAL %d DAY)",
-				$trending_days,
-				$retention_days
-			)
-		);
-
 		if ( $all_in_buffer ) {
 			foreach ( $all_in_buffer as $row ) {
 				if ( ! isset( $has_trending[ $row->object_type . ':' . $row->object_id ] ) ) {
@@ -182,6 +184,32 @@ class Sync {
 		// "after boundary" side of the next sync's query.
 		update_option( 'mai_analytics_synced', $started_at, false );
 		delete_transient( 'mai_analytics_syncing' );
+	}
+
+	/**
+	 * Stops a sync whose buffer read failed, before anything was written.
+	 *
+	 * Puts the last sync time back, so the next run counts the same views, and
+	 * logs why. The lock is left to expire on its own, so the fallbacks, which
+	 * now see a stale sync, wait out its five minutes instead of retrying a
+	 * failing sync on every view and admin page load.
+	 *
+	 * @since 1.3.8
+	 *
+	 * @param mixed  $stored The last sync time as stored before this run, or false.
+	 * @param string $what   What could not be read, for the log.
+	 * @param string $error  The database error.
+	 *
+	 * @return void
+	 */
+	private static function stop_after_read_error( mixed $stored, string $what, string $error ): void {
+		mai_analytics_logger()->error( sprintf( 'Sync could not read %s from the buffer: %s. Nothing was changed, and the views will be counted on the next run.', $what, $error ) );
+
+		if ( false === $stored ) {
+			delete_option( 'mai_analytics_synced' );
+		} else {
+			update_option( 'mai_analytics_synced', $stored, false );
+		}
 	}
 
 	/**
