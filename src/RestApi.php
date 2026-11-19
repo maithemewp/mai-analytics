@@ -161,21 +161,7 @@ class RestApi {
 			}
 		}
 
-		$inserted = null;
-
-		// External provider mode + web visit: dedup check before INSERT.
-		if ( 'self_hosted' !== $data_source && 'web' === $source ) {
-			$last_sync = (int) get_option( 'mai_analytics_provider_last_sync', 0 );
-
-			if ( ! Database::is_queued( $id, $type, $last_sync ) ) {
-				$inserted = Database::insert_view( $id, $type, $source );
-			}
-		} else {
-			// Self-hosted (any source) OR external + app → buffer INSERT (every view counted).
-			$inserted = Database::insert_view( $id, $type, $source );
-		}
-
-		if ( false === $inserted ) {
+		if ( ! $this->queue_view( $id, $type, $source, $data_source ) ) {
 			return $this->database_error();
 		}
 
@@ -253,21 +239,7 @@ class RestApi {
 			}
 		}
 
-		$inserted = null;
-
-		// External provider mode + web visit: dedup check before INSERT.
-		if ( 'self_hosted' !== $data_source && 'web' === $source ) {
-			$last_sync = (int) get_option( 'mai_analytics_provider_last_sync', 0 );
-
-			if ( ! Database::is_queued( 0, 'post_type', $last_sync, $post_type ) ) {
-				$inserted = Database::insert_view( 0, 'post_type', $source, $post_type );
-			}
-		} else {
-			// Self-hosted (any source) OR external + app → buffer INSERT.
-			$inserted = Database::insert_view( 0, 'post_type', $source, $post_type );
-		}
-
-		if ( false === $inserted ) {
+		if ( ! $this->queue_view( 0, 'post_type', $source, $data_source, $post_type ) ) {
 			return $this->database_error();
 		}
 
@@ -509,6 +481,35 @@ class RestApi {
 	 */
 	private function bot(): WP_REST_Response {
 		return Errors::response( ErrorCode::Bot, __( 'Views from bots are not counted.', 'mai-analytics' ), [], [ 'success' => false ] );
+	}
+
+	/**
+	 * Adds a view to the buffer.
+	 *
+	 * Self-hosted mode, and app views in any mode, save every view. A web view
+	 * in provider mode is only a signal to sync the item, so one already
+	 * queued since the last provider sync is skipped.
+	 *
+	 * @since 1.3.8
+	 *
+	 * @param int    $id          The object ID, or 0 for a post type archive.
+	 * @param string $type        The object type.
+	 * @param string $source      'web' or 'app'.
+	 * @param string $data_source The data source setting.
+	 * @param string $object_key  The post type name for an archive, or '' for anything else.
+	 *
+	 * @return bool False only when the insert failed.
+	 */
+	private function queue_view( int $id, string $type, string $source, string $data_source, string $object_key = '' ): bool {
+		if ( 'self_hosted' !== $data_source && 'web' === $source ) {
+			$last_sync = (int) get_option( 'mai_analytics_provider_last_sync', 0 );
+
+			if ( Database::is_queued( $id, $type, $last_sync, $object_key ) ) {
+				return true;
+			}
+		}
+
+		return false !== Database::insert_view( $id, $type, $source, $object_key );
 	}
 
 	/**
