@@ -163,6 +163,43 @@ class Test_REST_Errors extends WP_UnitTestCase {
 		$this->assertSame( 'rest_invalid_param', $response->get_data()['code'] );
 	}
 
+	public function test_throwing_permission_callback_is_refused(): void {
+		register_rest_route(
+			'mai-analytics/v1',
+			'/throws',
+			[
+				'methods'             => 'GET',
+				'callback'            => fn() => new WP_REST_Response( [] ),
+				'permission_callback' => function () {
+					throw new RuntimeException( 'boom' );
+				},
+				'args'                => [
+					'thing' => [
+						'validate_callback' => '__return_false',
+					],
+				],
+			]
+		);
+
+		wp_set_current_user( self::factory()->user->create( [ 'role' => 'editor' ] ) );
+
+		$request = new WP_REST_Request( 'GET', '/mai-analytics/v1/throws' );
+		$request->set_param( 'thing', 'x' );
+		$response = $this->server->dispatch( $request );
+
+		$this->assertSame( 403, $response->get_status() );
+		$this->assertSame( 'rest_forbidden', $response->get_data()['code'] );
+	}
+
+	public function test_filter_is_added_once(): void {
+		global $wp_filter;
+
+		\Mai\Analytics\RestErrors::map( 'mai-analytics/v1', 'mai_analytics' );
+		\Mai\Analytics\RestErrors::map( 'mai-analytics/v1', 'mai_analytics' );
+
+		$this->assertCount( 1, $wp_filter['rest_request_before_callbacks']->callbacks[99] );
+	}
+
 	public function test_no_route_is_untouched(): void {
 		$request  = new WP_REST_Request( 'POST', '/mai-analytics/v1/view/post/abc' );
 		$response = $this->server->dispatch( $request );

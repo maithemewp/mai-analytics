@@ -4,28 +4,32 @@ declare( strict_types=1 );
 
 namespace Mai\Analytics;
 
+use WP_Error;
 use WP_REST_Request;
 
 // Prevent direct file access.
 defined( 'ABSPATH' ) || die;
 
 /**
- * Maps core's argument errors to the plugin's own code, after the permission check.
+ * Turns core's argument errors on the plugin's routes into {slug}_invalid_request,
+ * after the route's own permission check.
  *
- * Core validates args before it asks the permission callback, so a signed-out
- * caller with a bad arg would get a 400 instead of a 401. This runs the
- * permission callback first, then turns core's argument errors into
- * `{$slug}_invalid_request`.
+ * Core validates args before it asks the permission callback
+ * (class-wp-rest-server.php:1115 to :1123, then :1256 to :1260), so without
+ * this a signed-out caller with a bad arg would get a 400 instead of a 401 or 403.
  *
  * A copy of `Mai\Items\RestErrors` from mai-items-core, kept the same until
- * this plugin can depend on that library.
+ * this plugin can depend on that library. The one difference: it reports a
+ * throwing permission callback with wp_trigger_error() only where WordPress
+ * has it (6.4 and later), since this plugin supports 6.1.
  *
  * @since 1.3.8
  */
 final class RestErrors {
 
 	/**
-	 * Core's argument error codes that get remapped.
+	 * Core's three argument errors, and the one it gives when a route-level
+	 * validate_callback returns false (class-wp-rest-request.php:983).
 	 *
 	 * @since 1.3.8
 	 */
@@ -37,7 +41,7 @@ final class RestErrors {
 	];
 
 	/**
-	 * Recorded namespaces, lowercased, keyed to their code slug.
+	 * Recorded namespaces, lowercased, to each one's slug.
 	 *
 	 * @since 1.3.8
 	 *
@@ -46,23 +50,50 @@ final class RestErrors {
 	private static array $namespaces = [];
 
 	/**
-	 * Records a namespace and adds the filter.
-	 *
-	 * The filter is added on every call, never behind an "already added" flag,
-	 * because the test library removes hooks after each test. Adding the same
-	 * callback at the same priority twice is harmless.
+	 * The filter, kept so it is added once and can be found again.
 	 *
 	 * @since 1.3.8
 	 *
-	 * @param string $namespace The REST namespace, such as `mai-analytics/v1`.
-	 * @param string $slug      The code prefix, such as `mai_analytics`.
+	 * @var \Closure|null
+	 */
+	private static ?\Closure $filter = null;
+
+	/**
+	 * Maps the argument errors of every route in a namespace.
+	 *
+	 * @since 1.3.8
+	 *
+	 * @param string $namespace Such as `mai-analytics/v1`.
+	 * @param string $slug      Such as `mai_analytics`. Errors become {slug}_invalid_request.
 	 *
 	 * @return void
 	 */
 	public static function map( string $namespace, string $slug ): void {
 		self::$namespaces[ strtolower( trim( $namespace, '/' ) ) ] = $slug;
 
-		add_filter( 'rest_request_before_callbacks', [ self::class, 'filter' ], 99, 3 );
+		self::$filter ??= self::filter( ... );
+
+		// Checked each time rather than remembered, so the filter comes back
+		// if a test framework restored the hooks.
+		if ( false === has_filter( 'rest_request_before_callbacks', self::$filter ) ) {
+			// After the plugin's own checks at the default priority, which keep deciding first.
+			add_filter( 'rest_request_before_callbacks', self::$filter, 99, 3 );
+		}
+	}
+
+	/**
+	 * The error the plugin's own checks return for a bad request.
+	 *
+	 * @since 1.3.8
+	 *
+	 * @param string               $slug    The code prefix.
+	 * @param string               $message The error message.
+	 * @param array<string, mixed> $data    Kept as it is, with status 400.
+	 *
+	 * @return WP_Error
+	 */
+	public static function invalid_request( string $slug, string $message, array $data = [] ): WP_Error {
+		return new WP_Error( $slug . '_invalid_request', $message, array_merge( $data, [ 'status' => 400 ] ) );
 	}
 
 	/**
@@ -70,57 +101,85 @@ final class RestErrors {
 	 *
 	 * @since 1.3.8
 	 *
-	 * @param mixed           $response The response so far, usually null or a WP_Error.
-	 * @param array           $handler  The matched route handler.
-	 * @param WP_REST_Request $request  The request.
+	 * @param mixed $response What core has so far. A WP_Error when an arg failed.
+	 * @param mixed $handler  The matched route handler.
+	 * @param mixed $request  The request.
 	 *
 	 * @return mixed
 	 */
-	public static function filter( mixed $response, array $handler, WP_REST_Request $request ): mixed {
-		if ( ! is_wp_error( $response ) ) {
+	private static function filter( mixed $response, mixed $handler, mixed $request ): mixed {
+		if ( ! $response instanceof WP_Error || ! $request instanceof WP_REST_Request || ! is_array( $handler ) ) {
 			return $response;
 		}
 
-		$slug = self::slug_for_route( $request->get_route() );
+		$slug = self::slug_for( $request->get_route() );
 
 		if ( null === $slug ) {
 			return $response;
 		}
 
-		$code = $response->get_error_code();
+		$code   = (string) $response->get_error_code();
+		$mapped = $slug . '_invalid_request';
+		$core   = in_array( $code, self::CORE_CODES, true );
 
-		if ( ! in_array( $code, self::CORE_CODES, true ) && "{$slug}_invalid_request" !== $code ) {
+		if ( ! $core && $mapped !== $code ) {
 			return $response;
 		}
 
-		if ( ! empty( $handler['permission_callback'] ) ) {
-			$permission = call_user_func( $handler['permission_callback'], $request );
+		try {
+			// Core skips its own check once the response is an error, so this is the only call.
+			if ( ! empty( $handler['permission_callback'] ) && is_callable( $handler['permission_callback'] ) ) {
+				$permission = call_user_func( $handler['permission_callback'], $request );
 
-			if ( is_wp_error( $permission ) ) {
-				return $permission;
+				if ( $permission instanceof WP_Error ) {
+					return $permission;
+				}
+
+				// As core builds it (class-wp-rest-server.php:1264 to :1270).
+				if ( false === $permission || null === $permission ) {
+					return self::forbidden();
+				}
+			}
+		} catch ( \Throwable $error ) {
+			try {
+				if ( function_exists( 'wp_trigger_error' ) ) {
+					wp_trigger_error( self::class . '::map', 'A permission callback threw: ' . $error->getMessage(), E_USER_WARNING );
+				}
+			} catch ( \Throwable ) {
+				// Reporting must never break the request it reports on.
 			}
 
-			if ( false === $permission || null === $permission ) {
-				return new \WP_Error(
-					'rest_forbidden',
-					__( 'Sorry, you are not allowed to do that.' ),
-					[ 'status' => rest_authorization_required_code() ]
-				);
-			}
+			// Fails closed: a caller whose permission could not be checked never sees the arg error.
+			return self::forbidden();
+		}
+
+		if ( ! $core ) {
+			return $response;
 		}
 
 		$data = $response->get_error_data();
-		$data = is_array( $data ) ? $data : [];
 
-		unset( $data['status'] );
-
-		$data['status'] = 400;
-
-		return new \WP_Error( "{$slug}_invalid_request", $response->get_error_message(), $data );
+		return self::invalid_request( $slug, $response->get_error_message(), is_array( $data ) ? $data : [] );
 	}
 
 	/**
-	 * Finds the code slug for a route, matching the namespace without case.
+	 * Core's refusal for a failed permission check.
+	 *
+	 * @since 1.3.8
+	 *
+	 * @return WP_Error
+	 */
+	private static function forbidden(): WP_Error {
+		return new WP_Error(
+			'rest_forbidden',
+			__( 'Sorry, you are not allowed to do that.' ),
+			[ 'status' => rest_authorization_required_code() ]
+		);
+	}
+
+	/**
+	 * The slug of the recorded namespace a route is in, compared without case
+	 * because core matches routes without case.
 	 *
 	 * @since 1.3.8
 	 *
@@ -128,11 +187,13 @@ final class RestErrors {
 	 *
 	 * @return string|null The slug, or null when the route is outside every recorded namespace.
 	 */
-	private static function slug_for_route( string $route ): ?string {
-		$route = strtolower( ltrim( $route, '/' ) );
+	private static function slug_for( string $route ): ?string {
+		$route = strtolower( '/' . ltrim( $route, '/' ) );
 
 		foreach ( self::$namespaces as $namespace => $slug ) {
-			if ( str_starts_with( $route, $namespace . '/' ) ) {
+			$prefix = '/' . $namespace;
+
+			if ( $route === $prefix || str_starts_with( $route, $prefix . '/' ) ) {
 				return $slug;
 			}
 		}
