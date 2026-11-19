@@ -205,6 +205,24 @@ class Cron {
 	}
 
 	/**
+	 * Continues a provider sync that stopped early, from the catchup event
+	 * ProviderSync::sync() schedules after a breaker bail or when batches remain.
+	 *
+	 * Does nothing in self-hosted or disabled mode, where no catchup is scheduled.
+	 *
+	 * @since 1.3.8
+	 *
+	 * @return void
+	 */
+	public function maybe_provider_sync(): void {
+		if ( in_array( Settings::get( 'data_source' ), [ 'self_hosted', 'disabled' ], true ) ) {
+			return;
+		}
+
+		ProviderSync::sync();
+	}
+
+	/**
 	 * Trending prune. Deletes stale/zero trending rows so the trending index stays
 	 * bounded. Skipped when tracking is disabled.
 	 *

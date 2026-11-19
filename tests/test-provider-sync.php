@@ -837,6 +837,36 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 	}
 
 	/**
+	 * The catchup event runs a provider sync. Its callback pointed at a method
+	 * that did not exist from 1.1.1 to 1.3.7, so every catchup fataled.
+	 *
+	 * @since 1.3.8
+	 *
+	 * @return void
+	 */
+	public function test_catchup_event_runs_a_provider_sync(): void {
+		$this->register_mock_provider( 10 );
+
+		$post_id = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+		Database::insert_view( $post_id, 'post', 'web' );
+
+		$this->assertNotFalse( has_action( ProviderSync::CATCHUP_HOOK ) );
+
+		do_action( ProviderSync::CATCHUP_HOOK );
+
+		$this->assertSame( 10, (int) get_post_meta( $post_id, 'mai_views_web', true ) );
+	}
+
+	public function test_catchup_event_does_nothing_in_self_hosted_mode(): void {
+		update_option( 'mai_analytics_settings', [ 'data_source' => 'self_hosted' ] );
+		Database::insert_view( self::factory()->post->create( [ 'post_status' => 'publish' ] ), 'post', 'web' );
+
+		do_action( ProviderSync::CATCHUP_HOOK );
+
+		$this->assertFalse( get_option( 'mai_analytics_provider_last_sync' ) );
+	}
+
+	/**
 	 * Runs a callback while every buffer query that contains `$marker` fails.
 	 *
 	 * @param string   $marker   Text that picks out the query to break.
