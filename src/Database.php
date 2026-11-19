@@ -95,19 +95,16 @@ class Database {
 		// dbDelta() first probes with DESCRIBE (wp-admin/includes/upgrade.php:3027),
 		// which fails on a fresh install before the CREATE that follows works.
 		$added = array_filter( $added, fn( $entry ) => ! str_starts_with( (string) ( $entry['query'] ?? '' ), 'DESCRIBE ' ) );
-		$last  = end( $added );
-		$error = $last ? (string) ( $last['error_str'] ?? '' ) : '';
 
 		if ( ! self::table_exists() ) {
-
-			mai_analytics_logger()->error( 'Could not create the mai_analytics_buffer table. Will try again in an hour.' );
+			mai_analytics_logger()->error( sprintf( 'Could not create the mai_analytics_buffer table: %s. Will try again in an hour.', self::last_error_in( $added ) ?: 'no database error was reported' ) );
 			set_transient( self::RETRY_TRANSIENT, 1, HOUR_IN_SECONDS );
 
 			return false;
 		}
 
 		if ( $added ) {
-			mai_analytics_logger()->error( sprintf( 'Could not update the mai_analytics_buffer table: %s. Will try again in an hour.', $error ) );
+			mai_analytics_logger()->error( sprintf( 'Could not update the mai_analytics_buffer table: %s. Will try again in an hour.', self::last_error_in( $added ) ) );
 			set_transient( self::RETRY_TRANSIENT, 1, HOUR_IN_SECONDS );
 
 			return false;
@@ -116,6 +113,21 @@ class Database {
 		update_option( self::DB_VERSION_OPTION, MAI_ANALYTICS_DB_VERSION );
 
 		return true;
+	}
+
+	/**
+	 * The database's message for the last failed query in a list of wpdb errors.
+	 *
+	 * @since 1.3.8
+	 *
+	 * @param array $errors Entries from the $EZSQL_ERROR global.
+	 *
+	 * @return string The message, or '' when the list is empty.
+	 */
+	private static function last_error_in( array $errors ): string {
+		$last = end( $errors );
+
+		return $last ? (string) ( $last['error_str'] ?? '' ) : '';
 	}
 
 	/**
