@@ -488,6 +488,38 @@ class Test_REST_API extends WP_UnitTestCase {
 		$this->assertViewError( $this->get_views_at( 'user/' . $author ), ErrorCode::NotFound );
 	}
 
+	/**
+	 * Posts that must not make their author visible.
+	 *
+	 * @return array<string, array{0: array<string, string>}>
+	 */
+	public function hidden_author_posts(): array {
+		return [
+			'draft'              => [ [ 'post_status' => 'draft' ] ],
+			'private'            => [ [ 'post_status' => 'private' ] ],
+			'scheduled'          => [ [ 'post_status' => 'future', 'post_date' => '2099-01-01 00:00:00' ] ],
+			'navigation menu'    => [ [ 'post_status' => 'publish', 'post_type' => 'wp_navigation' ] ],
+			'template'           => [ [ 'post_status' => 'publish', 'post_type' => 'wp_template' ] ],
+			'menu item'          => [ [ 'post_status' => 'publish', 'post_type' => 'nav_menu_item' ] ],
+		];
+	}
+
+	/**
+	 * An author whose only posts are unpublished, or published rows of a type
+	 * nobody can view, stays hidden: on GET, on POST, and in trending.
+	 *
+	 * @dataProvider hidden_author_posts
+	 */
+	public function test_author_of_only_hidden_posts_is_hidden( array $post ): void {
+		$author = self::factory()->user->create( [ 'role' => 'administrator' ] );
+		self::factory()->post->create( array_merge( $post, [ 'post_author' => $author ] ) );
+		Database::insert_view( $author, 'user' );
+
+		$this->assertViewError( $this->get_views_at( 'user/' . $author ), ErrorCode::NotFound );
+		$this->assertViewError( $this->server->dispatch( $this->view_request( 'user/' . $author ) ), ErrorCode::NotFound );
+		$this->assertSame( [], $this->trending_with( [ 'type' => 'user' ] )->get_data() );
+	}
+
 	public function test_password_protected_post_is_counted(): void {
 		$post_id = self::factory()->post->create( [ 'post_status' => 'publish', 'post_password' => 'secret' ] );
 
