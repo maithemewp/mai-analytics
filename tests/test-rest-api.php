@@ -281,6 +281,84 @@ class Test_REST_API extends WP_UnitTestCase {
 		$this->assertSame( $before + 2, $this->buffer_rows() );
 	}
 
+	/**
+	 * Dispatches GET /views/trending with the given params.
+	 */
+	private function trending_with( array $params ): WP_REST_Response {
+		$request = new WP_REST_Request( 'GET', '/mai-analytics/v1/views/trending' );
+
+		foreach ( $params as $key => $value ) {
+			$request->set_param( $key, $value );
+		}
+
+		return $this->server->dispatch( $request );
+	}
+
+	public function test_trending_taxonomy_filter_returns_only_matching_posts(): void {
+		$tagged   = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+		$untagged = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+		$term_id  = self::factory()->category->create();
+
+		wp_set_post_categories( $tagged, [ $term_id ] );
+		Database::insert_view( $tagged, 'post' );
+		Database::insert_view( $untagged, 'post' );
+		Database::insert_view( $untagged, 'post' );
+
+		$response = $this->trending_with( [ 'type' => 'post', 'taxonomy' => 'category', 'terms' => (string) $term_id ] );
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertSame( [ $tagged ], array_column( $response->get_data(), 'id' ) );
+	}
+
+	/**
+	 * @return array<string, array{0: string, 1: bool}>
+	 */
+	public function hidden_taxonomies(): array {
+		return [
+			'unknown, posts'     => [ 'post', false ],
+			'not public, posts'  => [ 'post', true ],
+			'unknown, terms'     => [ 'term', false ],
+			'not public, terms'  => [ 'term', true ],
+		];
+	}
+
+	/**
+	 * @dataProvider hidden_taxonomies
+	 */
+	public function test_trending_hidden_taxonomy_is_an_empty_list_and_reads_nothing( string $type, bool $registered ): void {
+		global $wpdb;
+
+		$taxonomy = $registered ? 'mai_hidden_tax' : 'mai_no_such_tax';
+
+		if ( $registered ) {
+			register_taxonomy( 'mai_hidden_tax', 'post', [ 'public' => false ] );
+		}
+
+		$post_id = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+		$term_id = $registered ? self::factory()->term->create( [ 'taxonomy' => 'mai_hidden_tax' ] ) : 5;
+
+		if ( $registered ) {
+			wp_set_object_terms( $post_id, [ $term_id ], 'mai_hidden_tax' );
+		}
+
+		Database::insert_view( $post_id, 'post' );
+		Database::insert_view( $term_id, 'term' );
+
+		$queries = [];
+		$watch   = function ( $query ) use ( &$queries ) {
+			$queries[] = $query;
+			return $query;
+		};
+
+		add_filter( 'query', $watch );
+		$response = $this->trending_with( [ 'type' => $type, 'taxonomy' => $taxonomy, 'terms' => (string) $term_id ] );
+		remove_filter( 'query', $watch );
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertSame( [], $response->get_data() );
+		$this->assertSame( [], preg_grep( '/' . preg_quote( Database::get_table_name(), '/' ) . '|' . preg_quote( $wpdb->term_relationships, '/' ) . '/', $queries ) );
+	}
+
 	private function get_views_at( string $path ): WP_REST_Response {
 		return $this->server->dispatch( new WP_REST_Request( 'GET', '/mai-analytics/v1/views/' . $path ) );
 	}

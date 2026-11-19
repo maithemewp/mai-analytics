@@ -304,9 +304,16 @@ class RestApi {
 	/**
 	 * Gets trending objects from the buffer table.
 	 *
+	 * Over-fetches five times `per_page`, then drops rows outside the taxonomy
+	 * filter and items a signed-out visitor may not see.
+	 *
+	 * @since 1.3.8 Drops hidden items, answers 503 when a query fails, and
+	 *              answers an empty list for a taxonomy filter that is unknown
+	 *              or not publicly viewable.
+	 *
 	 * @param WP_REST_Request $request The incoming REST request.
 	 *
-	 * @return WP_REST_Response The response containing trending objects with view counts.
+	 * @return WP_REST_Response The response containing trending objects with view counts, or a 503.
 	 */
 	public function get_trending( WP_REST_Request $request ): WP_REST_Response {
 		global $wpdb;
@@ -318,6 +325,16 @@ class RestApi {
 		$terms    = $request->get_param( 'terms' );
 		$hours    = $this->parse_period( $period );
 		$table    = Database::get_table_name();
+
+		$filters_post = 'post' === $type && $taxonomy && $terms;
+		$filters_term = 'term' === $type && $taxonomy;
+
+		// A taxonomy that is unknown or not publicly viewable matches nothing,
+		// and reads nothing. A hidden one answers the same as a missing one, so
+		// the list never shows which posts carry a hidden term.
+		if ( ( $filters_post || $filters_term ) && ! is_taxonomy_viewable( $taxonomy ) ) {
+			return new WP_REST_Response( [] );
+		}
 
 		// Over-fetch so rows dropped below (taxonomy filter, hidden items)
 		// rarely leave the list short.
@@ -362,10 +379,10 @@ class RestApi {
 		$results = is_array( $results ) ? $results : [];
 
 		// Apply taxonomy filtering.
-		if ( 'post' === $type && $taxonomy && $terms ) {
+		if ( $filters_post ) {
 			$term_ids = array_map( 'absint', explode( ',', $terms ) );
 			$results  = array_filter( $results, fn( $row ) => has_term( $term_ids, $taxonomy, (int) $row->object_id ) );
-		} elseif ( 'term' === $type && $taxonomy ) {
+		} elseif ( $filters_term ) {
 			$results = array_filter( $results, function( $row ) use ( $taxonomy ) {
 				$term = get_term( (int) $row->object_id );
 				return $term && ! is_wp_error( $term ) && $term->taxonomy === $taxonomy;

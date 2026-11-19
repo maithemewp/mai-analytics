@@ -190,7 +190,7 @@ Every route lives under `/wp-json/mai-analytics/v1`.
 
 - `POST /view/{post|term|user}/{id}` and `POST /view/post_type/{name}` record a view. They take `source` (`web` or `app`, default `web`) and answer `{ "success": true }`.
 - `GET /views/{post|term|user}/{id}` and `GET /views/post_type/{name}` answer the item's `views` and `trending` counts.
-- `GET /views/trending` lists the most viewed items. It takes `type` (`post`, `term`, `user` or `post_type`), `period` (`6h`, `24h` or `7d`), `per_page` (1 to 100), `taxonomy`, and `terms` (at most 100 IDs).
+- `GET /views/trending` lists the most viewed items. It takes `type` (`post`, `term`, `user` or `post_type`), `period` (`6h`, `24h` or `7d`), `per_page` (1 to 100), `taxonomy`, and `terms` (at most 100 IDs). A `taxonomy` that is unknown or not publicly viewable answers an empty list.
 
 ### Admin routes
 
