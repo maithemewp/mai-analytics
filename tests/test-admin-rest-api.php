@@ -906,9 +906,54 @@ class Test_Admin_REST_API extends WP_UnitTestCase {
 		$this->assertSame( ErrorCode::ProviderRequestFailed->value, $data['code'] );
 		$this->assertSame( 'down', $data['message'] );
 
-		foreach ( [ 'done', 'total_updated', 'total_iterated' ] as $key ) {
-			$this->assertArrayHasKey( $key, $data );
+		// The batch was walked over, but nothing was updated.
+		$this->assertSame( 1, $data['batch'] );
+		$this->assertSame( 1, $data['next_cursor'] );
+		$this->assertSame( 0, $data['updated'] );
+		$this->assertSame( 0, $data['total_updated'] );
+		$this->assertGreaterThan( 0, $data['iterated'] );
+		$this->assertSame( $data['iterated'], $data['total_iterated'] );
+		$this->assertIsBool( $data['done'] );
+	}
+
+	public function test_warm_batch_success(): void {
+		$this->as_admin();
+		$this->register_working_provider();
+		self::factory()->post->create( [ 'post_status' => 'publish' ] );
+
+		$response = $this->post_admin( 'warm', [ 'force' => true ] );
+		$data     = $response->get_data();
+		$updated  = $data['updated'];
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertArrayNotHasKey( 'code', $data );
+		$this->assertGreaterThan( 0, $updated );
+		$this->assertSame( $updated, $data['total_updated'] );
+		$this->assertSame( 1, $data['next_cursor'] );
+
+		if ( $data['done'] ) {
+			$this->assertSame( sprintf( 'Warm complete. Updated %d objects.', $updated ), $data['message'] );
+		} else {
+			$this->assertArrayNotHasKey( 'message', $data );
 		}
+	}
+
+	public function test_warm_past_the_last_batch_is_complete(): void {
+		$this->as_admin();
+		$this->register_working_provider();
+
+		$response = $this->post_admin( 'warm', [ 'cursor' => 999, 'total_updated' => 3, 'total_iterated' => 4 ] );
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertSame(
+			[
+				'done'           => true,
+				'total_updated'  => 3,
+				'total_iterated' => 4,
+				'message'        => 'Warm complete. Updated 3 objects.',
+			],
+			$response->get_data()
+		);
 	}
 
 	public function test_warm_refuses_negative_args(): void {
