@@ -2,7 +2,7 @@
 
 ## Review fixes (2026-11-19)
 
-- Built on `feat/review-fixes`. The alignment pass is merged. Waiting on mai-coordinator's merge grant, then the release decision.
+- Merged into `develop` on 2026-11-19, after the alignment pass. Waiting on the release decision.
 
 ## Do at the release
 

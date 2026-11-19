@@ -2,26 +2,29 @@
 Updated: 2026-11-19 by Claude (mai-analytics review fixes build session)
 
 ## Now
-- `docs/plans/2026-11-19-review-fixes.md` is built on `feat/review-fixes`, in the worktree `~/Plugins/_wip/analytics-review-fixes`, cut from develop 378b295. All eight tasks are done, one commit each, plus two commits from an independent review. The suite passes with 298 tests; develop had 267. Version stays 1.3.7, and nothing is versioned or released.
+- `docs/plans/2026-11-19-review-fixes.md` is built and merged into `develop`. It was a fast-forward from 378b295 to 65a906a, granted by mai-coordinator on 2026-11-19. All eight tasks are done, one commit each, plus two commits from an independent review. The suite passes with 298 tests; develop had 267. Version stays 1.3.7, and nothing is versioned or released.
+- A smoke on the shared production-copy site passed under the coordinator's claim:
+  - Activating showed only core's `_wp_connectors_resolve_ai_provider_logo_url` notice.
+  - `/wp-json/` answered 200, trending for posts and for users answered 200 `[]`, and a missing post answered 404 `mai_analytics_not_found`. No view was sent.
+  - After deactivating, `recently_activated` was written back and read back. There is no mai_analytics cron hook and no mai_analytics transient, the nine options are there (db_version 1.0.2, version 1.3.7), and the buffer has 0 rows.
 - The independent review found four issues, all fixed:
   - **Fresh install:** dbDelta()'s DESCRIBE probe was counted as a failure, so every fresh activation would have reported failure.
   - **Migration retries:** a failed migration retried on every request. It now waits an hour behind `mai_analytics_migrate_retry`.
   - **Failed sync read:** fallbacks would rerun a failing sync on every page load. The lock now expires on its own. This differs from the plan's "release the lock", but the views are still counted on the next run.
   - **`health --fix`:** it exited 1 after fixing everything. Fixed checks now come off the count.
 - Branches (`origin` is GitHub maithemewp/mai-analytics):
-  - **`develop`:** the main checkout `~/Plugins/mai-analytics` at 378b295, on origin. The shared production-copy site loads it.
-  - **`feat/review-fixes`:** this branch, pushed to origin. It is not merged.
+  - **`develop`:** the main checkout `~/Plugins/mai-analytics`, with the review fixes and this file's commit. The shared production-copy site loads it. mai-coordinator pushes it after it verifies the smoke (Mike told the coordinator on 2026-11-19 to push as needed).
+  - **`feat/review-fixes`:** merged, on origin at 65a906a. Its worktree is removed.
   - **`main`:** bf3ba96, Release 1.3.7.
   - **`settings` and `trending`:** old 2023 branches. Leave them alone.
 
 ## Next
-1. Get mai-coordinator's grant to merge `feat/review-fixes` into `develop` (a fast-forward from 378b295).
-2. After the merge, ask Mike before pushing `develop`. His 2026-11-19 yes covered that one push only.
-3. Remove the worktree once it is merged: `git -C ~/Plugins/mai-analytics worktree remove ~/Plugins/_wip/analytics-review-fixes`.
-4. Release only when Mike asks, after the whole stack passes. No tags and no tag talk before then.
+1. mai-coordinator verifies the smoke, frees the site and pushes `develop`.
+2. Release only when Mike asks, after the whole stack passes. No tags and no tag talk before then. The draft changelog below goes into `CHANGES.md` on that commit.
+3. Later items are in `TODO.md`, among them the old-table copy that still uses `SELECT *` with `id`.
 
 ## Blocked / waiting on
-- mai-coordinator's merge grant. Its files (`STATE.md`, `SITE-LOCK.md`, `ALIGNMENT.md`) are in the shared production-copy site's folder; find it with `ls ~/Herd/*/SITE-LOCK.md`. Never edit them.
+- Nothing in this repo. The release waits on the whole stack passing. mai-coordinator's files (`STATE.md`, `SITE-LOCK.md`, `ALIGNMENT.md`) are in the shared production-copy site's folder; find it with `ls ~/Herd/*/SITE-LOCK.md`. Never edit them.
 
 ## Verify
 - Before any suite, read the Status section of that folder's `SITE-LOCK.md`. Don't run during a claimed device run, or with `uptime` showing a 1-minute load of 10 or more. Never use the site itself without a claim.
