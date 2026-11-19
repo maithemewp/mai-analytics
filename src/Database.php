@@ -199,10 +199,7 @@ class Database {
 				continue;
 			}
 
-			// phpcs:ignore WordPress.DB.DirectDatabaseQuery
-			$new_exists = (bool) $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $new_table ) );
-
-			if ( $new_exists ) {
+			if ( self::table_exists() ) {
 				// phpcs:ignore WordPress.DB.DirectDatabaseQuery
 				$wpdb->query( "INSERT INTO `$new_table` SELECT * FROM `$old_table`" );
 
