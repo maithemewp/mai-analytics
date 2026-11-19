@@ -13,15 +13,14 @@ Updated: 2026-11-19 by Claude (mai-analytics review fixes build session)
   - **Failed sync read:** fallbacks would rerun a failing sync on every page load. The lock now expires on its own. This differs from the plan's "release the lock", but the views are still counted on the next run.
   - **`health --fix`:** it exited 1 after fixing everything. Fixed checks now come off the count.
 - Branches (`origin` is GitHub maithemewp/mai-analytics):
-  - **`develop`:** the main checkout `~/Plugins/mai-analytics`, with the review fixes and this file's commit. The shared production-copy site loads it. mai-coordinator pushes it after it verifies the smoke (Mike told the coordinator on 2026-11-19 to push as needed).
+  - **`develop`:** the main checkout `~/Plugins/mai-analytics`, with the review fixes and this file's commit. The shared production-copy site loads it. Pushed to origin by mai-coordinator on 2026-11-19 at 2fe6092, after it verified the smoke clean at 16:57 UTC.
   - **`feat/review-fixes`:** merged, on origin at 65a906a. Its worktree is removed.
   - **`main`:** bf3ba96, Release 1.3.7.
   - **`settings` and `trending`:** old 2023 branches. Leave them alone.
 
 ## Next
-1. mai-coordinator verifies the smoke, frees the site and pushes `develop`.
-2. Release only when Mike asks, after the whole stack passes. No tags and no tag talk before then. The draft changelog below goes into `CHANGES.md` on that commit.
-3. Later items are in `TODO.md`, among them the old-table copy that still uses `SELECT *` with `id`.
+1. Release only when Mike asks, after the whole stack passes. No tags and no tag talk before then. The draft changelog below goes into `CHANGES.md` on that commit.
+2. Later items are in `TODO.md`, among them the old-table copy that still uses `SELECT *` with `id`.
 
 ## Blocked / waiting on
 - Nothing in this repo. The release waits on the whole stack passing. mai-coordinator's files (`STATE.md`, `SITE-LOCK.md`, `ALIGNMENT.md`) are in the shared production-copy site's folder; find it with `ls ~/Herd/*/SITE-LOCK.md`. Never edit them.
