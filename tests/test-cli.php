@@ -47,10 +47,75 @@ class Test_CLI extends WP_UnitTestCase {
 		$this->assertContains( "  %C\u{2192} Fixed: rescheduled cron%n", WP_CLI::$lines );
 		$this->assertNotFalse( wp_next_scheduled( 'mai_analytics_cron_sync' ) );
 
+		$this->assert_summary( $before - 1, 1 );
+	}
+
+	/**
+	 * Asserts the health summary's failed and fixed counts exactly, and that
+	 * it exits 1 only when something is still failing.
+	 */
+	private function assert_summary( int $failed, int $fixed ): void {
 		$summary = WP_CLI::$errors ? WP_CLI::$errors[0][0] : (string) end( WP_CLI::$lines );
 
-		$this->assertStringContainsString( sprintf( '%d failed', $before - 1 ), $summary );
-		$this->assertStringContainsString( '(1 fixed)', $summary );
+		$this->assertMatchesRegularExpression( sprintf( '/^\d+ passed, %d failed, /', $failed ), $summary );
+		$this->assertStringContainsString( sprintf( '(%d fixed)', $fixed ), $summary );
+		$this->assertSame( $failed > 0, (bool) WP_CLI::$errors );
+	}
+
+	/**
+	 * Runs `health --fix` with the health check's table probe failing, and
+	 * with create_table()'s own probe failing too when `$create_fails`.
+	 *
+	 * @return int The failed checks before the fix.
+	 */
+	private function health_fix_with_table_missing( bool $create_fails ): int {
+		global $wpdb;
+
+		// Only the table is broken, so only its fix is counted.
+		if ( ! wp_next_scheduled( 'mai_analytics_cron_sync' ) ) {
+			wp_schedule_event( time(), 'mai_analytics_15min', 'mai_analytics_cron_sync' );
+		}
+
+		$probe = $wpdb->prepare( 'SHOW TABLES LIKE %s', Database::get_table_name() );
+		$seen  = 0;
+		$hide  = function ( $query ) use ( $probe, $create_fails, &$seen ) {
+			if ( $probe !== $query ) {
+				return $query;
+			}
+
+			$seen++;
+
+			// The first probe is Health's. Later ones are create_table()'s.
+			return ( 1 === $seen || $create_fails ) ? 'SELECT 1 FROM DUAL WHERE 1 = 0' : $query;
+		};
+
+		add_filter( 'query', $hide );
+		$before = \Mai\Analytics\Health::run()['fail'];
+		$seen   = 0;
+
+		try {
+			( new CLI() )->health( [], [ 'fix' => true ] );
+		} catch ( RuntimeException $e ) {
+			// Checked through the summary.
+		} finally {
+			remove_filter( 'query', $hide );
+		}
+
+		return $before;
+	}
+
+	public function test_health_fix_creates_a_missing_table(): void {
+		$before = $this->health_fix_with_table_missing( false );
+
+		$this->assertContains( "  %C\u{2192} Fixed: created table%n", WP_CLI::$lines );
+		$this->assert_summary( $before - 1, 1 );
+	}
+
+	public function test_health_fix_keeps_a_table_it_could_not_create_as_failed(): void {
+		$before = $this->health_fix_with_table_missing( true );
+
+		$this->assertContains( '  %R✗%n Table could not be created.', WP_CLI::$lines );
+		$this->assertMatchesRegularExpression( sprintf( '/^\d+ passed, %d failed, /', $before ), WP_CLI::$errors[0][0] ?? '' );
 	}
 
 	/**
