@@ -101,6 +101,15 @@ class Test_Admin_Dashboard extends WP_UnitTestCase {
 		$this->assertMatchesRegularExpression( '/<option value="25"\s+selected=\'selected\'>/', $html );
 	}
 
+	public function test_filters_error_notice_renders_hidden_above_the_filters(): void {
+		$html   = $this->render( [] );
+		$notice = '<div id="mai-analytics-filters-error" class="notice notice-error inline" hidden>';
+
+		$this->assertStringContainsString( $notice, $html );
+		$this->assertStringContainsString( '<p>Could not load the filters. Reload the page to try again.</p>', $html );
+		$this->assertLessThan( strpos( $html, 'class="mai-analytics-filters' ), strpos( $html, $notice ) );
+	}
+
 	public function test_terms_tab_renders_its_tab_on_the_filters_row(): void {
 		$html = $this->render( [ 'subtab' => 'terms', 'tax' => 'post_tag' ] );
 

@@ -463,6 +463,11 @@ class Admin {
 			</div>
 		</div>
 
+		<!-- Shown by the dashboard script only when the filters request fails. -->
+		<div id="mai-analytics-filters-error" class="notice notice-error inline" hidden>
+			<p><?php esc_html_e( 'Could not load the filters. Reload the page to try again.', 'mai-analytics' ); ?></p>
+		</div>
+
 		<!-- Filters. Rendered from the URL, so a linked view shows its filters on first paint. -->
 		<div class="mai-analytics-filters<?php echo $state['tax'] ? ' has-taxonomy' : ''; ?>" data-tab="<?php echo esc_attr( $subtab ); ?>">
 			<select id="mai-analytics-post-type" class="mai-analytics-select mai-analytics-filters__field mai-analytics-filters__field--posts" placeholder="<?php esc_attr_e( 'All Post Types', 'mai-analytics' ); ?>">

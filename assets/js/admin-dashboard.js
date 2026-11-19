@@ -218,7 +218,8 @@
 	};
 
 	/**
-	 * Fetch filter options and populate dropdowns.
+	 * Fetch filter options and populate dropdowns. A failed request shows the
+	 * notice above the filters. The table loads on its own either way.
 	 */
 	function loadFilters() {
 		apiFetch('filters').then(function (data) {
@@ -231,6 +232,12 @@
 				taxSelect.addOption({ value: tax.slug, text: tax.label });
 			});
 			taxSelect.refreshOptions(false);
+		}).catch(function () {
+			var notice = document.getElementById('mai-analytics-filters-error');
+
+			if (notice) {
+				notice.hidden = false;
+			}
 		});
 	}
 
