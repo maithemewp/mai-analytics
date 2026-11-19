@@ -238,7 +238,7 @@ class RestApi {
 	public function record_post_type_view( WP_REST_Request $request ): WP_REST_Response {
 		$post_type = $request->get_param( 'post_type' );
 
-		// Validate the post type exists and is public.
+		// Validate the post type exists and is publicly viewable.
 		if ( ! $this->is_public_post_type( (string) $post_type ) ) {
 			return $this->not_found();
 		}
@@ -680,8 +680,10 @@ class RestApi {
 		}
 
 		if ( 'post' === $type ) {
-			// The posts are cached already, so _prime_post_caches() would skip
-			// them. Load their terms and meta for get_permalink() directly.
+			// visible_ids() loaded these posts without their meta or terms.
+			// Load those now for get_permalink() and get_the_title(), for the
+			// returned rows only. The post objects are already in the cache,
+			// so this adds the meta and term queries and nothing else.
 			$posts = array_filter( array_map( 'get_post', $ids ) );
 			update_post_caches( $posts, 'any', true, true );
 		} elseif ( 'user' === $type ) {

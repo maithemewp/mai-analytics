@@ -73,7 +73,7 @@ class Tracker {
 	 * @return string|false The beacon REST URL, or false if the page is not trackable.
 	 */
 	private function get_beacon_url(): string|false {
-		// Singular posts/pages (any public post type, including static front page).
+		// Singular posts and pages of any publicly viewable post type, including a static front page.
 		if ( is_singular() ) {
 			$post = get_post();
 

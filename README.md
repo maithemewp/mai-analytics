@@ -5,7 +5,7 @@ View tracking for WordPress posts, terms, and authors. Supports self-hosted trac
 ## Features
 
 - First-party view tracking via JS beacon (`navigator.sendBeacon`)
-- Tracks all public post types, taxonomy archives, and author archives automatically
+- Tracks every publicly viewable post type (attachments excepted), post type archives, taxonomy archives, and author archives automatically. An author archive counts only when the author has a publicly viewable post.
 - Web + app source split (`mai_views_web`, `mai_views_app`)
 - Trending views with configurable window (default 7 days)
 - External provider support: Google Analytics 4 (via Site Kit), Matomo, Jetpack Stats
@@ -182,6 +182,33 @@ wp mai-analytics update-bots
 | `mai_analytics_exclude_bots` | `true` | Filter bot user-agents |
 | `mai_analytics_tracking_enabled` | `true` on production | Override beacon tracking per environment |
 
+## REST API
+
+Every route lives under `/wp-json/mai-analytics/v1`.
+
+### Public routes
+
+- `POST /view/{post|term|user}/{id}` and `POST /view/post_type/{name}` record a view. They take `source` (`web` or `app`, default `web`) and answer `{ "success": true }`.
+- `GET /views/{post|term|user}/{id}` and `GET /views/post_type/{name}` answer the item's `views` and `trending` counts.
+- `GET /views/trending` lists the most viewed items. It takes `type` (`post`, `term`, `user` or `post_type`), `period` (`6h`, `24h` or `7d`), `per_page` (1 to 100), `taxonomy`, and `terms` (at most 100 IDs).
+
+### Admin routes
+
+- `GET /admin/top/posts`, `/admin/top/terms`, `/admin/top/authors`, `/admin/top/archives`, `/admin/filters` and `/admin/search` need the `edit_others_posts` capability. `/admin/search` takes `page` and `per_page` (at most 100) and sends `X-WP-Total` and `X-WP-TotalPages`.
+- `POST /admin/sync-now`, `/admin/warm`, `/admin/health` and `/admin/dismiss-error` need `manage_options`.
+
+### Errors
+
+Every error carries `code`, `message` and `data.status`. Errors on the view routes also keep `"success": false`, and Warm errors keep its progress fields.
+
+- **400 `mai_analytics_invalid_request`:** an argument is missing or wrong. A caller who fails the permission check gets core's 401 or 403 `rest_forbidden` first.
+- **403 `mai_analytics_bot`:** in self-hosted mode, a view from a bot user agent.
+- **404 `mai_analytics_not_found`:** the item is missing or not publicly viewable.
+- **501 `mai_analytics_provider_unavailable`:** Sync Now has no working provider set up.
+- **501 `mai_analytics_provider_required`:** Warm was called in self-hosted mode.
+- **502 `mai_analytics_provider_request_failed`:** the provider answered with an error.
+- **503 `mai_analytics_database_error`:** a query failed. The response sends `Retry-After: 1`, so try again.
+
 ## How It Works
 
 ### Recording views
@@ -194,7 +221,7 @@ Every page load outputs a single inline script in `wp_footer`:
 
 `navigator.sendBeacon` is fire-and-forget. It needs no response, doesn't block, and works during page unload. The visitor never waits. On cached pages (Varnish, nginx, etc.), PHP doesn't run at all. Only the beacon JS fires from the browser.
 
-The beacon hits a REST endpoint that does **one INSERT** into a buffer table (`wp_mai_analytics_buffer`). No meta reads, no meta writes, no aggregation. One row, ~1ms, done.
+The beacon hits a REST endpoint that does **one INSERT** into a buffer table (`wp_mai_analytics_buffer`). Before it, the endpoint reads the post, term or user row to check that it is publicly viewable, and in provider mode it checks whether the item is already queued. No meta reads, no meta writes, no aggregation.
 
 Logged-in users with `edit_posts` capability are excluded. Bots are filtered by user-agent. Non-production environments are excluded automatically.
 
@@ -250,7 +277,7 @@ The all-time window queries `Actions.getPageUrl` with `period=year, date=last5` 
 - **Lower the bulk chunk size** in **Mai Analytics > Settings > Bulk Chunk Size** if Matomo still struggles. Default is 10 URLs per bulk request (= 20 sub-queries with 2 windows). Drop to 5 or even 1 if your Matomo can't handle the default. The `mai_analytics_matomo_bulk_chunk` filter still works for overrides in code.
 - **Make sure `console core:archive` runs daily.** Without it, every API call has to compute archives on-demand, which is slow and memory-intensive.
 
-When provider calls fail, the error is captured (with a timestamp) in the `mai_analytics_provider_error` transient and surfaced as a dismissible notice on the Mai Analytics dashboard, so you can tell at a glance whether you're looking at a fresh failure or hours-old residue.
+When provider calls fail, the error is captured (with a timestamp) in the `mai_analytics_provider_error` option and surfaced as a dismissible notice on the Mai Analytics dashboard, so you can tell at a glance whether you're looking at a fresh failure or hours-old residue.
 
 ### Sync reliability
 
