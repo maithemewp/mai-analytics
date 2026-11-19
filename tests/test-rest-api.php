@@ -194,6 +194,43 @@ class Test_REST_API extends WP_UnitTestCase {
 		$this->assertSame( ErrorCode::DatabaseError->value, $response->get_data()['code'] );
 	}
 
+	public function test_trending_query_failure_answers_503(): void {
+		global $wpdb;
+
+		$post_id = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+		Database::insert_view( $post_id, 'post' );
+		Database::insert_view( 0, 'post_type', 'web', 'post' );
+
+		$table      = Database::get_table_name();
+		$suppressed = $wpdb->suppress_errors( true );
+		$break      = function ( $query ) use ( $table ) {
+			if ( str_contains( $query, 'view_count' ) && str_contains( $query, $table ) ) {
+				return str_replace( $table, 'mai_analytics_missing_table', $query );
+			}
+
+			return $query;
+		};
+
+		add_filter( 'query', $break );
+
+		$responses = [];
+
+		foreach ( [ 'post', 'post_type' ] as $type ) {
+			$request = new WP_REST_Request( 'GET', '/mai-analytics/v1/views/trending' );
+			$request->set_param( 'type', $type );
+			$responses[ $type ] = $this->server->dispatch( $request );
+		}
+
+		remove_filter( 'query', $break );
+		$wpdb->suppress_errors( $suppressed );
+
+		foreach ( $responses as $type => $response ) {
+			$this->assertSame( 503, $response->get_status(), $type );
+			$this->assertSame( ErrorCode::DatabaseError->value, $response->get_data()['code'], $type );
+			$this->assertSame( '1', $response->get_headers()['Retry-After'], $type );
+		}
+	}
+
 	public function test_user_check_stops_at_first_post(): void {
 		global $wpdb;
 

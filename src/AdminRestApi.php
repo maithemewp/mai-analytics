@@ -816,18 +816,39 @@ class AdminRestApi {
 			);
 		}
 
+		if ( $wpdb->last_error ) {
+			return $this->search_error();
+		}
+
 		$items = array_map( fn( $r ) => [
 			'id'   => (int) $r->id,
 			'name' => $r->name,
-		], $results );
+		], is_array( $results ) ? $results : [] );
 
 		// A short first page already holds every match, so skip the second
 		// pass over the join. The dashboard asks on every keystroke.
-		$total = ( 0 === $offset && count( $items ) < $per_page )
-			? count( $items )
-			: (int) $wpdb->get_var( $count_sql );
+		if ( 0 === $offset && count( $items ) < $per_page ) {
+			$total = count( $items );
+		} else {
+			$total = (int) $wpdb->get_var( $count_sql );
+
+			if ( $wpdb->last_error ) {
+				return $this->search_error();
+			}
+		}
 
 		return $this->search_response( $items, $total, $per_page );
+	}
+
+	/**
+	 * Builds the error for a search whose query failed.
+	 *
+	 * @since 1.3.8
+	 *
+	 * @return WP_REST_Response
+	 */
+	private function search_error(): WP_REST_Response {
+		return Errors::response( ErrorCode::DatabaseError, __( 'The search could not be run. Try again.', 'mai-analytics' ) );
 	}
 
 	/**

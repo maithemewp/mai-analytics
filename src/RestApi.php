@@ -355,6 +355,12 @@ class RestApi {
 			);
 		}
 
+		if ( $wpdb->last_error ) {
+			return $this->read_error();
+		}
+
+		$results = is_array( $results ) ? $results : [];
+
 		// Apply taxonomy filtering.
 		if ( 'post' === $type && $taxonomy && $terms ) {
 			$term_ids = array_map( 'absint', explode( ',', $terms ) );

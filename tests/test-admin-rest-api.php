@@ -782,6 +782,50 @@ class Test_Admin_REST_API extends WP_UnitTestCase {
 		$this->assertSame( '1', $response->get_headers()['X-WP-TotalPages'] );
 	}
 
+	/**
+	 * Runs a search with every query that holds `$marker` failing.
+	 */
+	private function search_with_failing( string $marker, array $params ): WP_REST_Response {
+		global $wpdb;
+
+		$suppressed = $wpdb->suppress_errors( true );
+		$break      = function ( $query ) use ( $marker, $wpdb ) {
+			if ( str_contains( $query, $marker ) ) {
+				return str_replace( $wpdb->terms, 'mai_analytics_missing_table', $query );
+			}
+
+			return $query;
+		};
+
+		add_filter( 'query', $break );
+		$response = $this->search( $params );
+		remove_filter( 'query', $break );
+		$wpdb->suppress_errors( $suppressed );
+
+		return $response;
+	}
+
+	public function test_search_query_failures_answer_503(): void {
+		wp_set_current_user( self::factory()->user->create( [ 'role' => 'editor' ] ) );
+
+		for ( $i = 1; $i <= 3; $i++ ) {
+			$term_id = self::factory()->category->create( [ 'name' => "Gamma $i" ] );
+			$post_id = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+			wp_set_object_terms( $post_id, $term_id, 'category' );
+		}
+
+		$params = [ 'type' => 'term', 'taxonomy' => 'category', 'search' => 'Gamma', 'per_page' => 2 ];
+
+		foreach ( [ 'COUNT(DISTINCT t.term_id)', 'ORDER BY t.name' ] as $marker ) {
+			$response = $this->search_with_failing( $marker, $params );
+
+			$this->assertSame( 503, $response->get_status(), $marker );
+			$this->assertSame( ErrorCode::DatabaseError->value, $response->get_data()['code'], $marker );
+			$this->assertNotEmpty( $response->get_data()['message'], $marker );
+			$this->assertArrayNotHasKey( 'X-WP-Total', $response->get_headers(), $marker );
+		}
+	}
+
 	public function test_search_terms_without_taxonomy_sends_zero_total(): void {
 		wp_set_current_user( self::factory()->user->create( [ 'role' => 'editor' ] ) );
 
