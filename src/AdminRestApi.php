@@ -1137,16 +1137,14 @@ class AdminRestApi {
 			'next_cursor'    => $cursor + 1,
 		];
 
-		if ( $done ) {
-			$payload['message'] = sprintf( 'Warm complete. Updated %d objects.', $total_updated );
-		}
-
 		$error = Sync::get_last_error()['message'];
 
 		if ( $error ) {
-			unset( $payload['message'] );
-
 			return Errors::response( ErrorCode::ProviderRequestFailed, (string) $error, [], $payload );
+		}
+
+		if ( $done ) {
+			$payload['message'] = sprintf( 'Warm complete. Updated %d objects.', $total_updated );
 		}
 
 		return new WP_REST_Response( $payload );
