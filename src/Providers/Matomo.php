@@ -329,7 +329,7 @@ class Matomo implements WebViewProvider {
 			$message = 'Matomo API returned HTTP ' . $code . ': ' . wp_remote_retrieve_response_message( $response );
 
 			if ( '' !== $snippet ) {
-				$message .= ' Response: ' . $snippet;
+				$message .= '. Response: ' . $snippet;
 			}
 
 			self::set_last_error( $message );
