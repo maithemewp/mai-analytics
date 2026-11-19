@@ -355,8 +355,9 @@ class ProviderSync {
 				// Only mark synced when the provider returned data. On failure
 				// we preserve existing meta but must NOT update the timestamp,
 				// otherwise the next warm's skip-recent filter would silently
-				// hide objects whose values are actually stale.
-				if ( null !== $web_total ) {
+				// hide objects whose values are actually stale. A failed app
+				// trending count leaves trending stale too.
+				if ( null !== $web_total && null !== $app_trending ) {
 					$pt_synced[ $key ] = $now;
 				}
 			} else {
@@ -386,7 +387,7 @@ class ProviderSync {
 				Stats::recompute_total( $id, $type );
 
 				// See pt_synced comment above — only mark synced on real success.
-				if ( null !== $web_total ) {
+				if ( null !== $web_total && null !== $app_trending ) {
 					Stats::mark_synced( $id, $type, $now );
 				}
 			}
@@ -817,8 +818,9 @@ class ProviderSync {
 					// Only mark synced when the provider returned data. On
 					// failure we preserve existing meta but must NOT advance
 					// the timestamp, otherwise the next warm's skip-recent
-					// filter would hide objects whose values are stale.
-					if ( null !== $web_total ) {
+					// filter would hide objects whose values are stale. A failed
+					// app trending count leaves trending stale too.
+					if ( null !== $web_total && null !== $app_trending ) {
 						$state['pt_synced'][ $key ] = $now;
 					}
 				} else {
@@ -841,7 +843,7 @@ class ProviderSync {
 					Stats::recompute_total( $id, $type );
 
 					// See pt_synced comment above — only mark synced on real success.
-					if ( null !== $web_total ) {
+					if ( null !== $web_total && null !== $app_trending ) {
 						Stats::mark_synced( $id, $type, $now );
 					}
 				}
@@ -853,8 +855,9 @@ class ProviderSync {
 				// call fails ($web_total === null), we preserve existing
 				// meta — the right correctness behavior — but reporting it
 				// as "updated" misled the admin status text into showing
-				// honest progress where there was none.
-				if ( null !== $web_total ) {
+				// honest progress where there was none. The same goes for a
+				// failed app trending count.
+				if ( null !== $web_total && null !== $app_trending ) {
 					$updated++;
 				}
 			}

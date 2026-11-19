@@ -837,13 +837,6 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 	}
 
 	/**
-	 * Warm shares the option branch too, so it shares the zeroing bug.
-	 *
-	 * @since 1.3.4
-	 *
-	 * @return void
-	 */
-	/**
 	 * Runs a callback while every buffer query that contains `$marker` fails.
 	 *
 	 * @param string   $marker   Text that picks out the query to break.
@@ -980,11 +973,29 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 		$this->assertSame( '50', get_post_meta( $post_id, 'mai_trending', true ) );
 		$this->assertSame( 10, (int) get_post_meta( $post_id, 'mai_views_web', true ) );
 
-		$this->with_failing_buffer_query( 'SELECT COUNT(*)', fn() => $this->drain_warm( ProviderSync::warm( [ 'type' => 'post', 'force' => true ] ) ) );
+		// Its trending is stale, so it isn't stamped as synced, and warm still picks it up.
+		$this->assertSame( '', get_post_meta( $post_id, 'mai_views_synced_at', true ) );
+
+		$updated = 0;
+
+		$this->with_failing_buffer_query( 'SELECT COUNT(*)', function () use ( &$updated ) {
+			foreach ( ProviderSync::warm( [ 'type' => 'post', 'force' => true ] ) as $progress ) {
+				$updated += (int) ( $progress['updated'] ?? 0 );
+			}
+		} );
 
 		$this->assertSame( '50', get_post_meta( $post_id, 'mai_trending', true ) );
+		$this->assertSame( '', get_post_meta( $post_id, 'mai_views_synced_at', true ) );
+		$this->assertSame( 0, $updated );
 	}
 
+	/**
+	 * Warm shares the option branch too, so it shares the zeroing bug.
+	 *
+	 * @since 1.3.4
+	 *
+	 * @return void
+	 */
 	public function test_warm_preserves_post_type_trending_on_provider_failure(): void {
 		register_post_type( 'mai_doc', [ 'public' => true, 'has_archive' => true ] );
 
