@@ -1,33 +1,30 @@
 # State
-Updated: 2026-11-19 by Claude (mai-analytics review fixes build session)
+Updated: 2026-11-19 by Claude (mai-analytics review-pr fixes session)
 
 ## Now
-- `docs/plans/2026-11-19-review-fixes.md` is built and merged into `develop`. It was a fast-forward from 378b295 to 65a906a, granted by mai-coordinator on 2026-11-19. All eight tasks are done, one commit each, plus two commits from an independent review. The suite passes with 298 tests; develop had 267. Version stays 1.3.7, and nothing is versioned or released.
-- A smoke on the shared production-copy site passed under the coordinator's claim:
-  - Activating showed only core's `_wp_connectors_resolve_ai_provider_logo_url` notice.
-  - `/wp-json/` answered 200, trending for posts and for users answered 200 `[]`, and a missing post answered 404 `mai_analytics_not_found`. No view was sent.
-  - After deactivating, `recently_activated` was written back and read back. There is no mai_analytics cron hook and no mai_analytics transient, the nine options are there (db_version 1.0.2, version 1.3.7), and the buffer has 0 rows.
-- The independent review found four issues, all fixed:
-  - **Fresh install:** dbDelta()'s DESCRIBE probe was counted as a failure, so every fresh activation would have reported failure.
-  - **Migration retries:** a failed migration retried on every request. It now waits an hour behind `mai_analytics_migrate_retry`.
-  - **Failed sync read:** fallbacks would rerun a failing sync on every page load. The lock now expires on its own. This differs from the plan's "release the lock", but the views are still counted on the next run.
-  - **`health --fix`:** it exited 1 after fixing everything. Fixed checks now come off the count.
+- `pr-review-toolkit:review-pr` ran on `main..develop` with all six aspects. Findings and mai-coordinator's rulings are in the shared notes folder (`2026-11-19-mai-analytics-review-findings.md`).
+- The ruled fixes are built on `feat/review-pr-fixes`, in the worktree `~/Plugins/_wip/mai-analytics-review-pr`. There is one commit per finding, and an independent review fixed one more issue. The suite passes with 346 tests; develop has 298. The branch is not merged yet: the merge waits on the coordinator's grant, then the short smoke on the shared production-copy site.
+- Routes whose answer changed on this branch:
+  - **`POST /admin/sync-now`:** 429 `mai_analytics_busy` (new code) when a sync holds the lock, 503 `mai_analytics_database_error` when a buffer read failed, both with Retry-After 1, instead of 200 "complete".
+  - **`GET /admin/top/posts`, `/top/terms`, `/top/authors`, `/admin/filters`:** 503 `mai_analytics_database_error` on a failed query instead of 200 with empty or zero data. Filters cache nothing then.
+  - **`GET /views/trending`:** a `taxonomy` filter that is unknown or not publicly viewable answers 200 `[]` and reads nothing.
+  - **`wp mai-analytics sync` and `seed`:** exit 1 with a reason when the sync didn't run.
 - Branches (`origin` is GitHub maithemewp/mai-analytics):
-  - **`develop`:** the main checkout `~/Plugins/mai-analytics`, with the review fixes and this file's commit. The shared production-copy site loads it. Pushed to origin by mai-coordinator on 2026-11-19 at 2fe6092, after it verified the smoke clean at 16:57 UTC.
-  - **`feat/review-fixes`:** merged, on origin at 65a906a. Its worktree is removed.
-  - **`main`:** bf3ba96, Release 1.3.7.
-  - **`settings` and `trending`:** old 2023 branches. Leave them alone.
+  - **`develop`:** the main checkout `~/Plugins/mai-analytics`, which the shared production-copy site loads.
+  - **`feat/review-pr-fixes`:** this work, cut from develop at 7e8b536.
+  - **`main`:** bf3ba96, Release 1.3.7. **`settings`** and **`trending`:** old 2023 branches. Leave them alone.
 
 ## Next
-1. Release only when Mike asks, after the whole stack passes. No tags and no tag talk before then. The draft changelog below goes into `CHANGES.md` on that commit.
-2. Later items are in `TODO.md`, among them the old-table copy that still uses `SELECT *` with `id`.
+1. The coordinator rules on the merge, and on the two older bugs the independent review found (in its report, not fixed here): the catchup hook calls a missing `Cron::maybe_provider_sync()`, and a provider sync that stops mid-run drops the app views of unprocessed objects.
+2. A Health check for a stuck old-table migration waits on Mike's wording (drafted and sent to the coordinator).
+3. Release only when Mike asks, after the whole stack passes. No tags and no tag talk before then. The draft changelog below goes into `CHANGES.md` on that commit.
 
 ## Blocked / waiting on
-- Nothing in this repo. The release waits on the whole stack passing. mai-coordinator's files (`STATE.md`, `SITE-LOCK.md`, `ALIGNMENT.md`) are in the shared production-copy site's folder; find it with `ls ~/Herd/*/SITE-LOCK.md`. Never edit them.
+- The merge grant and the rulings above. mai-coordinator's files (`STATE.md`, `SITE-LOCK.md`, `ALIGNMENT.md`) are in the shared production-copy site's folder; find it with `ls ~/Herd/*/SITE-LOCK.md`. Never edit them.
 
 ## Verify
 - Before any suite, read the Status section of that folder's `SITE-LOCK.md`. Don't run during a claimed device run, or with `uptime` showing a 1-minute load of 10 or more. Never use the site itself without a claim.
-- Run the suite in a worktree after `composer install`: `WP_TESTS_DIR=/tmp/wordpress-tests-lib vendor/bin/phpunit`. 298 tests.
+- Run the suite in a worktree after `composer install`: `WP_TESTS_DIR=/tmp/wordpress-tests-lib vendor/bin/phpunit`. 346 tests.
 - A reboot clears `/tmp`. If `/tmp/wordpress-tests-lib/includes/functions.php` is missing, run `bin/install-wp-tests.sh wp_maianalytics_tests root '' localhost latest true` from the worktree.
 - Then restore `vendor/`: `composer install --no-dev`, `git checkout -- vendor/composer/installed.json vendor/composer/installed.php`, then `php ~/Plugins/mai-analytics/vendor/bin/deployable-guard check --root=<path relative to the main checkout>`. It must print "OK: committed autoloader is deployable as-is."
 - Commit no `vendor/` change on a feature branch.
@@ -39,14 +36,19 @@ Updated: 2026-11-19 by Claude (mai-analytics review fixes build session)
 * Changed: [Developers] ID lists (trending terms, the dashboard's term and author filters) take at most 100 IDs.
 * Changed: [Developers] The dashboard search takes page and per_page and sends X-WP-Total and X-WP-TotalPages.
 * Changed: [Developers] Warm refuses a negative cursor, total_updated or total_iterated with 400 instead of turning it positive.
-* Changed: [Developers] A database failure while checking an author, reading trending or running the dashboard search answers 503 instead of a 404 or an empty list.
+* Changed: [Developers] A database failure while checking an author, reading trending, or reading any dashboard table, filter or search answers 503 instead of a 404, an empty list or zeros.
+* Changed: [Developers] Sync Now answers 429 mai_analytics_busy when a sync is already running and 503 when it could not read the views, instead of saying the sync is complete. `wp mai-analytics sync` exits 1 in both cases.
+* Changed: [Developers] Trending with a taxonomy that is unknown or not publicly viewable answers an empty list.
 * Changed: Views of an author archive for someone with no published posts are no longer counted, and their count is no longer public, so the counts can't be used to find which user IDs exist.
 * Changed: Which posts, terms and archives are counted now follows WordPress's own "publicly viewable" rule, which only differs from before for post types, taxonomies or statuses registered with unusual settings. Attachment pages are still not counted.
 * Changed: The plugin header now says it needs WordPress 6.1, which it already did.
 * Fixed: View counts for drafts, private posts and other hidden items could be read by anyone. They now answer 404, and trending no longer lists them.
 * Fixed: A view that failed to save was reported as saved.
-* Fixed: A sync that could not read new views skipped them. They are now counted on the next run.
-* Fixed: Moving views from an old table could drop that table after a failed copy.
+* Fixed: A sync that could not read new views skipped them, in both modes. They are now counted on the next run.
+* Fixed: A failed trending read during a sync cleared trending counts.
+* Fixed: In provider mode, a view of one post type archive kept every other archive from syncing until the next run.
+* Fixed: A provider sync could count an app view twice when it was saved during a long run.
+* Fixed: Moving views from an old table could drop that table after a failed copy, and the move failed on WordPress 6.1.
 * Fixed: A failed change to the views table during an update was reported as success.
 * Fixed: `wp mai-analytics health` exited 0 when a check failed, and `--fix` said the cron was rescheduled even when it wasn't.
 * Fixed: Deactivating left three scheduled tasks behind, and uninstalling left two.
@@ -60,5 +62,6 @@ Updated: 2026-11-19 by Claude (mai-analytics review fixes build session)
 - Every `mai_analytics_*` code string lives in `src/ErrorCode.php`, except `{slug}_invalid_request`, which `RestErrors` builds. `tests/test-error-codes.php` pins them all as literals.
 - maiexpowp switches views off on a 404 `rest_no_route`, so plugin code must never answer that code.
 - The WP test library turns `CREATE` and `DROP TABLE` into `TEMPORARY` forms before a test's own `query` filter sees them, and restores hooks after every test. Make queries fail with a `query` filter.
-- wpdb records every failed query in `$EZSQL_ERROR`, even with errors suppressed. dbDelta()'s DESCRIBE probe fails on a fresh install, and `create_table()` leaves it out on purpose.
+- wpdb records every failed query in `$EZSQL_ERROR`, even with errors suppressed. dbDelta()'s DESCRIBE probe fails on a fresh install, and `create_table()` leaves it out on purpose. Routes that run several queries count that list.
+- `%i` in `prepare()` needs WordPress 6.2. `tests/test-plain-text.php` refuses it, because on 6.2 and later it builds the same query.
 - The commit hook refuses private site and client names, so write "the shared production-copy site".
