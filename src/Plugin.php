@@ -69,8 +69,13 @@ class Plugin {
 	public static function activate(): void {
 		Cron::add_schedule_filter();
 
+		// create_table() has logged the database's reason. This says what it means.
 		if ( ! Database::create_table() ) {
-			mai_analytics_logger()->error( 'Activation could not set up the mai_analytics_buffer table. Views are not saved until it exists. Run "wp mai-analytics health --fix" to try again.' );
+			if ( Database::table_exists() ) {
+				mai_analytics_logger()->error( 'Activation could not update the mai_analytics_buffer table. Views are still saved, and the update will be tried again within an hour.' );
+			} else {
+				mai_analytics_logger()->error( 'Activation could not create the mai_analytics_buffer table. Views are not saved until it exists. Run "wp mai-analytics health --fix" to try again.' );
+			}
 		}
 
 		if ( ! wp_next_scheduled( 'mai_analytics_cron_sync' ) ) {
@@ -83,7 +88,7 @@ class Plugin {
 	/**
 	 * Runs on deactivation: clears every cron hook in Cron::HOOKS. Data stays.
 	 *
-	 * Public so a plugin that bundles this one, such as Mai Publisher, can call it.
+	 * Public so a plugin that bundles this one can call it from its own deactivation hook.
 	 *
 	 * @since 1.3.8
 	 *
