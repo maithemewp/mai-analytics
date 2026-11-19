@@ -837,6 +837,80 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 	}
 
 	/**
+	 * A run that stops before every batch still counts the app views of the
+	 * objects it didn't reach, once. The breaker stops this run. The ten-minute
+	 * cap takes the same path out of the loop.
+	 *
+	 * @since 1.3.8
+	 *
+	 * @return void
+	 */
+	public function test_stopped_run_counts_unreached_app_views_once(): void {
+		$calls = 0;
+
+		// batch_size 1: each post is its own batch. The first provider call
+		// fails and trips the breaker, so the run stops after one batch.
+		$this->register_mock_provider( 10, true, 1, function ( $paths, $windows ) use ( &$calls ) {
+			if ( 0 === $calls++ ) {
+				Sync::set_provider_error( 'simulated batch failure' );
+				return null;
+			}
+
+			return array_fill_keys( $paths, array_fill_keys( array_keys( $windows ), 10 ) );
+		} );
+
+		register_post_type( 'mai_doc', [ 'public' => true, 'has_archive' => true ] );
+
+		$posts = self::factory()->post->create_many( 3, [ 'post_status' => 'publish' ] );
+
+		foreach ( $posts as $post_id ) {
+			Database::insert_view( $post_id, 'post', 'app' );
+			Database::insert_view( $post_id, 'post', 'app' );
+			Database::insert_view( $post_id, 'post', 'web' );
+		}
+
+		// An archive sorts first (object_id 0), so it is the one batch reached.
+		Database::insert_view( 0, 'post_type', 'app', 'mai_doc' );
+		Database::insert_view( 0, 'post_type', 'web', 'mai_doc' );
+
+		ProviderSync::sync();
+
+		$this->assertSame( 1, $calls, 'The run stopped after its first batch.' );
+
+		foreach ( $posts as $post_id ) {
+			$this->assertSame( 2, (int) get_post_meta( $post_id, 'mai_views_app', true ) );
+			$this->assertSame( 2, (int) get_post_meta( $post_id, 'mai_views', true ) );
+		}
+
+		$this->assertSame( 1, get_option( 'mai_analytics_post_type_views_app' )['mai_doc'] ?? null );
+
+		// The next run reaches every post. Their app views are not counted again.
+		Sync::clear_provider_error();
+
+		// A minute on, past the boundary the first run wrote in this same second.
+		global $wpdb;
+
+		foreach ( $posts as $post_id ) {
+			$wpdb->insert( Database::get_table_name(), [
+				'object_id'   => $post_id,
+				'object_type' => 'post',
+				'object_key'  => '',
+				'viewed_at'   => gmdate( 'Y-m-d H:i:s', time() + MINUTE_IN_SECONDS ),
+				'source'      => 'web',
+			] );
+		}
+
+		ProviderSync::sync();
+
+		foreach ( $posts as $post_id ) {
+			$this->assertSame( 2, (int) get_post_meta( $post_id, 'mai_views_app', true ) );
+			$this->assertSame( 10, (int) get_post_meta( $post_id, 'mai_views_web', true ) );
+		}
+
+		$this->assertSame( 1, get_option( 'mai_analytics_post_type_views_app' )['mai_doc'] ?? null );
+	}
+
+	/**
 	 * The catchup event runs a provider sync. Its callback pointed at a method
 	 * that did not exist from 1.1.1 to 1.3.7, so every catchup fataled.
 	 *

@@ -204,8 +204,12 @@ class ProviderSync {
 			}
 		}
 
-		// Schedule catchup if batches remain.
+		// Schedule catchup if batches remain. The boundary still moves to
+		// $started_at below, so add the app views of the objects this run
+		// didn't reach now. They were read above, and the next run counts
+		// only views after $started_at, so each is counted once.
 		if ( $processed < count( $batches ) ) {
+			self::add_unreached_app_views( array_merge( ...array_slice( $batches, $processed ) ), $app_new );
 			self::schedule_catchup( time() + 60 );
 		}
 
@@ -474,6 +478,52 @@ class ProviderSync {
 		set_transient( 'mai_analytics_provider_syncing', 1, 5 * MINUTE_IN_SECONDS );
 
 		return ErrorCode::DatabaseError;
+	}
+
+	/**
+	 * Adds the new app views of objects a stopped run didn't reach.
+	 *
+	 * Only the app counts: their web counts come from the provider as all-time
+	 * totals, so the next sync of each object catches those up.
+	 *
+	 * @since 1.3.8
+	 *
+	 * @param array              $objects Buffer objects with object_id, object_type and object_key.
+	 * @param array<string, int> $app_new New app views since the last sync, keyed by object_ref().
+	 *
+	 * @return void
+	 */
+	private static function add_unreached_app_views( array $objects, array $app_new ): void {
+		$pt_views     = get_option( 'mai_analytics_post_type_views', [] );
+		$pt_views_web = get_option( 'mai_analytics_post_type_views_web', [] );
+		$pt_views_app = get_option( 'mai_analytics_post_type_views_app', [] );
+		$pt_dirty     = false;
+
+		foreach ( $objects as $obj ) {
+			$count = $app_new[ self::object_ref( $obj ) ] ?? 0;
+
+			if ( ! $count ) {
+				continue;
+			}
+
+			$id   = (int) $obj->object_id;
+			$type = $obj->object_type;
+			$key  = $obj->object_key;
+
+			if ( 'post_type' === $type ) {
+				$pt_views_app[ $key ] = ( $pt_views_app[ $key ] ?? 0 ) + $count;
+				$pt_views[ $key ]     = ( $pt_views_web[ $key ] ?? 0 ) + $pt_views_app[ $key ];
+				$pt_dirty             = true;
+			} else {
+				Stats::add_app( $id, $type, $count );
+				Stats::recompute_total( $id, $type );
+			}
+		}
+
+		if ( $pt_dirty ) {
+			update_option( 'mai_analytics_post_type_views', $pt_views, false );
+			update_option( 'mai_analytics_post_type_views_app', $pt_views_app, false );
+		}
 	}
 
 	/**
