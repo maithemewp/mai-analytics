@@ -21,13 +21,16 @@ Draft changelog lines, for `CHANGES.md` on the release commit only, with its ver
 * Fixed: Sync Now answered a server error for a setup problem.
 * Fixed: The first page load after activation could print a "translation loading triggered too early" notice.
 
+A five-agent review of the 25 unpushed commits was walked with Mike on 2026-11-19. Nothing critical. The fixes are in `docs/plans/2026-11-19-review-fixes.md`, not built yet. Decided: the 404 stays `mai_analytics_not_found` (the whole stack moves to `{slug}_not_found`), `provider_disabled` becomes `mai_analytics_provider_required`, and the older v1.3.7 issues get fixed in the same branch.
+
 ## Next
-1. Mike says whether to push `develop`. It also carries the spec and plan commits that were already ahead of `origin/develop`.
-2. Mike walks the code names. A rename changes only the `ErrorCode` case values.
+1. Build `docs/plans/2026-11-19-review-fixes.md` in a worktree on `feat/review-fixes`. Pushing that branch is fine. Merging it into `develop` needs mai-coordinator's grant.
+2. Mike says whether to push `develop`. It also carries the spec and plan commits that were already ahead of `origin/develop`.
 3. Mike decides the point release after the whole stack passes its tests.
 
 ## Blocked / waiting on
 - Mike's yes to push `develop`.
+- The review fixes are planned, not built.
 
 ## Verify
 - `WP_TESTS_DIR=/tmp/wordpress-tests-lib vendor/bin/phpunit` after `composer install`. Read the Status of the shared production-copy site's `SITE-LOCK.md` and `uptime` first. Never run it during a device run or with the 1-minute load at 10 or more.
@@ -52,6 +55,7 @@ Why `installed.php` stays tracked: mai-package-loader, which loads the bundled m
 - For Tasks 1 to 4 and 6 to 8 the code was written before the tests ran, because a device run on the shared site blocked every suite for about 50 minutes. Task 5 went red, then green. All 256 tests pass at 7b1270b.
 - The shared production-copy site loads the main checkout. Keep it on `develop` with docs-only commits. Code work goes in a worktree on a feature branch.
 - Mai Publisher bundles this plugin. A site running only the bundled copy gets fixes when Mai Publisher ships a new bundled version, and never gets activation, deactivation or uninstall fixes. `Plugin::deactivate()` is public so Mai Publisher can call it.
+- mai-coordinator is a Claude Desktop session in the shared production-copy site's folder. If you can't message it, ask Mike to relay. Never edit its `SITE-LOCK.md`.
 - Every `mai_analytics_*` code string lives only in `src/ErrorCode.php`. Tests use `ErrorCode::X->value`.
 - maiexpowp switches views off on 404 `rest_no_route`, so never answer that code from plugin code.
 - The WordPress test library turns `CREATE` and `DROP TABLE` in a test into `TEMPORARY` forms, and restores hooks after every test. Fail queries with a `query` filter, and never guard a hook with a static "already added" flag.
