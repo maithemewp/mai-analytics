@@ -163,6 +163,11 @@ class Cron {
 	/**
 	 * Adds a custom 15-minute cron schedule.
 	 *
+	 * The label is translated only once after_setup_theme has run. Every
+	 * wp_schedule_event() call runs this filter, and the update checker makes one
+	 * on plugins_loaded the first time it loads. Translating that early makes
+	 * core warn that the domain loaded too early (_load_textdomain_just_in_time).
+	 *
 	 * @param array $schedules The existing WordPress cron schedules.
 	 *
 	 * @return array The modified schedules with the 15-minute interval added.
@@ -170,7 +175,7 @@ class Cron {
 	public function add_schedule( array $schedules ): array {
 		$schedules['mai_analytics_15min'] = [
 			'interval' => 15 * MINUTE_IN_SECONDS,
-			'display'  => __( 'Every 15 Minutes', 'mai-analytics' ),
+			'display'  => did_action( 'after_setup_theme' ) ? __( 'Every 15 Minutes', 'mai-analytics' ) : 'Every 15 Minutes',
 		];
 
 		return $schedules;

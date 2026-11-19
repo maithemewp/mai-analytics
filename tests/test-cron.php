@@ -29,6 +29,55 @@ class Test_Cron extends WP_UnitTestCase {
 		$this->assertEquals( 15 * MINUTE_IN_SECONDS, $schedules['mai_analytics_15min']['interval'] );
 	}
 
+	/**
+	 * Before after_setup_theme, the label is not translated, so core does not warn
+	 * about loading the domain too early. The update checker schedules its event
+	 * on plugins_loaded, which runs this filter that early.
+	 */
+	public function test_schedule_label_untranslated_before_after_setup_theme(): void {
+		global $wp_actions;
+
+		$cron          = new Cron();
+		$translations  = 0;
+		$count         = function ( $translation ) use ( &$translations ) {
+			$translations++;
+			return $translation;
+		};
+		$saved_actions = $wp_actions;
+
+		add_filter( 'gettext_mai-analytics', $count );
+		unset( $wp_actions['after_setup_theme'] );
+
+		try {
+			$schedules = $cron->add_schedule( [] );
+		} finally {
+			$wp_actions = $saved_actions;
+		}
+
+		$this->assertSame( 'Every 15 Minutes', $schedules['mai_analytics_15min']['display'] );
+		$this->assertSame( 0, $translations );
+	}
+
+	/**
+	 * After after_setup_theme, the label goes through the plugin's text domain.
+	 */
+	public function test_schedule_label_translated_after_after_setup_theme(): void {
+		$cron         = new Cron();
+		$translations = 0;
+		$count        = function ( $translation ) use ( &$translations ) {
+			$translations++;
+			return $translation;
+		};
+
+		add_filter( 'gettext_mai-analytics', $count );
+
+		$schedules = $cron->add_schedule( [] );
+
+		$this->assertGreaterThan( 0, did_action( 'after_setup_theme' ) );
+		$this->assertSame( 'Every 15 Minutes', $schedules['mai_analytics_15min']['display'] );
+		$this->assertSame( 1, $translations );
+	}
+
 	public function test_cron_skips_recent_sync(): void {
 		// Set the marker a bit into the future (not just "now") so the view
 		// inserted below is unambiguously <= the sync boundary even if a
