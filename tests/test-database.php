@@ -88,6 +88,13 @@ class Test_Database extends WP_UnitTestCase {
 		$this->assertSame( MAI_ANALYTICS_DB_VERSION, get_option( Database::DB_VERSION_OPTION ) );
 	}
 
+	public function test_create_clears_an_earlier_retry_wait(): void {
+		set_transient( Database::RETRY_TRANSIENT, 1, HOUR_IN_SECONDS );
+
+		$this->assertTrue( Database::create_table() );
+		$this->assertFalse( get_transient( Database::RETRY_TRANSIENT ) );
+	}
+
 	public function test_failed_create_does_not_record_version(): void {
 		delete_option( Database::DB_VERSION_OPTION );
 		delete_transient( Database::RETRY_TRANSIENT );

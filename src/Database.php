@@ -115,6 +115,9 @@ class Database {
 
 		update_option( self::DB_VERSION_OPTION, MAI_ANALYTICS_DB_VERSION );
 
+		// A later version bump shouldn't wait out an hour left by an earlier failure.
+		delete_transient( self::RETRY_TRANSIENT );
+
 		return true;
 	}
 
