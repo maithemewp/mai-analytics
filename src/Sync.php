@@ -27,7 +27,8 @@ class Sync {
 		// finish closes the race window where buffer rows inserted during sync
 		// would otherwise fall behind a "now-at-finish" boundary and be missed.
 		$started_at = time();
-		$last_sync  = (int) get_option( 'mai_analytics_synced', 0 );
+		$stored     = get_option( 'mai_analytics_synced', false );
+		$last_sync  = (int) $stored;
 		update_option( 'mai_analytics_synced', $started_at, false );
 
 		global $wpdb;
@@ -52,6 +53,22 @@ class Sync {
 				$last_sync_date
 			)
 		);
+
+		// The views since the last sync could not be read. Put the boundary
+		// back, so the next run counts them, and stop before anything changes.
+		if ( $wpdb->last_error ) {
+			mai_analytics_logger()->error( 'Sync could not read new views from the buffer: ' . $wpdb->last_error . '. They will be counted on the next run.' );
+
+			if ( false === $stored ) {
+				delete_option( 'mai_analytics_synced' );
+			} else {
+				update_option( 'mai_analytics_synced', $stored, false );
+			}
+
+			delete_transient( 'mai_analytics_syncing' );
+
+			return;
+		}
 
 		if ( $new_views ) {
 			$pt_views     = get_option( 'mai_analytics_post_type_views', [] );

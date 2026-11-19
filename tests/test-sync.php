@@ -27,6 +27,40 @@ class Test_Sync extends WP_UnitTestCase {
 		$this->assertEquals( 3, (int) get_post_meta( $post_id, 'mai_views', true ) );
 	}
 
+	public function test_failed_views_query_counts_them_next_run(): void {
+		global $wpdb;
+
+		$post_id  = self::factory()->post->create();
+		$previous = time() - HOUR_IN_SECONDS;
+
+		update_option( 'mai_analytics_synced', $previous, false );
+		Database::insert_view( $post_id, 'post' );
+		Database::insert_view( $post_id, 'post' );
+
+		$table      = Database::get_table_name();
+		$suppressed = $wpdb->suppress_errors( true );
+		$break      = function ( $query ) use ( $table ) {
+			if ( str_contains( $query, 'COUNT(*) as cnt' ) ) {
+				return str_replace( $table, 'mai_analytics_missing_table', $query );
+			}
+
+			return $query;
+		};
+
+		add_filter( 'query', $break );
+		Sync::sync();
+		remove_filter( 'query', $break );
+		$wpdb->suppress_errors( $suppressed );
+
+		$this->assertSame( $previous, (int) get_option( 'mai_analytics_synced' ) );
+		$this->assertFalse( get_transient( 'mai_analytics_syncing' ) );
+		$this->assertSame( '', get_post_meta( $post_id, 'mai_views', true ) );
+
+		Sync::sync();
+
+		$this->assertSame( 2, (int) get_post_meta( $post_id, 'mai_views', true ) );
+	}
+
 	public function test_sync_increments_existing_views(): void {
 		$post_id = self::factory()->post->create();
 
