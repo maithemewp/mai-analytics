@@ -36,7 +36,9 @@ class Database {
 	/**
 	 * Checks whether the buffer table exists.
 	 *
-	 * Uses the same unescaped `SHOW TABLES LIKE` as maybe_migrate_old_table().
+	 * Uses the same `SHOW TABLES LIKE` as maybe_migrate_old_table(). Neither
+	 * passes the name through esc_like(), so `_` matches any character, which is
+	 * harmless for this name. A test's `query` filter matches the plain name.
 	 *
 	 * @since 1.3.8
 	 *
@@ -54,7 +56,8 @@ class Database {
 	 *
 	 * Records the db version only when the table exists afterwards and none of
 	 * dbDelta()'s queries failed. Otherwise it logs an error and sets
-	 * RETRY_TRANSIENT for an hour.
+	 * RETRY_TRANSIENT for an hour. A failed DESCRIBE doesn't count, since
+	 * dbDelta() runs one before it creates a missing table.
 	 *
 	 * @since 1.3.8 Returns whether the table is in place and up to date.
 	 *
@@ -131,7 +134,9 @@ class Database {
 	}
 
 	/**
-	 * Checks if the database needs updating and runs create_table if so.
+	 * Runs the legacy-table migration, then create_table() when the stored db
+	 * version is behind, unless a failed attempt in the last hour set
+	 * RETRY_TRANSIENT.
 	 *
 	 * @return void
 	 */
@@ -227,7 +232,8 @@ class Database {
 			return;
 		}
 
-		// Migrate DB version from the Mai Views era, only once the new table exists.
+		// Copy the Mai Views-era version only when the table exists. Otherwise
+		// create_table() records the current version itself.
 		$old_version = get_option( 'mai_views_db_version', '' );
 
 		if ( $old_version && self::table_exists() ) {

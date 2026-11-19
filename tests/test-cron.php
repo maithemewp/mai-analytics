@@ -170,7 +170,7 @@ class Test_Cron extends WP_UnitTestCase {
 			wp_clear_scheduled_hook( $hook );
 		}
 
-		// A real activation runs before Plugin::init(), so the 15-minute schedule is unknown.
+		// A real activation runs after plugins_loaded, so Plugin::init() never ran and the 15-minute schedule is unknown.
 		remove_all_filters( 'cron_schedules' );
 
 		Plugin::activate();

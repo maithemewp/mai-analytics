@@ -83,7 +83,7 @@ class Settings {
 	 *     @type int    $matomo_site_id Matomo site ID.
 	 *     @type string $data_source    The active provider key (disabled|self_hosted|matomo|site_kit|jetpack).
 	 *     @type int    $views_years    Years of view history retained.
-	 *     @type int    $sync_interval  Sync cadence in minutes.
+	 *     @type int    $sync_interval  The stored interval in minutes. It does not change the 15-minute cron.
 	 *     @type int    $trending_days  Trending window in days (mapped from trending_window).
 	 * }
 	 */

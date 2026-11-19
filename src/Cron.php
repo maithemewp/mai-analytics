@@ -24,7 +24,8 @@ class Cron {
 	/**
 	 * Every cron hook the plugin schedules. Deactivation clears all of them.
 	 * uninstall.php writes the same names out, because it runs without the
-	 * plugin's autoloader.
+	 * plugin's autoloader. The bundled update checker clears its own hook, so
+	 * it isn't listed here.
 	 *
 	 * @since 1.3.8
 	 */
@@ -55,7 +56,8 @@ class Cron {
 	}
 
 	/**
-	 * Registers cron schedule, sync action, catchup action, and self-healing admin check.
+	 * Registers the cron schedule, the sync, catchup and prune actions, and the
+	 * self-healing admin check.
 	 */
 	public function __construct() {
 		add_filter( 'cron_schedules', [ $this, 'add_schedule' ] );

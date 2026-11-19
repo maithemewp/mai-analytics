@@ -86,7 +86,7 @@ class CLI {
 			}
 
 			if ( $cron_failed ) {
-				// wp_schedule_event() returns false, or a WP_Error, when the event can't be saved.
+				// Anything but true means the event wasn't saved.
 				if ( true === wp_schedule_event( time(), 'mai_analytics_15min', 'mai_analytics_cron_sync' ) ) {
 					$fixed++;
 					WP_CLI::log( WP_CLI::colorize( "  %C\u{2192} Fixed: rescheduled cron%n" ) );

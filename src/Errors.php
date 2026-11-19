@@ -27,8 +27,11 @@ final class Errors {
 	 *
 	 * @param ErrorCode $code    The error code.
 	 * @param string    $message The error message.
-	 * @param array     $data    Extra data. `status` is always set from the code.
-	 * @param array     $legacy  Top-level fields kept for existing callers.
+	 * @param array     $data    Extra data. `status` is always set from the code. A
+	 *                           429 or 503 also gets `retry_after` 1 and a
+	 *                           `Retry-After: 1` header.
+	 * @param array     $legacy  Top-level fields kept for existing callers. They
+	 *                           never override `code`, `message` or `data`.
 	 *
 	 * @return WP_REST_Response
 	 */

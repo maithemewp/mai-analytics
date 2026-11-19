@@ -812,10 +812,14 @@ class AdminRestApi {
 	/**
 	 * Searches authors or terms by name for the autocomplete filters.
 	 *
-	 * @param WP_REST_Request $request The incoming request with type, taxonomy, and search params.
+	 * @since 1.3.8 Takes page and per_page, sends the total headers, and answers
+	 *              503 when a query fails.
+	 *
+	 * @param WP_REST_Request $request The incoming request with type, taxonomy, search, page and per_page params.
 	 *
 	 * @return WP_REST_Response Up to `per_page` matching results (50 by default), with
-	 *                          X-WP-Total and X-WP-TotalPages headers.
+	 *                          X-WP-Total and X-WP-TotalPages headers, or 503
+	 *                          mai_analytics_database_error when a query fails.
 	 */
 	public function search( WP_REST_Request $request ): WP_REST_Response {
 		global $wpdb;
@@ -1063,6 +1067,9 @@ class AdminRestApi {
 	 *               total_iterated?: int (default 0) }
 	 *   Response: { batch, total, updated, iterated, total_updated,
 	 *               total_iterated, done, next_cursor, message? }
+	 *   Error   : 501 mai_analytics_provider_required in self-hosted mode, or
+	 *             502 mai_analytics_provider_request_failed with the progress
+	 *             fields above, each with code, message and data.status.
 	 *
 	 * `iterated` and `updated` diverge when a batch's provider call fails:
 	 * iterated still counts the objects walked over, updated only counts
@@ -1070,9 +1077,11 @@ class AdminRestApi {
 	 * client report honest progress instead of treating preserved-meta
 	 * batches as successes.
 	 *
+	 * @since 1.3.8 Errors carry code, message and data.status.
+	 *
 	 * @param WP_REST_Request $request The incoming request.
 	 *
-	 * @return WP_REST_Response Progress payload for the client to act on.
+	 * @return WP_REST_Response Progress payload for the client to act on, or a 501 or 502.
 	 */
 	public function warm( WP_REST_Request $request ): WP_REST_Response {
 		if ( 'self_hosted' === Settings::get( 'data_source' ) ) {

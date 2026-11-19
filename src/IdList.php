@@ -8,7 +8,7 @@ namespace Mai\Analytics;
 defined( 'ABSPATH' ) || die;
 
 /**
- * Checks comma-separated ID lists against the fleet's 100-ID limit.
+ * Checks comma-separated ID lists against the 100-ID limit in maiexpowp's CONVENTIONS.md.
  *
  * Only the count is checked. How each entry is parsed stays with the route.
  *

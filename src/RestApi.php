@@ -539,6 +539,8 @@ class RestApi {
 	/**
 	 * Validates that an object exists and is publicly viewable.
 	 *
+	 * @since 1.3.8 Returns null when the check for a user could not be read.
+	 *
 	 * @param int    $id   The object ID.
 	 * @param string $type The object type: 'post', 'term', or 'user'.
 	 *
@@ -569,7 +571,8 @@ class RestApi {
 	}
 
 	/**
-	 * Checks whether a post type's archive may be counted and shown.
+	 * Checks whether a post type is publicly viewable (is_post_type_viewable()),
+	 * which is the rule for counting and showing its archive.
 	 *
 	 * @since 1.3.8
 	 *
@@ -586,8 +589,10 @@ class RestApi {
 	/**
 	 * Returns the IDs from a list that pass the visibility rule, checked in bulk.
 	 *
-	 * Primes only what the checks read, so the five-fold over-fetch loads no
-	 * meta or terms. prime_for_output() loads those for the rows returned.
+	 * Primes only what the checks read, so this loads no meta or terms for the
+	 * five-fold over-fetch. A taxonomy filter in get_trending(), which runs
+	 * first, does load terms. prime_for_output() loads the rest for the rows
+	 * returned.
 	 *
 	 * @since 1.3.8
 	 *

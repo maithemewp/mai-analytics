@@ -194,7 +194,7 @@ Every route lives under `/wp-json/mai-analytics/v1`.
 
 ### Admin routes
 
-- `GET /admin/top/posts`, `/admin/top/terms`, `/admin/top/authors`, `/admin/top/archives`, `/admin/filters` and `/admin/search` need the `edit_others_posts` capability. `/admin/search` takes `page` and `per_page` (at most 100) and sends `X-WP-Total` and `X-WP-TotalPages`.
+- `GET /admin/top/posts`, `/admin/top/terms`, `/admin/top/authors`, `/admin/top/archives`, `/admin/filters` and `/admin/search` need the `edit_others_posts` capability. The `/admin/top/*` routes take `page` and `per_page` (default 25, at most 100), and their `term_id` and `author` lists take at most 100 IDs. `/admin/search` takes `page` and `per_page` (default 50, at most 100) and sends `X-WP-Total` and `X-WP-TotalPages`.
 - `POST /admin/sync-now`, `/admin/warm`, `/admin/health` and `/admin/dismiss-error` need `manage_options`.
 
 ### Errors
@@ -202,7 +202,7 @@ Every route lives under `/wp-json/mai-analytics/v1`.
 Every error carries `code`, `message` and `data.status`. The plugin's own errors on the view routes (403, 404 and 503) also keep `"success": false`. Argument errors (400) and permission errors don't. A Warm provider error (502) keeps the progress fields.
 
 - **400 `mai_analytics_invalid_request`:** an argument is missing or wrong. A caller who fails the permission check gets core's 401 or 403 `rest_forbidden` first.
-- **403 `mai_analytics_bot`:** in self-hosted mode, a view from a bot user agent.
+- **403 `mai_analytics_bot`:** in self-hosted mode with bot filtering on (the default), a view from a bot user agent.
 - **404 `mai_analytics_not_found`:** the item is missing or not publicly viewable.
 - **429 `mai_analytics_busy`:** Sync Now found another sync running. The response sends `Retry-After: 1`.
 - **501 `mai_analytics_provider_unavailable`:** Sync Now has no working provider set up.
@@ -222,7 +222,7 @@ Every page load outputs a single inline script in `wp_footer`:
 
 `navigator.sendBeacon` is fire-and-forget. It needs no response, doesn't block, and works during page unload. The visitor never waits. On cached pages (Varnish, nginx, etc.), PHP doesn't run at all. Only the beacon JS fires from the browser.
 
-The beacon hits a REST endpoint that does **one INSERT** into a buffer table (`wp_mai_analytics_buffer`). Before it, the endpoint reads the post, term or user row to check that it is publicly viewable, and in provider mode it checks whether the item is already queued. No meta reads, no meta writes, no aggregation.
+The beacon hits a REST endpoint that does **one INSERT** into a buffer table (`wp_mai_analytics_buffer`). Before it, the endpoint checks that the item is publicly viewable (for an author, that they have a publicly viewable post). For a web view in provider mode, it also checks whether the item is already queued. No meta reads, no meta writes, no aggregation.
 
 Logged-in users with `edit_posts` capability are excluded. Bots are filtered by user-agent. Non-production environments are excluded automatically.
 
@@ -295,7 +295,7 @@ Both `Sync::sync()` and `ProviderSync::sync()` have transient-based concurrency 
 ### Why this scales
 
 - **Page load: zero DB writes.** Cached pages serve the beacon script without PHP.
-- **Beacon POST: one INSERT.** No locks, no contention, no cascading writes.
+- **Beacon POST: a viewability check and one INSERT.** No locks, no contention, no cascading writes.
 - **Meta writes: batched every 15 min.** One process, no race conditions.
 - **Sync runs outside the request lifecycle.** It runs in cron or a shutdown callback, so visitors never wait.
 - **Trending is a COUNT, not a running total.** Fast indexed range scan on the buffer table.
@@ -304,7 +304,7 @@ At 5K concurrent users all loading a page in the same second, that's 5K INSERTs.
 
 ### Rate limiting and DDoS
 
-Mai Analytics does not implement application-level rate limiting. The beacon endpoint is intentionally lightweight (one INSERT, ~1ms) to minimize server load, and adding per-request checks would negate that.
+Mai Analytics does not implement application-level rate limiting. The beacon endpoint is intentionally lightweight (a viewability check and one INSERT) to minimize server load, and adding per-request checks would negate that.
 
 **In provider mode**, web views keep at most one buffer row per item per sync cycle, however often the endpoint is hit. App views are always saved, so the advice below applies to them too.
 
