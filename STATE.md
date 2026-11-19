@@ -1,11 +1,41 @@
 # State
-Updated: 2026-11-19 by Claude (mai-analytics build session)
+Updated: 2026-11-19 by Claude (mai-analytics build session, handing over to a fresh session)
 
 ## Now
-The alignment pass is built, plan Tasks 0 to 8, one commit each, plus the fixes from an independent review: the db retry transient is read only when the version is behind, trending primes meta and terms only for the rows it returns, attachments stay uncounted (mai-coordinator's decision), and the author rule uses the post rule's viewable sets. On top of that, 7aeb681 stops the "translation loading triggered too early" notice: the update checker schedules its event on plugins_loaded the first time it loads, which ran the translated cron label before after_setup_theme (present since v1.3.7). The suite passes: 267 tests, against a develop baseline of 205. develop is fast-forwarded to it locally, with mai-coordinator's grant, and not pushed. Nothing is versioned or released. Version stays 1.3.7.
+- The 2026-11-18 alignment pass is built, reviewed and merged into local `develop`. The suite passes with 267 tests; the develop baseline was 205. Version stays 1.3.7, and nothing is versioned or released.
+- A five-agent review of the unpushed commits found nothing critical. Mike walked it on 2026-11-19. Its fixes are planned and **not built**.
+- Mike's decisions from the walk:
+  - The 404 stays `mai_analytics_not_found`, because the whole stack moves to `{slug}_not_found` for 404 and keeps `*_invalid_*` for 400.
+  - `provider_disabled` becomes `mai_analytics_provider_required`.
+  - The older v1.3.7 issues get fixed in the same branch.
+- Branches (`origin` is GitHub maithemewp/mai-analytics):
+  - **`develop`:** the main checkout `~/Plugins/mai-analytics`, ahead of `origin/develop` and not pushed. Its head is the commit that wrote this file.
+  - **`main`:** bf3ba96, Release 1.3.7, on origin.
+  - **Merged into `develop` and on origin:** `feat/alignment` e52b825, `fix/cron-label-translation` 7aeb681, `feat/view-stats-lifecycle`, `fix/provider-null-contract` and `fix/site-kit-owner-bound-client`.
+  - **`settings` and `trending`:** old local-only branches from 2023, not part of this work. Leave them alone.
+  - There are no worktrees. `feat/review-fixes` doesn't exist yet.
 
-Draft changelog lines, for `CHANGES.md` on the release commit only, with its version and date:
+## Next
+1. Build the review fixes. Paste `docs/plans/2026-11-19-review-fixes-build-prompt.md` into a fresh session. It builds `docs/plans/2026-11-19-review-fixes.md` in a worktree on `feat/review-fixes`.
+2. Get the coordinator's grant (through Mike) to merge `feat/review-fixes` into `develop`.
+3. Release only when Mike asks, after the whole stack passes. There are no tags and no tag talk before then.
 
+To catch up, read these in order: `AGENTS.md`, `~/LocalPackages/maiexpowp/CONVENTIONS.md`, `docs/specs/2026-11-18-alignment.md`, `docs/plans/2026-11-18-alignment.md`, `docs/plans/2026-11-19-review-fixes.md`.
+
+## Blocked / waiting on
+- Mike: "Push develop to origin now, or wait?" Pushing ships nothing, because the updater ships from `main`. No session has his yes yet.
+- The coordinator's grant for any merge into `develop`. The coordinator keeps its files (`STATE.md`, `SITE-LOCK.md` and `ALIGNMENT.md`) in the shared production-copy site's folder. Never edit them. If you can't message the coordinator, ask Mike to relay.
+
+## Verify
+- Before any suite, read the Status section of that folder's `SITE-LOCK.md`. Don't run during a claimed device run, or with `uptime` showing a 1-minute load of 10 or more. Never use the site itself without a claim.
+- Run the suite in a worktree after `composer install`: `WP_TESTS_DIR=/tmp/wordpress-tests-lib vendor/bin/phpunit`.
+- Then restore `vendor/`:
+  1. `composer install --no-dev`
+  2. `git checkout -- vendor/composer/installed.json vendor/composer/installed.php`
+  3. `php vendor/bin/deployable-guard check --root=.`, from a checkout that still has the guard. It must print "OK: committed autoloader is deployable as-is."
+- Commit no `vendor/` change on a feature branch. A release commits the no-dev `installed.php` and `installed.json`, which mai-package-loader reads at runtime (`vendor/maithemewp/mai-package-loader/init.php:603`).
+
+## Draft changelog, for `CHANGES.md` on the release commit only
 * Changed: [Developers] REST errors now carry a mai_analytics_* code and data.status. View errors keep "success": false and admin errors keep "message".
 * Changed: [Developers] Four error statuses changed: Sync Now answers 501 for a setup problem and 502 for a provider failure (was 500), Warm answers 501 in self-hosted mode (was 400) and 502 for a provider failure (was 500), and a view that fails to save answers 503 with Retry-After (was 200).
 * Changed: [Developers] Core's argument errors answer 400 mai_analytics_invalid_request, after the permission check, so a signed-out request still gets 401.
@@ -20,43 +50,13 @@ Draft changelog lines, for `CHANGES.md` on the release commit only, with its ver
 * Fixed: The database version could be recorded when the table had not been created.
 * Fixed: Sync Now answered a server error for a setup problem.
 * Fixed: The first page load after activation could print a "translation loading triggered too early" notice.
-
-A five-agent review of the 25 unpushed commits was walked with Mike on 2026-11-19. Nothing critical. The fixes are in `docs/plans/2026-11-19-review-fixes.md`, not built yet. Decided: the 404 stays `mai_analytics_not_found` (the whole stack moves to `{slug}_not_found`), `provider_disabled` becomes `mai_analytics_provider_required`, and the older v1.3.7 issues get fixed in the same branch.
-
-## Next
-1. Build `docs/plans/2026-11-19-review-fixes.md` in a worktree on `feat/review-fixes`. Pushing that branch is fine. Merging it into `develop` needs mai-coordinator's grant.
-2. Mike says whether to push `develop`. It also carries the spec and plan commits that were already ahead of `origin/develop`.
-3. Mike decides the point release after the whole stack passes its tests.
-
-## Blocked / waiting on
-- Mike's yes to push `develop`.
-- The review fixes are planned, not built.
-
-## Verify
-- `WP_TESTS_DIR=/tmp/wordpress-tests-lib vendor/bin/phpunit` after `composer install`. Read the Status of the shared production-copy site's `SITE-LOCK.md` and `uptime` first. Never run it during a device run or with the 1-minute load at 10 or more.
-- Afterwards put `vendor/` back with `composer install --no-dev`, then `git checkout -- vendor/composer/installed.json vendor/composer/installed.php`, because the committed copies were written by a dev install. Then `php vendor/bin/deployable-guard check --root=.`.
-
-## Vendor: dev install against no-dev install
-Checked 2026-11-18 on this branch. `.gitignore` tracks only `vendor/autoload.php`, `vendor/composer/`, `vendor/maithemewp/` and `vendor/yahnis-elsts/`.
-
-- **Committed today:** the four autoloader files (`vendor/composer/autoload_static.php`, `autoload_psr4.php`, `autoload_classmap.php`, `autoload_files.php`) are production-only, with no dev package in them. `vendor/composer/installed.php` and `installed.json` are dev-install metadata: `'dev' => true` and every dev package listed (phpunit, yoast polyfills, deployable-guard, sebastian/*). These two are Composer's install record, read by `Composer\InstalledVersions`, not by class loading.
-- **`composer install` (with dev)** rewrites all four autoloader files to add the dev packages, and changes `installed.php` (its reference hash). That is the state that must never be committed.
-- **`composer install --no-dev`** leaves the four autoloader files equal to the committed ones, and rewrites `installed.php` and `installed.json` to the production record (`'dev' => false`, no dev packages).
-
-What a release must do:
-1. Run `composer install --no-dev` in the release checkout.
-2. Run `git status --short vendor`. Only `vendor/composer/installed.php` and `installed.json` may show, and only until the TODO decision below is made. Any `autoload_*.php` in that list means a dev autoloader. Stop.
-3. Run `php vendor/bin/deployable-guard check --root=.` from a checkout that still has the guard (the no-dev install removes it from this one). It must print "OK: committed autoloader is deployable as-is."
-4. Commit the no-dev `vendor/composer/installed.php` and `installed.json` on the release commit. Decided by mai-coordinator, 2026-11-18: keep both tracked, in their no-dev form. On a feature branch, restore them with `git checkout -- vendor/composer/installed.json vendor/composer/installed.php` and commit no `vendor/` change.
-
-Why `installed.php` stays tracked: mai-package-loader, which loads the bundled mai-logger, reads it at runtime (`vendor/maithemewp/mai-package-loader/init.php:603`). It takes each `maithemewp/*` copy and its install path from the record (`:647-654`), and a newer copy of the loader's version from it too (`:660-664`). Without the file the loader still works: it lists `vendor/maithemewp/*/` on disk instead (`:605-628`). But then it can only see a newer loader copy that ships `takeover.php`, and misses any package installed outside the default path.
+* The review fixes will add lines of their own.
 
 ## Gotchas
-- For Tasks 1 to 4 and 6 to 8 the code was written before the tests ran, because a device run on the shared site blocked every suite for about 50 minutes. Task 5 went red, then green. All 256 tests pass at 7b1270b.
-- The shared production-copy site loads the main checkout. Keep it on `develop` with docs-only commits. Code work goes in a worktree on a feature branch.
-- Mai Publisher bundles this plugin. A site running only the bundled copy gets fixes when Mai Publisher ships a new bundled version, and never gets activation, deactivation or uninstall fixes. `Plugin::deactivate()` is public so Mai Publisher can call it.
-- mai-coordinator is a Claude Desktop session in the shared production-copy site's folder. If you can't message it, ask Mike to relay. Never edit its `SITE-LOCK.md`.
-- Every `mai_analytics_*` code string lives only in `src/ErrorCode.php`. Tests use `ErrorCode::X->value`.
-- maiexpowp switches views off on 404 `rest_no_route`, so never answer that code from plugin code.
-- The WordPress test library turns `CREATE` and `DROP TABLE` in a test into `TEMPORARY` forms, and restores hooks after every test. Fail queries with a `query` filter, and never guard a hook with a static "already added" flag.
-- `register_post_status()` makes a status internal unless one of `public`, `internal`, `protected` or `private` is given (`wp-includes/post.php:1486-1488`), so a status with only `publicly_queryable` is not viewable.
+- The shared production-copy site loads this checkout through a symlink. Keep it on `develop` with docs-only commits, and do code work in a worktree on a feature branch.
+- Mai Publisher bundles this plugin, and its releases are David's. A site running only the bundled copy never gets the activation, deactivation or uninstall fixes. `Plugin::deactivate()` is public so Mai Publisher can call it.
+- Every `mai_analytics_*` code string lives only in `src/ErrorCode.php`, apart from `{slug}_invalid_request`, which `RestErrors` builds.
+- maiexpowp switches views off on a 404 `rest_no_route`, so plugin code must never answer that code.
+- The WP test library turns `CREATE` and `DROP TABLE` into `TEMPORARY` forms and restores hooks after every test. Make queries fail with a `query` filter, and never guard a hook with a static flag.
+- `register_post_status()` makes a status internal unless it is given `public`, `internal`, `protected` or `private` (`wp-includes/post.php:1486-1488`).
+- The commit hook refuses private site and client names, so write "the shared production-copy site".
