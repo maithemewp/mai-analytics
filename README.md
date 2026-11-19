@@ -306,7 +306,7 @@ At 5K concurrent users all loading a page in the same second, that's 5K INSERTs.
 
 Mai Analytics does not implement application-level rate limiting. The beacon endpoint is intentionally lightweight (one INSERT, ~1ms) to minimize server load, and adding per-request checks would negate that.
 
-**In provider mode**, the dedup logic already prevents abuse. It keeps only one buffer row per object per sync cycle, regardless of how many times the endpoint is hit.
+**In provider mode**, web views keep at most one buffer row per item per sync cycle, however often the endpoint is hit. App views are always saved, so the advice below applies to them too.
 
 **In self-hosted mode**, the bot filter blocks known user-agents, but a determined attacker could inflate counts by looping POST requests. This is an infrastructure concern:
 
