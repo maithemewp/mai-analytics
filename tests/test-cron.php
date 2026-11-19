@@ -21,6 +21,19 @@ class Test_Cron extends WP_UnitTestCase {
 		parent::tearDown();
 	}
 
+	public function test_hooks_are_the_known_list(): void {
+		// Literal names, so a renamed or dropped hook can't leave events behind unnoticed.
+		$this->assertSame(
+			[
+				'mai_analytics_cron_sync',
+				'mai_analytics_provider_catchup',
+				'mai_analytics_prune_trending',
+				'mai_analytics_prune_trending_now',
+			],
+			Cron::HOOKS
+		);
+	}
+
 	public function test_custom_schedule_registered(): void {
 		new Cron();
 		$schedules = wp_get_schedules();

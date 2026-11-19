@@ -443,6 +443,17 @@ class Test_REST_API extends WP_UnitTestCase {
 		$this->assertSame( [ $author ], array_column( $this->trending( 'user', 10 ), 'id' ) );
 	}
 
+	public function test_trending_drops_hidden_post_type_archives(): void {
+		register_post_type( 'mai_hidden_type', [ 'public' => false ] );
+
+		Database::insert_view( 0, 'post_type', 'web', 'post' );
+		Database::insert_view( 0, 'post_type', 'web', 'mai_hidden_type' );
+		Database::insert_view( 0, 'post_type', 'web', 'mai_hidden_type' );
+		Database::insert_view( 0, 'post_type', 'web', 'mai_never_registered' );
+
+		$this->assertSame( [ 'post' ], array_column( $this->trending( 'post_type', 10 ), 'post_type' ) );
+	}
+
 	/**
 	 * Views a batch of new posts, each fewer times than any earlier one.
 	 *

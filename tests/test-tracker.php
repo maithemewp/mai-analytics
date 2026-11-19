@@ -97,6 +97,70 @@ class Test_Tracker extends WP_UnitTestCase {
 		$this->assertSame( '', $this->beacon_for_global_post( $loose ) );
 	}
 
+	public function test_beacon_for_blog_page(): void {
+		$this->assertStringContainsString( 'view\/post_type\/post', $this->beacon_at( home_url( '/' ) ) );
+	}
+
+	public function test_beacon_for_post_type_archive(): void {
+		register_post_type( 'mai_archived', [ 'public' => true, 'has_archive' => true ] );
+		self::factory()->post->create( [ 'post_type' => 'mai_archived', 'post_status' => 'publish' ] );
+
+		$this->assertStringContainsString( 'view\/post_type\/mai_archived', $this->beacon_at( get_post_type_archive_link( 'mai_archived' ) ) );
+	}
+
+	public function test_no_beacon_for_archive_of_hidden_type(): void {
+		register_post_type( 'mai_archived', [ 'public' => true, 'has_archive' => true ] );
+		self::factory()->post->create( [ 'post_type' => 'mai_archived', 'post_status' => 'publish' ] );
+		$url = get_post_type_archive_link( 'mai_archived' );
+
+		wp_set_current_user( 0 );
+		add_filter( 'mai_analytics_tracking_enabled', '__return_true' );
+		$this->go_to( $url );
+		$this->assertTrue( is_post_type_archive( 'mai_archived' ) );
+
+		// Hidden after the query ran, so the tracker's own rule decides.
+		register_post_type( 'mai_archived', [ 'public' => false, 'has_archive' => true ] );
+
+		ob_start();
+		( new Tracker() )->output_beacon();
+
+		$this->assertSame( '', (string) ob_get_clean() );
+	}
+
+	public function test_beacon_for_term_archive(): void {
+		$term_id = self::factory()->category->create();
+		self::factory()->post->create( [ 'post_status' => 'publish', 'post_category' => [ $term_id ] ] );
+
+		$this->assertStringContainsString( 'view\/term\/' . $term_id, $this->beacon_at( get_term_link( $term_id ) ) );
+	}
+
+	public function test_no_beacon_for_term_of_hidden_taxonomy(): void {
+		register_taxonomy( 'mai_soon_hidden', 'post', [ 'public' => true ] );
+		$term_id = self::factory()->term->create( [ 'taxonomy' => 'mai_soon_hidden' ] );
+		$post_id = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+		wp_set_object_terms( $post_id, $term_id, 'mai_soon_hidden' );
+		$url = get_term_link( $term_id );
+
+		wp_set_current_user( 0 );
+		add_filter( 'mai_analytics_tracking_enabled', '__return_true' );
+		$this->go_to( $url );
+		$this->assertTrue( is_tax( 'mai_soon_hidden' ) );
+
+		register_taxonomy( 'mai_soon_hidden', 'post', [ 'public' => false ] );
+
+		ob_start();
+		( new Tracker() )->output_beacon();
+
+		$this->assertSame( '', (string) ob_get_clean() );
+	}
+
+	public function test_beacon_for_author_archive(): void {
+		$author = self::factory()->user->create( [ 'role' => 'author' ] );
+		self::factory()->post->create( [ 'post_status' => 'publish', 'post_author' => $author ] );
+
+		$this->assertStringContainsString( 'view\/user\/' . $author, $this->beacon_at( get_author_posts_url( $author ) ) );
+	}
+
 	public function test_tracker_class_instantiates(): void {
 		$this->assertInstanceOf( Tracker::class, new Tracker() );
 	}

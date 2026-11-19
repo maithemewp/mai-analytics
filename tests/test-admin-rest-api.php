@@ -727,7 +727,12 @@ class Test_Admin_REST_API extends WP_UnitTestCase {
 		$this->assertSame( '60', $headers['X-WP-Total'] );
 		$this->assertSame( '2', $headers['X-WP-TotalPages'] );
 
-		$this->assertCount( 10, $this->search( $params + [ 'page' => 2 ] )->get_data() );
+		$second  = $this->search( $params + [ 'page' => 2 ] );
+		$headers = $second->get_headers();
+
+		$this->assertCount( 10, $second->get_data() );
+		$this->assertSame( '60', $headers['X-WP-Total'] );
+		$this->assertSame( '2', $headers['X-WP-TotalPages'] );
 
 		$over = $this->search( $params + [ 'per_page' => 101 ] );
 		$this->assertSame( 400, $over->get_status() );
