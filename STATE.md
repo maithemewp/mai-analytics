@@ -3,28 +3,29 @@ Updated: 2026-11-19 by Claude (mai-analytics review-pr fixes session)
 
 ## Now
 - `pr-review-toolkit:review-pr` ran on `main..develop` with all six aspects. Findings and mai-coordinator's rulings are in the shared notes folder (`2026-11-19-mai-analytics-review-findings.md`).
-- The ruled fixes are built on `feat/review-pr-fixes`, in the worktree `~/Plugins/_wip/mai-analytics-review-pr`. There is one commit per finding. The independent review led to three more fixes, the last two ruled by the coordinator: a failed app trending count no longer stamps an object synced, the provider catchup event has its handler again (it fataled from 1.1.1 to 1.3.7), and a stopped provider sync counts the app views of objects it didn't reach. Health also gained an "Old views table" check, worded by the coordinator. The suite passes with 353 tests, run under a load of about 20; develop had 298.
+- The ruled fixes were built on `feat/review-pr-fixes` and fast-forwarded into `develop` at 9e3497c, smoked clean on the shared production-copy site, and pushed by mai-coordinator on 2026-11-19. There is one commit per finding. The independent review led to three more fixes, the last two ruled by the coordinator: a failed app trending count no longer stamps an object synced, the provider catchup event has its handler again (it fataled from 1.1.1 to 1.3.7), and a stopped provider sync counts the app views of objects it didn't reach. Health also gained an "Old views table" check, worded by the coordinator. The suite passes with 353 tests, run under a load of about 20; develop had 298.
 - Routes whose answer changed on this branch:
   - **`POST /admin/sync-now`:** 429 `mai_analytics_busy` (new code) when a sync holds the lock, 503 `mai_analytics_database_error` when a buffer read failed, both with Retry-After 1, instead of 200 "complete".
   - **`GET /admin/top/posts`, `/top/terms`, `/top/authors`, `/admin/filters`:** 503 `mai_analytics_database_error` on a failed query instead of 200 with empty or zero data. Filters cache nothing then.
   - **`GET /views/trending`:** a `taxonomy` filter that is unknown or not publicly viewable answers 200 `[]` and reads nothing.
   - **`wp mai-analytics sync` and `seed`:** exit 1 with a reason when the sync didn't run.
+- `feat/filters-notice`, in `~/Plugins/_wip/mai-analytics-filters-notice`: a notice above the dashboard filters when their request fails. 354 tests pass, and the notice was checked in headless Chrome. It waits on the coordinator's merge grant. No site step is needed.
 - Branches (`origin` is GitHub maithemewp/mai-analytics):
-  - **`develop`:** the main checkout `~/Plugins/mai-analytics`, which the shared production-copy site loads.
-  - **`feat/review-pr-fixes`:** this work, cut from develop at 7e8b536.
+  - **`develop`:** the main checkout `~/Plugins/mai-analytics`, which the shared production-copy site loads. On origin at 9e3497c.
+  - **`feat/review-pr-fixes`:** merged. Its worktree is removed.
+  - **`feat/filters-notice`:** the filters notice, cut from develop at 9e3497c.
   - **`main`:** bf3ba96, Release 1.3.7. **`settings`** and **`trending`:** old 2023 branches. Leave them alone.
 
 ## Next
-1. Merge into `develop` under the coordinator's grant (given 2026-11-19 once the catchup and stopped-run fixes were green), smoke the shared production-copy site, and report. The coordinator pushes.
-2. A message for a failed filters load on the dashboard waits on wording (TODO.md).
-3. Release only when Mike asks, after the whole stack passes. No tags and no tag talk before then. The draft changelog below goes into `CHANGES.md` on that commit.
+1. Merge `feat/filters-notice` into `develop` when the coordinator grants it. The coordinator pushes.
+2. Release only when Mike asks, after the whole stack passes. No tags and no tag talk before then. The draft changelog below goes into `CHANGES.md` on that commit.
 
 ## Blocked / waiting on
-- The filters message wording in Next. mai-coordinator's files (`STATE.md`, `SITE-LOCK.md`, `ALIGNMENT.md`) are in the shared production-copy site's folder; find it with `ls ~/Herd/*/SITE-LOCK.md`. Never edit them.
+- The merge grant for `feat/filters-notice`. mai-coordinator's files (`STATE.md`, `SITE-LOCK.md`, `ALIGNMENT.md`) are in the shared production-copy site's folder; find it with `ls ~/Herd/*/SITE-LOCK.md`. Never edit them.
 
 ## Verify
 - Before any suite, read the Status section of that folder's `SITE-LOCK.md`. Don't run during a claimed device run. The load-under-10 rule is for device runs only (mai-coordinator, 2026-11-19), so a suite may run under load; rerun a timing-sensitive failure alone before calling it real. Never use the site itself without a claim.
-- Run the suite in a worktree after `composer install`: `WP_TESTS_DIR=/tmp/wordpress-tests-lib vendor/bin/phpunit`. 353 tests.
+- Run the suite in a worktree after `composer install`: `WP_TESTS_DIR=/tmp/wordpress-tests-lib vendor/bin/phpunit`. 354 tests.
 - A reboot clears `/tmp`. If `/tmp/wordpress-tests-lib/includes/functions.php` is missing, run `bin/install-wp-tests.sh wp_maianalytics_tests root '' localhost latest true` from the worktree.
 - Then restore `vendor/`: `composer install --no-dev`, `git checkout -- vendor/composer/installed.json vendor/composer/installed.php`, then `php ~/Plugins/mai-analytics/vendor/bin/deployable-guard check --root=<path relative to the main checkout>`. It must print "OK: committed autoloader is deployable as-is."
 - Commit no `vendor/` change on a feature branch.
@@ -52,6 +53,7 @@ Updated: 2026-11-19 by Claude (mai-analytics review-pr fixes session)
 * Fixed: Moving views from an old table could drop that table after a failed copy, and the move failed on WordPress 6.1.
 * Fixed: A failed change to the views table during an update was reported as success.
 * Added: A health check that fails while a views table from an older version is still waiting to be moved.
+* Added: The dashboard says so when its filters can't load, instead of leaving the dropdowns empty.
 * Fixed: `wp mai-analytics health` exited 0 when a check failed, and `--fix` said the cron was rescheduled even when it wasn't.
 * Fixed: Deactivating left three scheduled tasks behind, and uninstalling left two.
 * Fixed: The database version could be recorded when the table had not been created.
