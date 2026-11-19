@@ -24,6 +24,39 @@ class Database {
 	public const MIGRATE_RETRY_TRANSIENT = 'mai_analytics_migrate_retry';
 
 	/**
+	 * Older names of the buffer table, without the prefix, that
+	 * maybe_migrate_old_table() moves into the current one: the Mai Views era
+	 * and early Mai Analytics dev installs.
+	 *
+	 * @since 1.3.8
+	 */
+	public const LEGACY_TABLES = [ 'mai_views_buffer', 'mai_analytics_views' ];
+
+	/**
+	 * Finds an older table still waiting to be moved into the current one.
+	 *
+	 * @since 1.3.8
+	 *
+	 * @return string|null The prefixed table name, or null when none is left.
+	 */
+	public static function unmoved_legacy_table(): ?string {
+		if ( get_option( 'mai_analytics_table_migrated' ) ) {
+			return null;
+		}
+
+		global $wpdb;
+
+		foreach ( self::LEGACY_TABLES as $name ) {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery
+			if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->prefix . $name ) ) ) {
+				return $wpdb->prefix . $name;
+			}
+		}
+
+		return null;
+	}
+
+	/**
 	 * Gets the full table name with prefix.
 	 *
 	 * @return string The prefixed database table name.
@@ -184,10 +217,7 @@ class Database {
 		global $wpdb;
 
 		$new_table  = self::get_table_name();
-		$old_tables = [
-			$wpdb->prefix . 'mai_views_buffer',
-			$wpdb->prefix . 'mai_analytics_views',
-		];
+		$old_tables = array_map( fn( $name ) => $wpdb->prefix . $name, self::LEGACY_TABLES );
 
 		$failed = false;
 

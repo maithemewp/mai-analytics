@@ -48,6 +48,17 @@ class Health {
 		$db_version = get_option( Database::DB_VERSION_OPTION, '0' );
 		$check( 'Database', 'DB version current', version_compare( $db_version, MAI_ANALYTICS_DB_VERSION, '>=' ), "stored={$db_version} required=" . MAI_ANALYTICS_DB_VERSION );
 
+		// A failed move of an older table only shows in the error log otherwise.
+		$legacy_table = Database::unmoved_legacy_table();
+		$check(
+			'Database',
+			'Old views table',
+			null === $legacy_table,
+			null === $legacy_table
+				? 'Moved. Nothing left to do.'
+				: sprintf( '%s is still here. Moving its views failed, and it is tried again every hour. The error log has the reason.', $legacy_table )
+		);
+
 		$buffer_rows = $table_exists ? (int) $wpdb->get_var( "SELECT COUNT(*) FROM $table" ) : 0;
 		$check( 'Database', 'Buffer rows', true, number_format( $buffer_rows ) );
 
