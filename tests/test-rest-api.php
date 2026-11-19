@@ -269,6 +269,17 @@ class Test_REST_API extends WP_UnitTestCase {
 		remove_filter( 'query', $watch );
 
 		$this->assertSame( 200, $response->get_status() );
+		$this->assertSame( $author, $response->get_data()['id'] );
+		$this->assertCount( 1, $seen );
+
+		// More posts don't mean more queries for the check.
+		self::factory()->post->create_many( 20, [ 'post_status' => 'publish', 'post_author' => $author ] );
+		$seen = [];
+
+		add_filter( 'query', $watch );
+		$this->get_views_at( 'user/' . $author );
+		remove_filter( 'query', $watch );
+
 		$this->assertCount( 1, $seen );
 		$this->assertStringContainsString( 'EXISTS', $seen[0] );
 		$this->assertStringContainsString( 'LIMIT 1', $seen[0] );
