@@ -1,8 +1,8 @@
 # TODO
 
-## Alignment pass (2026-11-18)
+## Review fixes (2026-11-19)
 
-- Built on `feat/alignment`, Tasks 0 to 8. Waiting on mai-coordinator's review and merge grant, then Mike's walk of the code names and the release decision.
+- Built on `feat/review-fixes`. The alignment pass is merged. Waiting on mai-coordinator's merge grant, then the release decision.
 
 ## Do at the release
 
@@ -24,3 +24,5 @@
 - The `SHOW TABLES LIKE` checks don't escape `_` either: `Database::table_exists()` (on purpose, so a test's `query` filter can match the plain name), `maybe_migrate_old_table()` and `src/Health.php:45`. Core escapes its own (`wp-admin/includes/upgrade.php:2687`). A stray match could only report a table that isn't there.
 - The tracker still sends a beacon from the author archive of a member with no countable posts, and that view now always answers 404. Skipping it would cost one query per author archive render (the same `post_author` check `RestApi::users_with_viewable_posts()` runs), on a page that may be cached anyway. Today the cost is one wasted POST per such visit.
 - The `[mai_views]` shortcode and `mai_analytics_get_count()` read any ID with no visibility check. Only staff can call them today.
+- `maybe_migrate_old_table()` copies with `INSERT INTO new SELECT * FROM old`, `id` included, so it can fail on a duplicate key or a column-count mismatch once the new table has rows. It now keeps the old table and retries hourly, but would keep failing. Copying named columns without `id` needs the legacy schemas, which weren't checked.
+- `RestApi::visible_ids()` drops posts and terms whose prime query failed instead of answering 503, as trending users now do.
