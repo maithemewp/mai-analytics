@@ -276,14 +276,47 @@ class AdminRestApi {
 	}
 
 	/**
+	 * Counts the queries that have failed so far in this request.
+	 *
+	 * wpdb adds every failed query to this global, even with errors suppressed
+	 * (wp-includes/class-wpdb.php, print_error()), so a later count above an
+	 * earlier one means a query between them failed. last_error only holds the
+	 * most recent query's error, and a dashboard route runs several.
+	 *
+	 * @since 1.3.8
+	 *
+	 * @return int
+	 */
+	private function failed_query_count(): int {
+		global $EZSQL_ERROR;
+
+		return is_array( $EZSQL_ERROR ) ? count( $EZSQL_ERROR ) : 0;
+	}
+
+	/**
+	 * Builds the error for dashboard data that could not be read.
+	 *
+	 * @since 1.3.8
+	 *
+	 * @return WP_REST_Response
+	 */
+	private function read_error(): WP_REST_Response {
+		return Errors::response( ErrorCode::DatabaseError, __( 'The dashboard data could not be read. Try again.', 'mai-analytics' ) );
+	}
+
+	/**
 	 * Returns paginated top posts ranked by views or trending.
+	 *
+	 * @since 1.3.8 Answers 503 mai_analytics_database_error when a query fails.
 	 *
 	 * @param WP_REST_Request $request The incoming request with filter and pagination params.
 	 *
-	 * @return WP_REST_Response Paginated post data with source breakdown.
+	 * @return WP_REST_Response Paginated post data with source breakdown, or a 503.
 	 */
 	public function get_top_posts( WP_REST_Request $request ): WP_REST_Response {
 		global $wpdb;
+
+		$failed = $this->failed_query_count();
 
 		$orderby        = $request->get_param( 'orderby' );
 		$order          = $request->get_param( 'order' );
@@ -379,11 +412,19 @@ class AdminRestApi {
 			)
 		);
 
+		if ( $this->failed_query_count() > $failed ) {
+			return $this->read_error();
+		}
+
 		// Source breakdown from buffer for this page's IDs.
 		$source_map = $this->get_source_breakdown(
 			array_map( fn( $r ) => (int) $r->ID, $results ),
 			'post'
 		);
+
+		if ( $this->failed_query_count() > $failed ) {
+			return $this->read_error();
+		}
 
 		$items = [];
 
@@ -413,12 +454,16 @@ class AdminRestApi {
 	/**
 	 * Returns paginated top terms ranked by views or trending.
 	 *
+	 * @since 1.3.8 Answers 503 mai_analytics_database_error when a query fails.
+	 *
 	 * @param WP_REST_Request $request The incoming request with filter and pagination params.
 	 *
-	 * @return WP_REST_Response Paginated term data with source breakdown.
+	 * @return WP_REST_Response Paginated term data with source breakdown, or a 503.
 	 */
 	public function get_top_terms( WP_REST_Request $request ): WP_REST_Response {
 		global $wpdb;
+
+		$failed = $this->failed_query_count();
 
 		$orderby   = $request->get_param( 'orderby' );
 		$order     = $request->get_param( 'order' );
@@ -479,10 +524,18 @@ class AdminRestApi {
 			)
 		);
 
+		if ( $this->failed_query_count() > $failed ) {
+			return $this->read_error();
+		}
+
 		$source_map = $this->get_source_breakdown(
 			array_map( fn( $r ) => (int) $r->term_id, $results ),
 			'term'
 		);
+
+		if ( $this->failed_query_count() > $failed ) {
+			return $this->read_error();
+		}
 
 		$items = [];
 
@@ -513,12 +566,16 @@ class AdminRestApi {
 	/**
 	 * Returns paginated top authors ranked by views or trending.
 	 *
+	 * @since 1.3.8 Answers 503 mai_analytics_database_error when a query fails.
+	 *
 	 * @param WP_REST_Request $request The incoming request with pagination params.
 	 *
-	 * @return WP_REST_Response Paginated author data with source breakdown.
+	 * @return WP_REST_Response Paginated author data with source breakdown, or a 503.
 	 */
 	public function get_top_authors( WP_REST_Request $request ): WP_REST_Response {
 		global $wpdb;
+
+		$failed = $this->failed_query_count();
 
 		$orderby   = $request->get_param( 'orderby' );
 		$order     = $request->get_param( 'order' );
@@ -562,10 +619,18 @@ class AdminRestApi {
 			)
 		);
 
+		if ( $this->failed_query_count() > $failed ) {
+			return $this->read_error();
+		}
+
 		$source_map = $this->get_source_breakdown(
 			array_map( fn( $r ) => (int) $r->ID, $results ),
 			'user'
 		);
+
+		if ( $this->failed_query_count() > $failed ) {
+			return $this->read_error();
+		}
 
 		$items = [];
 
@@ -660,9 +725,12 @@ class AdminRestApi {
 	 * options change much more slowly than the views numbers themselves and
 	 * this endpoint fires on every dashboard page load.
 	 *
+	 * @since 1.3.8 Answers 503 mai_analytics_database_error when a query fails,
+	 *              and caches nothing then.
+	 *
 	 * @param WP_REST_Request $request The incoming request.
 	 *
-	 * @return WP_REST_Response Available post types and taxonomies that have data.
+	 * @return WP_REST_Response Available post types and taxonomies that have data, or a 503.
 	 */
 	public function get_filters( WP_REST_Request $request ): WP_REST_Response {
 		$cached = get_transient( 'mai_analytics_admin_filters' );
@@ -672,6 +740,8 @@ class AdminRestApi {
 		}
 
 		global $wpdb;
+
+		$failed = $this->failed_query_count();
 
 		$public_types     = get_post_types( [ 'public' => true ] );
 		$public_taxonomies = get_taxonomies( [ 'public' => true ] );
@@ -712,6 +782,11 @@ class AdminRestApi {
 			   AND CAST(tm.meta_value AS UNSIGNED) > 0
 			   AND tt.taxonomy IN ('{$tax_list}')"
 		);
+
+		// A failed read is never cached, so the next page load asks again.
+		if ( $this->failed_query_count() > $failed ) {
+			return $this->read_error();
+		}
 
 		foreach ( $taxonomy_rows as $slug ) {
 			$tax = get_taxonomy( $slug );

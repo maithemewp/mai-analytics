@@ -799,6 +799,90 @@ class Test_Admin_REST_API extends WP_UnitTestCase {
 		$this->assert_sync_not_run( $response, ErrorCode::DatabaseError );
 	}
 
+	/**
+	 * Runs a dashboard GET while every meta query containing `$marker` fails.
+	 */
+	private function dashboard_with_failing( string $route, string $marker ): WP_REST_Response {
+		global $wpdb;
+
+		$suppressed = $wpdb->suppress_errors( true );
+		$break      = function ( $query ) use ( $marker, $wpdb ) {
+			if ( ! str_contains( $query, $marker ) ) {
+				return $query;
+			}
+
+			return str_replace( [ $wpdb->postmeta, $wpdb->termmeta, $wpdb->usermeta ], 'mai_analytics_missing_table', $query );
+		};
+
+		add_filter( 'query', $break );
+
+		try {
+			return $this->server->dispatch( new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/' . $route ) );
+		} finally {
+			remove_filter( 'query', $break );
+			$wpdb->suppress_errors( $suppressed );
+		}
+	}
+
+	/**
+	 * Gives one post, term and author views, so every dashboard query has rows.
+	 */
+	private function seed_dashboard_rows(): void {
+		$author  = self::factory()->user->create();
+		$post_id = self::factory()->post->create( [ 'post_status' => 'publish', 'post_author' => $author ] );
+		$term_id = self::factory()->category->create();
+
+		update_post_meta( $post_id, 'mai_views', 5 );
+		update_post_meta( $post_id, 'mai_views_web', 5 );
+		update_term_meta( $term_id, 'mai_views', 5 );
+		update_term_meta( $term_id, 'mai_views_web', 5 );
+		update_user_meta( $author, 'mai_views', 5 );
+		update_user_meta( $author, 'mai_views_web', 5 );
+	}
+
+	/**
+	 * @return array<string, array{0: string, 1: string}>
+	 */
+	public function failing_dashboard_reads(): array {
+		return [
+			'top posts'                => [ 'top/posts', 'mai_views' ],
+			'top posts breakdown'      => [ 'top/posts', 'mai_views_web' ],
+			'top terms'                => [ 'top/terms', 'mai_views' ],
+			'top terms breakdown'      => [ 'top/terms', 'mai_views_web' ],
+			'top authors'              => [ 'top/authors', 'mai_views' ],
+			'top authors breakdown'    => [ 'top/authors', 'mai_views_web' ],
+			'filters'                  => [ 'filters', 'mai_views' ],
+		];
+	}
+
+	/**
+	 * @dataProvider failing_dashboard_reads
+	 */
+	public function test_dashboard_read_failure_answers_503( string $route, string $marker ): void {
+		$this->as_admin();
+		$this->seed_dashboard_rows();
+		delete_transient( 'mai_analytics_admin_filters' );
+
+		$response = $this->dashboard_with_failing( $route, $marker );
+		$data     = $response->get_data();
+
+		$this->assertSame( 503, $response->get_status() );
+		$this->assertSame( ErrorCode::DatabaseError->value, $data['code'] );
+		$this->assertSame( '1', $response->get_headers()['Retry-After'] );
+		$this->assertFalse( get_transient( 'mai_analytics_admin_filters' ), 'A failed read is never cached.' );
+	}
+
+	public function test_dashboard_reads_answer_200_when_queries_work(): void {
+		$this->as_admin();
+		$this->seed_dashboard_rows();
+
+		foreach ( [ 'top/posts', 'top/terms', 'top/authors', 'filters' ] as $route ) {
+			$response = $this->server->dispatch( new WP_REST_Request( 'GET', '/mai-analytics/v1/admin/' . $route ) );
+
+			$this->assertSame( 200, $response->get_status(), $route );
+		}
+	}
+
 	public function test_warm_in_self_hosted_mode(): void {
 		$this->as_admin();
 		update_option( 'mai_analytics_settings', [ 'data_source' => 'self_hosted' ] );
