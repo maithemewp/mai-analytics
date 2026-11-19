@@ -16,6 +16,14 @@ class Database {
 	public const RETRY_TRANSIENT = 'mai_analytics_db_retry';
 
 	/**
+	 * Transient set for an hour after an old table could not be copied or
+	 * renamed, so the migration is not retried on every page load.
+	 *
+	 * @since 1.3.8
+	 */
+	public const MIGRATE_RETRY_TRANSIENT = 'mai_analytics_migrate_retry';
+
+	/**
 	 * Gets the full table name with prefix.
 	 *
 	 * @return string The prefixed database table name.
@@ -148,6 +156,11 @@ class Database {
 			return;
 		}
 
+		// A recent attempt failed. Read only while the migration is unfinished.
+		if ( get_transient( self::MIGRATE_RETRY_TRANSIENT ) ) {
+			return;
+		}
+
 		global $wpdb;
 
 		$new_table  = self::get_table_name();
@@ -175,7 +188,7 @@ class Database {
 
 				// Keep the old table when the copy failed, so no views are lost.
 				if ( $wpdb->last_error ) {
-					mai_analytics_logger()->error( sprintf( 'Could not copy %s into %s: %s. The old table was kept, and the copy will be tried again.', $old_table, $new_table, $wpdb->last_error ) );
+					mai_analytics_logger()->error( sprintf( 'Could not copy %s into %s: %s. The old table was kept, and the copy will be tried again in an hour.', $old_table, $new_table, $wpdb->last_error ) );
 					$failed = true;
 					continue;
 				}
@@ -193,14 +206,16 @@ class Database {
 				);
 
 				if ( $wpdb->last_error ) {
-					mai_analytics_logger()->error( sprintf( 'Could not rename %s to %s: %s. It will be tried again.', $old_table, $new_table, $wpdb->last_error ) );
+					mai_analytics_logger()->error( sprintf( 'Could not rename %s to %s: %s. It will be tried again in an hour.', $old_table, $new_table, $wpdb->last_error ) );
 					$failed = true;
 				}
 			}
 		}
 
-		// Try again on a later request rather than marking it done.
+		// Try again in an hour rather than marking it done.
 		if ( $failed ) {
+			set_transient( self::MIGRATE_RETRY_TRANSIENT, 1, HOUR_IN_SECONDS );
+
 			return;
 		}
 

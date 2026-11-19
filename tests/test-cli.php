@@ -36,13 +36,31 @@ class Test_CLI extends WP_UnitTestCase {
 	public function test_health_fix_reschedules(): void {
 		wp_clear_scheduled_hook( 'mai_analytics_cron_sync' );
 
+		$before = $this->failed_checks();
+
 		try {
 			( new CLI() )->health( [], [ 'fix' => true ] );
 		} catch ( RuntimeException $e ) {
-			// The missing cron is still counted as a failed check.
+			// Other checks may fail in the test site. Only the count matters here.
 		}
 
 		$this->assertContains( "  %C\u{2192} Fixed: rescheduled cron%n", WP_CLI::$lines );
 		$this->assertNotFalse( wp_next_scheduled( 'mai_analytics_cron_sync' ) );
+
+		$summary = WP_CLI::$errors ? WP_CLI::$errors[0][0] : (string) end( WP_CLI::$lines );
+
+		$this->assertStringContainsString( sprintf( '%d failed', $before - 1 ), $summary );
+		$this->assertStringContainsString( '(1 fixed)', $summary );
+	}
+
+	/**
+	 * Counts the failed health checks with the cron hook missing.
+	 */
+	private function failed_checks(): int {
+		$results = \Mai\Analytics\Health::run();
+
+		wp_clear_scheduled_hook( 'mai_analytics_cron_sync' );
+
+		return $results['fail'];
 	}
 }

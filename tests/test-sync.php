@@ -53,9 +53,13 @@ class Test_Sync extends WP_UnitTestCase {
 		$wpdb->suppress_errors( $suppressed );
 
 		$this->assertSame( $previous, (int) get_option( 'mai_analytics_synced' ) );
-		$this->assertFalse( get_transient( 'mai_analytics_syncing' ) );
 		$this->assertSame( '', get_post_meta( $post_id, 'mai_views', true ) );
 
+		// The lock stays until it expires, so a retry right away does nothing.
+		Sync::sync();
+		$this->assertSame( '', get_post_meta( $post_id, 'mai_views', true ) );
+
+		delete_transient( 'mai_analytics_syncing' );
 		Sync::sync();
 
 		$this->assertSame( 2, (int) get_post_meta( $post_id, 'mai_views', true ) );

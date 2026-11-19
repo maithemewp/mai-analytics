@@ -156,12 +156,24 @@ class Test_Database extends WP_UnitTestCase {
 	private function migrate_with_copy( string $copy ): array {
 		global $wpdb;
 
-		$old   = $wpdb->prefix . 'mai_views_buffer';
-		$drops = [];
+		$old = $wpdb->prefix . 'mai_views_buffer';
 
 		delete_option( 'mai_analytics_table_migrated' );
+		delete_transient( Database::MIGRATE_RETRY_TRANSIENT );
 
-		$fake = function ( $query ) use ( $old, $copy, &$drops ) {
+		return $this->run_migration( $old, $copy );
+	}
+
+	/**
+	 * Runs maybe_update() with the old table faked, without clearing the retry.
+	 *
+	 * @return string[] The drop queries it would have run.
+	 */
+	private function run_migration( string $old, string $copy ): array {
+		global $wpdb;
+
+		$drops = [];
+		$fake  = function ( $query ) use ( $old, $copy, &$drops ) {
 			if ( "SHOW TABLES LIKE '$old'" === $query ) {
 				return "SELECT '$old'";
 			}
@@ -192,6 +204,30 @@ class Test_Database extends WP_UnitTestCase {
 		$drops = $this->migrate_with_copy( 'SELECT * FROM `mai_analytics_missing_table`' );
 
 		$this->assertSame( [], $drops );
+		$this->assertFalse( get_option( 'mai_analytics_table_migrated' ) );
+		$this->assertNotFalse( get_transient( Database::MIGRATE_RETRY_TRANSIENT ) );
+	}
+
+	public function test_failed_copy_waits_before_retrying(): void {
+		global $wpdb;
+
+		$this->migrate_with_copy( 'SELECT * FROM `mai_analytics_missing_table`' );
+
+		$old   = $wpdb->prefix . 'mai_views_buffer';
+		$asked = 0;
+		$count = function ( $query ) use ( $old, &$asked ) {
+			if ( "SHOW TABLES LIKE '$old'" === $query ) {
+				$asked++;
+			}
+
+			return $query;
+		};
+
+		add_filter( 'query', $count );
+		$this->run_migration( $old, 'SELECT 1' );
+		remove_filter( 'query', $count );
+
+		$this->assertSame( 0, $asked );
 		$this->assertFalse( get_option( 'mai_analytics_table_migrated' ) );
 	}
 

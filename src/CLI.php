@@ -68,13 +68,17 @@ class CLI {
 			WP_CLI::log( $line );
 		}
 
-		// Auto-fix: recreate table and reschedule cron if missing.
+		// Auto-fix: recreate table and reschedule cron if missing. Each fix that
+		// works takes its check out of the failure count below.
+		$fixed = 0;
+
 		if ( $fix ) {
 			$table_failed = array_filter( $results['checks'], fn( $c ) => 'Buffer table exists' === $c['label'] && 'fail' === $c['status'] );
 			$cron_failed  = array_filter( $results['checks'], fn( $c ) => 'Cron scheduled' === $c['label'] && 'fail' === $c['status'] );
 
 			if ( $table_failed ) {
 				if ( Database::create_table() ) {
+					$fixed++;
 					WP_CLI::log( WP_CLI::colorize( "  %C\u{2192} Fixed: created table%n" ) );
 				} else {
 					WP_CLI::log( WP_CLI::colorize( "  %R\u{2717}%n Table could not be created." ) );
@@ -84,6 +88,7 @@ class CLI {
 			if ( $cron_failed ) {
 				// wp_schedule_event() returns false, or a WP_Error, when the event can't be saved.
 				if ( true === wp_schedule_event( time(), 'mai_analytics_15min', 'mai_analytics_cron_sync' ) ) {
+					$fixed++;
 					WP_CLI::log( WP_CLI::colorize( "  %C\u{2192} Fixed: rescheduled cron%n" ) );
 				} else {
 					WP_CLI::log( WP_CLI::colorize( "  %R\u{2717}%n Cron could not be rescheduled." ) );
@@ -92,9 +97,14 @@ class CLI {
 		}
 
 		WP_CLI::log( '' );
-		$summary = sprintf( '%d passed, %d failed, %d warnings out of %d checks', $results['pass'], $results['fail'], $results['warn'], $results['total'] );
+		$failed  = $results['fail'] - $fixed;
+		$summary = sprintf( '%d passed, %d failed, %d warnings out of %d checks', $results['pass'], $failed, $results['warn'], $results['total'] );
 
-		if ( $results['fail'] > 0 ) {
+		if ( $fixed ) {
+			$summary .= sprintf( ' (%d fixed)', $fixed );
+		}
+
+		if ( $failed > 0 ) {
 			// Exits with code 1. Passing false as the second argument would not
 			// exit at all (WP-CLI 2.12.0, php/class-wp-cli.php:907-924).
 			WP_CLI::error( $summary );

@@ -56,6 +56,9 @@ class Sync {
 
 		// The views since the last sync could not be read. Put the boundary
 		// back, so the next run counts them, and stop before anything changes.
+		// The lock is left to expire on its own, so the fallbacks, which now
+		// see a stale sync, wait out its five minutes instead of retrying a
+		// failing sync on every view and admin page load.
 		if ( $wpdb->last_error ) {
 			mai_analytics_logger()->error( 'Sync could not read new views from the buffer: ' . $wpdb->last_error . '. They will be counted on the next run.' );
 
@@ -64,8 +67,6 @@ class Sync {
 			} else {
 				update_option( 'mai_analytics_synced', $stored, false );
 			}
-
-			delete_transient( 'mai_analytics_syncing' );
 
 			return;
 		}
