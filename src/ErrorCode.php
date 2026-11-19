@@ -8,11 +8,12 @@ namespace Mai\Analytics;
 defined( 'ABSPATH' ) || die;
 
 /**
- * Every error code the plugin answers, with its HTTP status.
+ * Every error code the plugin owns, with its HTTP status.
  *
- * The code strings live here, so a rename touches one file. The one exception
- * is `mai_analytics_invalid_request` for core's argument errors, which
- * RestErrors builds from the slug it is given. A test pins that the two agree.
+ * Code compares these cases, not raw strings. The strings are released and are
+ * never renamed, and tests/test-error-codes.php pins each one. RestErrors also
+ * builds `mai_analytics_invalid_request` for core's argument errors from the
+ * slug it is given, and a test pins that the two agree.
  *
  * @since 1.3.8
  */
