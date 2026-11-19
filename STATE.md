@@ -2,7 +2,7 @@
 Updated: 2026-11-19 by Claude (mai-analytics build session, handing over to a fresh session)
 
 ## Now
-- The 2026-11-18 alignment pass is built, reviewed and merged into local `develop`. The suite passes with 267 tests; the develop baseline was 205. Version stays 1.3.7, and nothing is versioned or released.
+- The 2026-11-18 alignment pass is built, reviewed, merged into `develop` and pushed to origin. The suite passes with 267 tests; the develop baseline was 205. Version stays 1.3.7, and nothing is versioned or released.
 - A five-agent review of the unpushed commits found nothing critical. Mike walked it on 2026-11-19. Its fixes are planned and **not built**.
 - Mike's decisions from the walk:
   - The 404 stays `mai_analytics_not_found`, because the whole stack moves to `{slug}_not_found` for 404 and keeps `*_invalid_*` for 400.
@@ -23,11 +23,12 @@ Updated: 2026-11-19 by Claude (mai-analytics build session, handing over to a fr
 To catch up, read these in order: `AGENTS.md`, `~/LocalPackages/maiexpowp/CONVENTIONS.md`, `docs/specs/2026-11-18-alignment.md`, `docs/plans/2026-11-18-alignment.md`, `docs/plans/2026-11-19-review-fixes.md`.
 
 ## Blocked / waiting on
-- The coordinator's grant for any merge into `develop`. The coordinator keeps its files (`STATE.md`, `SITE-LOCK.md` and `ALIGNMENT.md`) in the shared production-copy site's folder. Never edit them. If you can't message the coordinator, ask Mike to relay.
+- The coordinator's grant for any merge into `develop`. The coordinator keeps its files (`STATE.md`, `SITE-LOCK.md` and `ALIGNMENT.md`) in the shared production-copy site's folder; find it with `ls ~/Herd/*/SITE-LOCK.md`. Never edit them. If no mai-coordinator session answers, ask Mike to start one or relay.
 
 ## Verify
 - Before any suite, read the Status section of that folder's `SITE-LOCK.md`. Don't run during a claimed device run, or with `uptime` showing a 1-minute load of 10 or more. Never use the site itself without a claim.
 - Run the suite in a worktree after `composer install`: `WP_TESTS_DIR=/tmp/wordpress-tests-lib vendor/bin/phpunit`.
+- A reboot clears `/tmp`. If `/tmp/wordpress-tests-lib/includes/functions.php` is missing, run `bin/install-wp-tests.sh wp_maianalytics_tests root '' localhost latest` from the worktree. Its arguments are database name, user, password, host, WP version, and an optional `true` to skip creating the database (add it if `wp_maianalytics_tests` already exists). It uses the local MySQL, never the shared site.
 - Then restore `vendor/`:
   1. `composer install --no-dev`
   2. `git checkout -- vendor/composer/installed.json vendor/composer/installed.php`
