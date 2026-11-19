@@ -10,7 +10,9 @@ defined( 'ABSPATH' ) || die;
 /**
  * Every error code the plugin answers, with its HTTP status.
  *
- * The code strings live only here, so a rename touches one file.
+ * The code strings live here, so a rename touches one file. The one exception
+ * is `mai_analytics_invalid_request` for core's argument errors, which
+ * RestErrors builds from the slug it is given. A test pins that the two agree.
  *
  * @since 1.3.8
  */
@@ -39,25 +41,5 @@ enum ErrorCode: string {
 			self::ProviderRequestFailed                       => 502,
 			self::DatabaseError                               => 503,
 		};
-	}
-
-	/**
-	 * Builds a WP_Error for this code. The status always comes from the case,
-	 * overwriting any status in `$data`.
-	 *
-	 * A database error is answered through Errors::response() instead, because
-	 * only a response can carry the Retry-After header.
-	 *
-	 * @since 1.3.8
-	 *
-	 * @param string $message The error message.
-	 * @param array  $data    Extra data for the error.
-	 *
-	 * @return \WP_Error
-	 */
-	public function error( string $message, array $data = [] ): \WP_Error {
-		$data['status'] = $this->status();
-
-		return new \WP_Error( $this->value, $message, $data );
 	}
 }
