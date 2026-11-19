@@ -258,14 +258,17 @@ class Database {
 	 * Uses the existing (object_id, object_type, viewed_at) index for fast lookups.
 	 * Sites with persistent object cache get a cache-first check for even faster dedup.
 	 *
+	 * @since 1.3.8 Takes `$object_key`, since every post type archive row has object_id 0.
+	 *
 	 * @param int    $object_id   The object ID.
 	 * @param string $object_type The object type.
 	 * @param int    $last_sync   Unix timestamp of the last provider sync.
+	 * @param string $object_key  The post type name for an archive, or '' for anything else.
 	 *
 	 * @return bool True if the object already has a buffer row since last sync.
 	 */
-	public static function is_queued( int $object_id, string $object_type, int $last_sync ): bool {
-		$cache_key = "mai_analytics_queued_{$object_type}_{$object_id}";
+	public static function is_queued( int $object_id, string $object_type, int $last_sync, string $object_key = '' ): bool {
+		$cache_key = "mai_analytics_queued_{$object_type}_{$object_id}_{$object_key}";
 
 		if ( wp_using_ext_object_cache() && wp_cache_get( $cache_key, 'mai-analytics' ) ) {
 			return true;
@@ -277,9 +280,10 @@ class Database {
 		$since     = $last_sync ? gmdate( 'Y-m-d H:i:s', $last_sync ) : '1970-01-01 00:00:00';
 		$exists    = (bool) $wpdb->get_var(
 			$wpdb->prepare(
-				"SELECT 1 FROM $table WHERE object_id = %d AND object_type = %s AND viewed_at > %s LIMIT 1",
+				"SELECT 1 FROM $table WHERE object_id = %d AND object_type = %s AND object_key = %s AND viewed_at > %s LIMIT 1",
 				$object_id,
 				$object_type,
+				$object_key,
 				$since
 			)
 		);

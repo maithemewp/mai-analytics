@@ -269,6 +269,18 @@ class Test_REST_API extends WP_UnitTestCase {
 		$this->assertSame( [ 'success' => true ], $response->get_data() );
 	}
 
+	public function test_provider_mode_queues_each_archive(): void {
+		add_filter( 'mai_analytics_data_source', fn() => 'matomo' );
+		$before = $this->buffer_rows();
+
+		foreach ( [ 'post', 'page', 'post' ] as $post_type ) {
+			$this->assertSame( 200, $this->server->dispatch( $this->view_request( 'post_type/' . $post_type ) )->get_status() );
+		}
+
+		// One row per archive: the repeat view of the post archive is deduped, the page archive is not.
+		$this->assertSame( $before + 2, $this->buffer_rows() );
+	}
+
 	private function get_views_at( string $path ): WP_REST_Response {
 		return $this->server->dispatch( new WP_REST_Request( 'GET', '/mai-analytics/v1/views/' . $path ) );
 	}

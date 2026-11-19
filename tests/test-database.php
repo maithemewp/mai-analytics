@@ -378,6 +378,13 @@ class Test_Database extends WP_UnitTestCase {
 		$this->assertFalse( Database::is_queued( $post_id, 'post', $last_sync ) );
 	}
 
+	public function test_is_queued_matches_the_archive_key(): void {
+		Database::insert_view( 0, 'post_type', 'web', 'post' );
+
+		$this->assertTrue( Database::is_queued( 0, 'post_type', 0, 'post' ) );
+		$this->assertFalse( Database::is_queued( 0, 'post_type', 0, 'page' ) );
+	}
+
 	public function test_is_queued_returns_false_for_nonexistent_object(): void {
 		$this->assertFalse( Database::is_queued( 999999, 'post', 0 ) );
 	}

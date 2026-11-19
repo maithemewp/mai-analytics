@@ -259,7 +259,7 @@ class RestApi {
 		if ( 'self_hosted' !== $data_source && 'web' === $source ) {
 			$last_sync = (int) get_option( 'mai_analytics_provider_last_sync', 0 );
 
-			if ( ! Database::is_queued( 0, 'post_type', $last_sync ) ) {
+			if ( ! Database::is_queued( 0, 'post_type', $last_sync, $post_type ) ) {
 				$inserted = Database::insert_view( 0, 'post_type', $source, $post_type );
 			}
 		} else {
