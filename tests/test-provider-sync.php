@@ -843,6 +843,148 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 	 *
 	 * @return void
 	 */
+	/**
+	 * Runs a callback while every buffer query that contains `$marker` fails.
+	 *
+	 * @param string   $marker   Text that picks out the query to break.
+	 * @param callable $callback What to run.
+	 *
+	 * @return void
+	 */
+	private function with_failing_buffer_query( string $marker, callable $callback ): void {
+		global $wpdb;
+
+		$table      = Database::get_table_name();
+		$suppressed = $wpdb->suppress_errors( true );
+		$break      = function ( $query ) use ( $table, $marker ) {
+			if ( str_contains( $query, $marker ) && str_contains( $query, $table ) ) {
+				return str_replace( $table, 'mai_analytics_missing_table', $query );
+			}
+
+			return $query;
+		};
+
+		add_filter( 'query', $break );
+
+		try {
+			$callback();
+		} finally {
+			remove_filter( 'query', $break );
+			$wpdb->suppress_errors( $suppressed );
+		}
+	}
+
+	/**
+	 * A read of the buffer that fails stops the sync with nothing written and
+	 * the last sync time put back, so the views are counted on the next run.
+	 *
+	 * @since 1.3.8
+	 *
+	 * @param string $marker Text that picks out the query to break.
+	 *
+	 * @dataProvider failing_reads
+	 *
+	 * @return void
+	 */
+	public function test_failed_buffer_read_counts_app_views_next_run( string $marker ): void {
+		$this->register_mock_provider( 10 );
+
+		$post_id  = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+		$previous = time() - HOUR_IN_SECONDS;
+
+		update_option( 'mai_analytics_provider_last_sync', $previous, false );
+		Database::insert_view( $post_id, 'post', 'app' );
+		Database::insert_view( $post_id, 'post', 'app' );
+		Database::insert_view( $post_id, 'post', 'web' );
+
+		$this->with_failing_buffer_query( $marker, fn() => ProviderSync::sync() );
+
+		$this->assertSame( $previous, (int) get_option( 'mai_analytics_provider_last_sync' ) );
+		$this->assertSame( '', get_post_meta( $post_id, 'mai_views_app', true ) );
+		$this->assertSame( '', get_post_meta( $post_id, 'mai_views_web', true ) );
+
+		// The lock stays for a while, so a retry right away does nothing.
+		$this->assertNotFalse( get_transient( 'mai_analytics_provider_syncing' ) );
+		ProviderSync::sync();
+		$this->assertSame( '', get_post_meta( $post_id, 'mai_views_app', true ) );
+
+		delete_transient( 'mai_analytics_provider_syncing' );
+		ProviderSync::sync();
+
+		$this->assertSame( 2, (int) get_post_meta( $post_id, 'mai_views_app', true ) );
+		$this->assertSame( 10, (int) get_post_meta( $post_id, 'mai_views_web', true ) );
+	}
+
+	/**
+	 * The two reads made before anything is written.
+	 *
+	 * @return array<string, array{0: string}>
+	 */
+	public function failing_reads(): array {
+		return [
+			'queued objects' => [ 'SELECT DISTINCT object_id, object_type, object_key' ],
+			'new app views'  => [ 'AS app_new' ],
+		];
+	}
+
+	public function test_failed_read_with_no_previous_sync_leaves_no_boundary(): void {
+		$this->register_mock_provider( 10 );
+		Database::insert_view( self::factory()->post->create( [ 'post_status' => 'publish' ] ), 'post', 'web' );
+
+		$this->with_failing_buffer_query( 'AS app_new', fn() => ProviderSync::sync() );
+
+		$this->assertFalse( get_option( 'mai_analytics_provider_last_sync' ) );
+	}
+
+	public function test_app_views_after_the_start_wait_for_the_next_run(): void {
+		global $wpdb;
+
+		$this->register_mock_provider( 0 );
+
+		$post_id = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+		Database::insert_view( $post_id, 'post', 'app' );
+		Database::insert_view( $post_id, 'post', 'web' );
+
+		// Stands in for a view saved while the run was going: after its start.
+		$wpdb->insert( Database::get_table_name(), [
+			'object_id'   => $post_id,
+			'object_type' => 'post',
+			'object_key'  => '',
+			'viewed_at'   => gmdate( 'Y-m-d H:i:s', time() + HOUR_IN_SECONDS ),
+			'source'      => 'app',
+		] );
+
+		ProviderSync::sync();
+
+		$this->assertSame( 1, (int) get_post_meta( $post_id, 'mai_views_app', true ) );
+	}
+
+	/**
+	 * A failed count of app views in the trending window keeps the stored
+	 * trending, in sync and in warm, instead of writing the web count alone.
+	 *
+	 * @since 1.3.8
+	 *
+	 * @return void
+	 */
+	public function test_failed_app_trending_count_keeps_trending(): void {
+		$this->register_mock_provider( 10 );
+
+		$post_id = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+		update_post_meta( $post_id, 'mai_trending', 50 );
+		Database::insert_view( $post_id, 'post', 'app' );
+		Database::insert_view( $post_id, 'post', 'web' );
+
+		$this->with_failing_buffer_query( 'SELECT COUNT(*)', fn() => ProviderSync::sync() );
+
+		$this->assertSame( '50', get_post_meta( $post_id, 'mai_trending', true ) );
+		$this->assertSame( 10, (int) get_post_meta( $post_id, 'mai_views_web', true ) );
+
+		$this->with_failing_buffer_query( 'SELECT COUNT(*)', fn() => $this->drain_warm( ProviderSync::warm( [ 'type' => 'post', 'force' => true ] ) ) );
+
+		$this->assertSame( '50', get_post_meta( $post_id, 'mai_trending', true ) );
+	}
+
 	public function test_warm_preserves_post_type_trending_on_provider_failure(): void {
 		register_post_type( 'mai_doc', [ 'public' => true, 'has_archive' => true ] );
 

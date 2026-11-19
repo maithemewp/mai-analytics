@@ -101,7 +101,8 @@ class ProviderSync {
 		// would otherwise fall behind a "now-at-finish" boundary and never be
 		// processed by future syncs.
 		$started_at = time();
-		$last_sync  = (int) get_option( 'mai_analytics_provider_last_sync', 0 );
+		$stored     = get_option( 'mai_analytics_provider_last_sync', false );
+		$last_sync  = (int) $stored;
 		update_option( 'mai_analytics_provider_last_sync', $started_at, false );
 
 		$provider = self::get_provider();
@@ -137,9 +138,42 @@ class ProviderSync {
 		// Get distinct objects from buffer since last sync.
 		$objects = Database::get_distinct_objects_since( $last_sync_date );
 
+		if ( $wpdb->last_error ) {
+			self::stop_after_read_error( $stored, 'the queued objects', $wpdb->last_error );
+			return;
+		}
+
 		if ( ! $objects ) {
 			self::finish_sync( $wpdb, $table, $retention_days, $started_at );
 			return;
+		}
+
+		// New app views since the last sync, read once for every object before
+		// anything is written. A failure here stops the run with nothing
+		// changed, so the next run counts them. Rows after $started_at are left
+		// for the next run, which starts its count there.
+		$app_rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT object_id, object_type, object_key, COUNT(*) AS app_new
+				 FROM $table
+				 WHERE source = 'app'
+				   AND viewed_at > %s
+				   AND viewed_at <= %s
+				 GROUP BY object_id, object_type, object_key",
+				$last_sync_date,
+				gmdate( 'Y-m-d H:i:s', $started_at )
+			)
+		);
+
+		if ( $wpdb->last_error ) {
+			self::stop_after_read_error( $stored, 'the new app views', $wpdb->last_error );
+			return;
+		}
+
+		$app_new = [];
+
+		foreach ( (array) $app_rows as $row ) {
+			$app_new[ self::object_ref( $row ) ] = (int) $row->app_new;
 		}
 
 		$batch_size = $provider->get_batch_size();
@@ -152,7 +186,7 @@ class ProviderSync {
 				break;
 			}
 
-			self::process_batch( $provider, $batch, $wpdb, $table, $last_sync_date, $trending_days );
+			self::process_batch( $provider, $batch, $wpdb, $table, $app_new, $trending_days );
 			$processed++;
 
 			// Bail mid-run if the batch we just ran tripped the breaker. The
@@ -174,16 +208,18 @@ class ProviderSync {
 	/**
 	 * Processes a single batch of objects: fetches provider views and merges with app buffer.
 	 *
-	 * @param WebViewProvider $provider        The active provider instance.
-	 * @param array           $batch           Array of buffer objects with object_id, object_type, object_key.
-	 * @param \wpdb           $wpdb            The WordPress database instance.
-	 * @param string          $table           The buffer table name.
-	 * @param string          $last_sync_date  MySQL datetime of the last sync.
-	 * @param int             $trending_days   Number of days for the trending window.
+	 * @since 1.3.8 Takes the new app views, read once by sync(), instead of the last sync date.
+	 *
+	 * @param WebViewProvider    $provider      The active provider instance.
+	 * @param array              $batch         Array of buffer objects with object_id, object_type, object_key.
+	 * @param \wpdb              $wpdb          The WordPress database instance.
+	 * @param string             $table         The buffer table name.
+	 * @param array<string, int> $app_new       New app views since the last sync, keyed by object_ref().
+	 * @param int                $trending_days Number of days for the trending window.
 	 *
 	 * @return void
 	 */
-	private static function process_batch( WebViewProvider $provider, array $batch, \wpdb $wpdb, string $table, string $last_sync_date, int $trending_days ): void {
+	private static function process_batch( WebViewProvider $provider, array $batch, \wpdb $wpdb, string $table, array $app_new, int $trending_days ): void {
 		$path_map = [];
 
 		foreach ( $batch as $obj ) {
@@ -262,25 +298,11 @@ class ProviderSync {
 			$web_total    = ( ! $provider_failed && $path ) ? (int) ( $web_views[ $path ][ self::WINDOW_ALL_TIME ] ?? 0 ) : null;
 			$web_trending = ( ! $provider_failed && $path ) ? (int) ( $web_views[ $path ][ self::WINDOW_TRENDING ] ?? 0 ) : null;
 
-			// App views: count new buffer rows since last sync.
-			$app_new = (int) $wpdb->get_var(
-				$wpdb->prepare(
-					"SELECT COUNT(*)
-					 FROM $table
-					 WHERE object_id = %d
-					   AND object_type = %s
-					   AND object_key = %s
-					   AND source = 'app'
-					   AND viewed_at > %s",
-					$id,
-					$type,
-					$key,
-					$last_sync_date
-				)
-			);
+			// App views since the last sync. An object missing from the map had none.
+			$object_app_new = $app_new[ self::object_ref( $obj ) ] ?? 0;
 
 			// App trending: count buffer rows in trending window.
-			$app_trending = (int) $wpdb->get_var(
+			$app_trending = $wpdb->get_var(
 				$wpdb->prepare(
 					"SELECT COUNT(*)
 					 FROM $table
@@ -296,19 +318,28 @@ class ProviderSync {
 				)
 			);
 
+			// A failed count is not zero. Leave this object's trending as it is,
+			// as for a provider failure, and say so.
+			if ( $wpdb->last_error ) {
+				mai_analytics_logger()->error( sprintf( 'Provider sync could not count app views in the trending window for object_type=%s object_id=%d: %s. Its trending was left as it was.', $type, $id, $wpdb->last_error ) );
+				$app_trending = null;
+			} else {
+				$app_trending = (int) $app_trending;
+			}
+
 			if ( 'post_type' === $type ) {
 				// Post type archives use options.
 				if ( null !== $web_total ) {
 					$pt_views_web[ $key ] = $web_total;
 				}
-				$pt_views_app[ $key ] = ( $pt_views_app[ $key ] ?? 0 ) + $app_new;
+				$pt_views_app[ $key ] = ( $pt_views_app[ $key ] ?? 0 ) + $object_app_new;
 				$pt_views[ $key ]     = ( $pt_views_web[ $key ] ?? 0 ) + ( $pt_views_app[ $key ] ?? 0 );
 				$pt_options_dirty     = true;
 
 				// Guarded like $pt_views_web above. Coalescing a failed read to 0
 				// would persist a zeroed archive rather than a stale one, and on a
 				// site with no app traffic that wipes the count outright.
-				if ( null !== $web_trending ) {
+				if ( null !== $web_trending && null !== $app_trending ) {
 					$pt_trending[ $key ] = $web_trending + $app_trending;
 				}
 
@@ -324,7 +355,7 @@ class ProviderSync {
 				if ( null !== $web_total ) {
 					Stats::set_web( $id, $type, $web_total );
 				}
-				Stats::add_app( $id, $type, $app_new );
+				Stats::add_app( $id, $type, $object_app_new );
 
 				// Only rewrite trending when the provider succeeded. The stored
 				// value already contains the app count written by the last good
@@ -336,7 +367,7 @@ class ProviderSync {
 				//
 				// Route through the store so 0 deletes the row instead of
 				// bloating the meta_value+0 sort.
-				if ( null !== $web_trending ) {
+				if ( null !== $web_trending && null !== $app_trending ) {
 					Stats::set_trending( $id, $type, $web_trending + $app_trending );
 				}
 
@@ -403,6 +434,47 @@ class ProviderSync {
 		if ( ! wp_next_scheduled( self::CATCHUP_HOOK ) ) {
 			wp_schedule_single_event( $timestamp, self::CATCHUP_HOOK );
 		}
+	}
+
+	/**
+	 * Stops a sync whose buffer read failed, before anything was written.
+	 *
+	 * Puts the last sync time back, so the next run counts the same rows, and
+	 * logs why. The lock is kept for five minutes rather than released, so the
+	 * fallbacks, which now see a stale sync, wait instead of retrying a failing
+	 * sync on every request. Self-hosted Sync::sync() does the same.
+	 *
+	 * @since 1.3.8
+	 *
+	 * @param mixed  $stored The last sync time as stored before this run, or false.
+	 * @param string $what   What could not be read, for the log.
+	 * @param string $error  The database error.
+	 *
+	 * @return void
+	 */
+	private static function stop_after_read_error( mixed $stored, string $what, string $error ): void {
+		mai_analytics_logger()->error( sprintf( 'Provider sync could not read %s from the buffer: %s. Nothing was changed, and they will be counted on the next run.', $what, $error ) );
+
+		if ( false === $stored ) {
+			delete_option( 'mai_analytics_provider_last_sync' );
+		} else {
+			update_option( 'mai_analytics_provider_last_sync', $stored, false );
+		}
+
+		set_transient( 'mai_analytics_provider_syncing', 1, 5 * MINUTE_IN_SECONDS );
+	}
+
+	/**
+	 * The key for one buffer object, so rows from different queries can be matched.
+	 *
+	 * @since 1.3.8
+	 *
+	 * @param object $row A row with object_id, object_type and object_key.
+	 *
+	 * @return string
+	 */
+	private static function object_ref( object $row ): string {
+		return $row->object_type . ':' . (int) $row->object_id . ':' . $row->object_key;
 	}
 
 	/**
@@ -694,7 +766,7 @@ class ProviderSync {
 				$web_total    = $provider_failed ? null : (int) ( $web_views[ $path ][ self::WINDOW_ALL_TIME ] ?? 0 );
 				$web_trending = $provider_failed ? null : (int) ( $web_views[ $path ][ self::WINDOW_TRENDING ] ?? 0 );
 
-				$app_trending = (int) $wpdb->get_var(
+				$app_trending = $wpdb->get_var(
 					$wpdb->prepare(
 						"SELECT COUNT(*)
 						 FROM $table
@@ -710,6 +782,14 @@ class ProviderSync {
 					)
 				);
 
+				// A failed count is not zero. Mirrors process_batch().
+				if ( $wpdb->last_error ) {
+					mai_analytics_logger()->error( sprintf( 'Warm could not count app views in the trending window for object_type=%s object_id=%d: %s. Its trending was left as it was.', $type, $id, $wpdb->last_error ) );
+					$app_trending = null;
+				} else {
+					$app_trending = (int) $app_trending;
+				}
+
 				if ( 'post_type' === $type ) {
 					if ( null !== $web_total ) {
 						$state['pt_views_web'][ $key ] = $web_total;
@@ -719,7 +799,7 @@ class ProviderSync {
 					$state['pt_dirty']            = true;
 
 					// Guarded like $pt_views_web above. Mirrors process_batch().
-					if ( null !== $web_trending ) {
+					if ( null !== $web_trending && null !== $app_trending ) {
 						$state['pt_trending'][ $key ] = $web_trending + $app_trending;
 					}
 
@@ -741,7 +821,7 @@ class ProviderSync {
 					//
 					// Route through the store so 0 deletes the row instead of
 					// bloating the meta_value+0 sort.
-					if ( null !== $web_trending ) {
+					if ( null !== $web_trending && null !== $app_trending ) {
 						Stats::set_trending( $id, $type, $web_trending + $app_trending );
 					}
 
