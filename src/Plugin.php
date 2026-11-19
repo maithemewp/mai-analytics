@@ -69,7 +69,9 @@ class Plugin {
 	public static function activate(): void {
 		Cron::add_schedule_filter();
 
-		Database::create_table();
+		if ( ! Database::create_table() ) {
+			mai_analytics_logger()->error( 'Activation could not set up the mai_analytics_buffer table. Views are not saved until it exists. Run "wp mai-analytics health --fix" to try again.' );
+		}
 
 		if ( ! wp_next_scheduled( 'mai_analytics_cron_sync' ) ) {
 			wp_schedule_event( time(), 'mai_analytics_15min', 'mai_analytics_cron_sync' );

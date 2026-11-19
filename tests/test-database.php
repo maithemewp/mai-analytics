@@ -146,6 +146,88 @@ class Test_Database extends WP_UnitTestCase {
 		$this->assertNotSame( '1.0.2', get_option( Database::DB_VERSION_OPTION ) );
 	}
 
+	/**
+	 * Makes the old Mai Views table look present, runs the migration with
+	 * `$copy` standing in for the copy query, and returns the queries that
+	 * would have dropped the old table. Nothing is really dropped.
+	 *
+	 * @return string[]
+	 */
+	private function migrate_with_copy( string $copy ): array {
+		global $wpdb;
+
+		$old   = $wpdb->prefix . 'mai_views_buffer';
+		$drops = [];
+
+		delete_option( 'mai_analytics_table_migrated' );
+
+		$fake = function ( $query ) use ( $old, $copy, &$drops ) {
+			if ( "SHOW TABLES LIKE '$old'" === $query ) {
+				return "SELECT '$old'";
+			}
+
+			if ( str_starts_with( $query, 'INSERT INTO `' . Database::get_table_name() . '` SELECT' ) ) {
+				return $copy;
+			}
+
+			// The test library has already made it DROP TEMPORARY TABLE by now.
+			if ( preg_match( '/^DROP (TEMPORARY )?TABLE `' . preg_quote( $old, '/' ) . '`$/', $query ) ) {
+				$drops[] = $query;
+				return 'SELECT 1';
+			}
+
+			return $query;
+		};
+
+		$suppressed = $wpdb->suppress_errors( true );
+		add_filter( 'query', $fake );
+		Database::maybe_update();
+		remove_filter( 'query', $fake );
+		$wpdb->suppress_errors( $suppressed );
+
+		return $drops;
+	}
+
+	public function test_failed_copy_keeps_the_old_table(): void {
+		$drops = $this->migrate_with_copy( 'SELECT * FROM `mai_analytics_missing_table`' );
+
+		$this->assertSame( [], $drops );
+		$this->assertFalse( get_option( 'mai_analytics_table_migrated' ) );
+	}
+
+	public function test_copy_drops_the_old_table(): void {
+		$drops = $this->migrate_with_copy( 'SELECT 1' );
+
+		$this->assertCount( 1, $drops );
+		$this->assertTrue( (bool) get_option( 'mai_analytics_table_migrated' ) );
+	}
+
+	public function test_failed_query_in_dbdelta_is_not_success(): void {
+		global $wpdb;
+
+		delete_option( Database::DB_VERSION_OPTION );
+		delete_transient( Database::RETRY_TRANSIENT );
+
+		// A failing query first and a working one last, so last_error alone would miss it.
+		$extra = fn( $queries ) => array_merge(
+			$queries,
+			[
+				'INSERT INTO `mai_analytics_missing_table` VALUES (1)',
+				"UPDATE `$wpdb->options` SET option_value = option_value WHERE 1 = 0",
+			]
+		);
+
+		$suppressed = $wpdb->suppress_errors( true );
+		add_filter( 'dbdelta_insert_queries', $extra );
+		$created = Database::create_table();
+		remove_filter( 'dbdelta_insert_queries', $extra );
+		$wpdb->suppress_errors( $suppressed );
+
+		$this->assertFalse( $created );
+		$this->assertFalse( get_option( Database::DB_VERSION_OPTION ) );
+		$this->assertNotFalse( get_transient( Database::RETRY_TRANSIENT ) );
+	}
+
 	public function test_is_queued_returns_true_when_exists(): void {
 		$post_id   = self::factory()->post->create();
 		$last_sync = time() - 3600; // 1 hour ago.

@@ -44,12 +44,13 @@ class Database {
 	/**
 	 * Creates the buffer table using dbDelta for safe schema migrations.
 	 *
-	 * Records the db version only when the table exists afterwards. When it
-	 * doesn't, it logs an error and sets RETRY_TRANSIENT for an hour.
+	 * Records the db version only when the table exists afterwards and none of
+	 * dbDelta()'s queries failed. Otherwise it logs an error and sets
+	 * RETRY_TRANSIENT for an hour.
 	 *
-	 * @since 1.3.8 Returns whether the table exists.
+	 * @since 1.3.8 Returns whether the table is in place and up to date.
 	 *
-	 * @return bool True when the table exists after dbDelta().
+	 * @return bool True when the table exists and every dbDelta() query worked.
 	 */
 	public static function create_table(): bool {
 		global $wpdb;
@@ -70,10 +71,29 @@ class Database {
 		) $charset;";
 
 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+
+		// dbDelta() runs several queries and reports none of their errors, and
+		// last_error only holds the last one. wpdb adds every failed query to
+		// this global (wp-includes/class-wpdb.php, print_error()), so count it.
+		global $EZSQL_ERROR;
+
+		$errors_before = is_array( $EZSQL_ERROR ) ? count( $EZSQL_ERROR ) : 0;
+
 		dbDelta( $sql );
+
+		$errors_after = is_array( $EZSQL_ERROR ) ? count( $EZSQL_ERROR ) : 0;
+		$error        = $errors_after > $errors_before ? (string) ( $EZSQL_ERROR[ $errors_after - 1 ]['error_str'] ?? '' ) : $wpdb->last_error;
+		$failed       = $errors_after > $errors_before || '' !== $wpdb->last_error;
 
 		if ( ! self::table_exists() ) {
 			mai_analytics_logger()->error( 'Could not create the mai_analytics_buffer table. Will try again in an hour.' );
+			set_transient( self::RETRY_TRANSIENT, 1, HOUR_IN_SECONDS );
+
+			return false;
+		}
+
+		if ( $failed ) {
+			mai_analytics_logger()->error( sprintf( 'Could not update the mai_analytics_buffer table: %s. Will try again in an hour.', $error ) );
 			set_transient( self::RETRY_TRANSIENT, 1, HOUR_IN_SECONDS );
 
 			return false;
@@ -130,6 +150,8 @@ class Database {
 			$wpdb->prefix . 'mai_analytics_views',
 		];
 
+		$failed = false;
+
 		foreach ( $old_tables as $old_table ) {
 			// phpcs:ignore WordPress.DB.DirectDatabaseQuery
 			$old_exists = (bool) $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $old_table ) );
@@ -144,6 +166,14 @@ class Database {
 			if ( $new_exists ) {
 				// phpcs:ignore WordPress.DB.DirectDatabaseQuery
 				$wpdb->query( "INSERT INTO `$new_table` SELECT * FROM `$old_table`" );
+
+				// Keep the old table when the copy failed, so no views are lost.
+				if ( $wpdb->last_error ) {
+					mai_analytics_logger()->error( sprintf( 'Could not copy %s into %s: %s. The old table was kept, and the copy will be tried again.', $old_table, $new_table, $wpdb->last_error ) );
+					$failed = true;
+					continue;
+				}
+
 				// phpcs:ignore WordPress.DB.DirectDatabaseQuery
 				$wpdb->query( "DROP TABLE `$old_table`" );
 			} else {
@@ -155,7 +185,17 @@ class Database {
 						$new_table
 					)
 				);
+
+				if ( $wpdb->last_error ) {
+					mai_analytics_logger()->error( sprintf( 'Could not rename %s to %s: %s. It will be tried again.', $old_table, $new_table, $wpdb->last_error ) );
+					$failed = true;
+				}
 			}
+		}
+
+		// Try again on a later request rather than marking it done.
+		if ( $failed ) {
+			return;
 		}
 
 		// Migrate DB version from the Mai Views era, only once the new table exists.
