@@ -11,7 +11,7 @@ use WP_REST_Request;
 defined( 'ABSPATH' ) || die;
 
 /**
- * Turns core's argument errors on the plugin's routes into {slug}_invalid_request,
+ * Turns core's argument errors on a plugin's routes into {slug}_invalid_request,
  * after the route's own permission check.
  *
  * Core validates args before it asks the permission callback
@@ -19,9 +19,10 @@ defined( 'ABSPATH' ) || die;
  * this a signed-out caller with a bad arg would get a 400 instead of a 401 or 403.
  *
  * A copy of `Mai\Items\RestErrors` from mai-items-core, kept the same until
- * this plugin can depend on that library. The one difference: it reports a
- * throwing permission callback with wp_trigger_error() only where WordPress
- * has it (6.4 and later), since this plugin supports 6.1.
+ * this plugin can depend on that library. Besides the namespace, the
+ * direct-access guard and fuller PHPDoc, the one behaviour difference: it
+ * reports a throwing permission callback with wp_trigger_error() only where
+ * WordPress has it (6.4 and later), since this plugin supports 6.1.
  *
  * @since 1.3.8
  */
@@ -76,13 +77,13 @@ final class RestErrors {
 		// Checked each time rather than remembered, so the filter comes back
 		// if a test framework restored the hooks.
 		if ( false === has_filter( 'rest_request_before_callbacks', self::$filter ) ) {
-			// After the plugin's own checks at the default priority, which keep deciding first.
+			// After the plugins' own checks at the default priority, which keep deciding first.
 			add_filter( 'rest_request_before_callbacks', self::$filter, 99, 3 );
 		}
 	}
 
 	/**
-	 * The error the plugin's own checks return for a bad request.
+	 * The error a plugin's own checks return for a bad request.
 	 *
 	 * @since 1.3.8
 	 *
@@ -137,7 +138,11 @@ final class RestErrors {
 
 				// As core builds it (class-wp-rest-server.php:1264 to :1270).
 				if ( false === $permission || null === $permission ) {
-					return self::forbidden();
+					return new WP_Error(
+						'rest_forbidden',
+						__( 'Sorry, you are not allowed to do that.' ),
+						[ 'status' => rest_authorization_required_code() ]
+					);
 				}
 			}
 		} catch ( \Throwable $error ) {
@@ -150,7 +155,11 @@ final class RestErrors {
 			}
 
 			// Fails closed: a caller whose permission could not be checked never sees the arg error.
-			return self::forbidden();
+			return new WP_Error(
+				'rest_forbidden',
+				__( 'Sorry, you are not allowed to do that.' ),
+				[ 'status' => rest_authorization_required_code() ]
+			);
 		}
 
 		if ( ! $core ) {
@@ -160,21 +169,6 @@ final class RestErrors {
 		$data = $response->get_error_data();
 
 		return self::invalid_request( $slug, $response->get_error_message(), is_array( $data ) ? $data : [] );
-	}
-
-	/**
-	 * Core's refusal for a failed permission check.
-	 *
-	 * @since 1.3.8
-	 *
-	 * @return WP_Error
-	 */
-	private static function forbidden(): WP_Error {
-		return new WP_Error(
-			'rest_forbidden',
-			__( 'Sorry, you are not allowed to do that.' ),
-			[ 'status' => rest_authorization_required_code() ]
-		);
 	}
 
 	/**
