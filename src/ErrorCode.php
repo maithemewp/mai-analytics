@@ -21,7 +21,7 @@ enum ErrorCode: string {
 	case NotFound              = 'mai_analytics_not_found';
 	case Bot                   = 'mai_analytics_bot';
 	case ProviderUnavailable   = 'mai_analytics_provider_unavailable';
-	case ProviderDisabled      = 'mai_analytics_provider_disabled';
+	case ProviderRequired      = 'mai_analytics_provider_required';
 	case ProviderRequestFailed = 'mai_analytics_provider_request_failed';
 	case DatabaseError         = 'mai_analytics_database_error';
 
@@ -37,7 +37,7 @@ enum ErrorCode: string {
 			self::InvalidRequest                              => 400,
 			self::Bot                                         => 403,
 			self::NotFound                                    => 404,
-			self::ProviderUnavailable, self::ProviderDisabled => 501,
+			self::ProviderUnavailable, self::ProviderRequired => 501,
 			self::ProviderRequestFailed                       => 502,
 			self::DatabaseError                               => 503,
 		};

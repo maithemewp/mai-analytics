@@ -961,7 +961,7 @@ class AdminRestApi {
 	 */
 	public function warm( WP_REST_Request $request ): WP_REST_Response {
 		if ( 'self_hosted' === Settings::get( 'data_source' ) ) {
-			return Errors::response( ErrorCode::ProviderDisabled, 'Warm is only available in provider mode.' );
+			return Errors::response( ErrorCode::ProviderRequired, 'Warm is only available in provider mode.' );
 		}
 
 		$cursor         = (int) $request->get_param( 'cursor' );

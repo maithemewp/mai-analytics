@@ -18,7 +18,7 @@ class Test_Error_Codes extends WP_UnitTestCase {
 			'NotFound'              => [ ErrorCode::NotFound, 'mai_analytics_not_found', 404 ],
 			'Bot'                   => [ ErrorCode::Bot, 'mai_analytics_bot', 403 ],
 			'ProviderUnavailable'   => [ ErrorCode::ProviderUnavailable, 'mai_analytics_provider_unavailable', 501 ],
-			'ProviderDisabled'      => [ ErrorCode::ProviderDisabled, 'mai_analytics_provider_disabled', 501 ],
+			'ProviderRequired'      => [ ErrorCode::ProviderRequired, 'mai_analytics_provider_required', 501 ],
 			'ProviderRequestFailed' => [ ErrorCode::ProviderRequestFailed, 'mai_analytics_provider_request_failed', 502 ],
 			'DatabaseError'         => [ ErrorCode::DatabaseError, 'mai_analytics_database_error', 503 ],
 		];
