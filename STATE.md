@@ -9,7 +9,7 @@ Updated: 2026-11-19 by Claude (mai-analytics build session, handing over to a fr
   - `provider_disabled` becomes `mai_analytics_provider_required`.
   - The older v1.3.7 issues get fixed in the same branch.
 - Branches (`origin` is GitHub maithemewp/mai-analytics):
-  - **`develop`:** the main checkout `~/Plugins/mai-analytics`, ahead of `origin/develop` and not pushed. Its head is the commit that wrote this file.
+  - **`develop`:** the main checkout `~/Plugins/mai-analytics`, pushed to `origin/develop` on 2026-11-19 with Mike's yes. Its head is the commit that wrote this file.
   - **`main`:** bf3ba96, Release 1.3.7, on origin.
   - **Merged into `develop` and on origin:** `feat/alignment` e52b825, `fix/cron-label-translation` 7aeb681, `feat/view-stats-lifecycle`, `fix/provider-null-contract` and `fix/site-kit-owner-bound-client`.
   - **`settings` and `trending`:** old local-only branches from 2023, not part of this work. Leave them alone.
@@ -23,7 +23,6 @@ Updated: 2026-11-19 by Claude (mai-analytics build session, handing over to a fr
 To catch up, read these in order: `AGENTS.md`, `~/LocalPackages/maiexpowp/CONVENTIONS.md`, `docs/specs/2026-11-18-alignment.md`, `docs/plans/2026-11-18-alignment.md`, `docs/plans/2026-11-19-review-fixes.md`.
 
 ## Blocked / waiting on
-- Mike: "Push develop to origin now, or wait?" Pushing ships nothing, because the updater ships from `main`. No session has his yes yet.
 - The coordinator's grant for any merge into `develop`. The coordinator keeps its files (`STATE.md`, `SITE-LOCK.md` and `ALIGNMENT.md`) in the shared production-copy site's folder. Never edit them. If you can't message the coordinator, ask Mike to relay.
 
 ## Verify
