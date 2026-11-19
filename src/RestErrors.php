@@ -89,7 +89,7 @@ final class RestErrors {
 	 *
 	 * @param string               $slug    The code prefix.
 	 * @param string               $message The error message.
-	 * @param array<string, mixed> $data    Kept as it is, with status 400.
+	 * @param array<string, mixed> $data    Kept as it is, except status, which is always 400.
 	 *
 	 * @return WP_Error
 	 */
