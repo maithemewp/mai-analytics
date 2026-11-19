@@ -108,8 +108,26 @@ class Test_REST_API extends WP_UnitTestCase {
 		$this->assertViewError( $response, ErrorCode::NotFound );
 	}
 
-	public function test_insert_failure_answers_503(): void {
+	/**
+	 * Self-hosted, and provider mode, where a web view is checked against the
+	 * queue before it is saved.
+	 *
+	 * @return array<string, array{0: string}>
+	 */
+	public function data_sources(): array {
+		return [
+			'self-hosted' => [ 'self_hosted' ],
+			'provider'    => [ 'matomo' ],
+		];
+	}
+
+	/**
+	 * @dataProvider data_sources
+	 */
+	public function test_insert_failure_answers_503( string $data_source ): void {
 		global $wpdb;
+
+		add_filter( 'mai_analytics_data_source', fn() => $data_source );
 
 		$post_id    = self::factory()->post->create( [ 'post_status' => 'publish' ] );
 		$suppressed = $wpdb->suppress_errors( true );
