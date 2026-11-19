@@ -137,6 +137,89 @@ class Test_REST_API extends WP_UnitTestCase {
 		}
 	}
 
+	/**
+	 * Runs a callback while every query that checks a user's posts fails.
+	 *
+	 * @return mixed What the callback returns.
+	 */
+	private function with_failing_user_check( callable $callback ): mixed {
+		global $wpdb;
+
+		$suppressed = $wpdb->suppress_errors( true );
+		$break      = function ( $query ) use ( $wpdb ) {
+			if ( str_contains( $query, 'post_author' ) && str_contains( $query, $wpdb->users ) ) {
+				return str_replace( $wpdb->users, 'mai_analytics_missing_table', $query );
+			}
+
+			return $query;
+		};
+
+		add_filter( 'query', $break );
+
+		try {
+			return $callback();
+		} finally {
+			remove_filter( 'query', $break );
+			$wpdb->suppress_errors( $suppressed );
+		}
+	}
+
+	public function test_user_check_failure_answers_503(): void {
+		$author = self::factory()->user->create();
+		self::factory()->post->create( [ 'post_status' => 'publish', 'post_author' => $author ] );
+		$before = $this->buffer_rows();
+
+		[ $post, $get ] = $this->with_failing_user_check( fn() => [
+			$this->server->dispatch( $this->view_request( 'user/' . $author ) ),
+			$this->get_views_at( 'user/' . $author ),
+		] );
+
+		$this->assertViewError( $post, ErrorCode::DatabaseError );
+		$this->assertViewError( $get, ErrorCode::DatabaseError );
+		$this->assertSame( '1', $get->get_headers()['Retry-After'] );
+		$this->assertSame( $before, $this->buffer_rows() );
+	}
+
+	public function test_trending_users_check_failure_answers_503(): void {
+		$author = self::factory()->user->create();
+		self::factory()->post->create( [ 'post_status' => 'publish', 'post_author' => $author ] );
+		Database::insert_view( $author, 'user' );
+
+		$request = new WP_REST_Request( 'GET', '/mai-analytics/v1/views/trending' );
+		$request->set_param( 'type', 'user' );
+
+		$response = $this->with_failing_user_check( fn() => $this->server->dispatch( $request ) );
+
+		$this->assertSame( 503, $response->get_status() );
+		$this->assertSame( ErrorCode::DatabaseError->value, $response->get_data()['code'] );
+	}
+
+	public function test_user_check_stops_at_first_post(): void {
+		global $wpdb;
+
+		$author = self::factory()->user->create();
+		self::factory()->post->create_many( 3, [ 'post_status' => 'publish', 'post_author' => $author ] );
+
+		$seen  = [];
+		$watch = function ( $query ) use ( &$seen, $wpdb ) {
+			if ( str_contains( $query, 'post_author' ) && str_contains( $query, $wpdb->users ) ) {
+				$seen[] = $query;
+			}
+
+			return $query;
+		};
+
+		add_filter( 'query', $watch );
+		$response = $this->get_views_at( 'user/' . $author );
+		remove_filter( 'query', $watch );
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertCount( 1, $seen );
+		$this->assertStringContainsString( 'EXISTS', $seen[0] );
+		$this->assertStringContainsString( 'LIMIT 1', $seen[0] );
+		$this->assertStringNotContainsString( 'DISTINCT', $seen[0] );
+	}
+
 	public function test_provider_mode_dedup_still_succeeds(): void {
 		add_filter( 'mai_analytics_data_source', fn() => 'matomo' );
 

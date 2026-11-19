@@ -139,8 +139,14 @@ class RestApi {
 			return $this->invalid_request();
 		}
 
-		// Validate the object exists and is public.
-		if ( ! $this->validate_object( $id, $type ) ) {
+		// Validate the object exists and is publicly viewable.
+		$viewable = $this->validate_object( $id, $type );
+
+		if ( null === $viewable ) {
+			return $this->database_error( __( 'The view could not be checked. Try again.', 'mai-analytics' ) );
+		}
+
+		if ( ! $viewable ) {
 			return $this->not_found();
 		}
 
@@ -195,7 +201,13 @@ class RestApi {
 		}
 
 		// Same rule as the POST: a missing or hidden item answers 404.
-		if ( ! $this->validate_object( $id, $type ) ) {
+		$viewable = $this->validate_object( $id, $type );
+
+		if ( null === $viewable ) {
+			return $this->read_error();
+		}
+
+		if ( ! $viewable ) {
 			return $this->not_found();
 		}
 
@@ -356,7 +368,13 @@ class RestApi {
 
 		// Drop items a caller may not see, checked in bulk.
 		$key     = 'post_type' === $type ? 'object_key' : 'object_id';
-		$visible = array_flip( $this->visible_ids( $type, array_map( fn( $r ) => $r->{$key}, array_values( $results ) ) ) );
+		$visible = $this->visible_ids( $type, array_map( fn( $r ) => $r->{$key}, array_values( $results ) ) );
+
+		if ( null === $visible ) {
+			return $this->read_error();
+		}
+
+		$visible = array_flip( $visible );
 		$results = array_filter( $results, fn( $row ) => isset( $visible[ 'post_type' === $type ? $row->object_key : (int) $row->object_id ] ) );
 
 		$results = array_slice( array_values( $results ), 0, $per_page );
@@ -470,25 +488,41 @@ class RestApi {
 	}
 
 	/**
-	 * Builds the error for a view that could not be saved.
+	 * Builds the error for a view that could not be saved or checked.
+	 *
+	 * @since 1.3.8
+	 *
+	 * @param string $message The message. Defaults to the one for a view that could not be saved.
+	 *
+	 * @return WP_REST_Response
+	 */
+	private function database_error( string $message = '' ): WP_REST_Response {
+		$message = $message ?: __( 'The view could not be saved. Try again.', 'mai-analytics' );
+
+		return Errors::response( ErrorCode::DatabaseError, $message, [], [ 'success' => false ] );
+	}
+
+	/**
+	 * Builds the error for counts that could not be read.
 	 *
 	 * @since 1.3.8
 	 *
 	 * @return WP_REST_Response
 	 */
-	private function database_error(): WP_REST_Response {
-		return Errors::response( ErrorCode::DatabaseError, __( 'The view could not be saved. Try again.', 'mai-analytics' ), [], [ 'success' => false ] );
+	private function read_error(): WP_REST_Response {
+		return $this->database_error( __( 'The views could not be read. Try again.', 'mai-analytics' ) );
 	}
 
 	/**
-	 * Validates that an object exists and is public.
+	 * Validates that an object exists and is publicly viewable.
 	 *
 	 * @param int    $id   The object ID.
 	 * @param string $type The object type: 'post', 'term', or 'user'.
 	 *
-	 * @return bool True if the object exists and is publicly accessible.
+	 * @return bool|null True if the object exists and is publicly viewable, or
+	 *                   null when the check for a user could not be read.
 	 */
-	private function validate_object( int $id, string $type ): bool {
+	private function validate_object( int $id, string $type ): ?bool {
 		return match ( $type ) {
 			// Core's rules for what a signed-out visitor may see. Attachments
 			// were never counted (they are `inherit`, which core resolves through
@@ -502,7 +536,11 @@ class RestApi {
 			} )(),
 			// Core has no helper for users. A user is visible only with a post
 			// this rule would count.
-			'user' => [] !== $this->users_with_viewable_posts( [ $id ] ),
+			'user' => ( function() use ( $id ) {
+				$found = $this->users_with_viewable_posts( [ $id ] );
+
+				return null === $found ? null : [] !== $found;
+			} )(),
 			default => false,
 		};
 	}
@@ -533,9 +571,9 @@ class RestApi {
 	 * @param string $type The object type: 'post', 'term', 'user' or 'post_type'.
 	 * @param array  $ids  Object IDs, or post type names for 'post_type'.
 	 *
-	 * @return array The visible IDs (ints), or names for 'post_type'.
+	 * @return array|null The visible IDs (ints), or names for 'post_type', or null when a query failed.
 	 */
-	private function visible_ids( string $type, array $ids ): array {
+	private function visible_ids( string $type, array $ids ): ?array {
 		if ( 'post_type' === $type ) {
 			return array_values( array_filter( array_map( 'strval', $ids ), fn( $name ) => $this->is_public_post_type( $name ) ) );
 		}
@@ -568,16 +606,17 @@ class RestApi {
 	 *
 	 * Uses the same sets as validate_object()'s post rule: post types and
 	 * statuses core calls viewable (is_post_type_viewable(),
-	 * is_post_status_viewable()), without attachments. Joining the users table
-	 * drops IDs whose user was deleted, so no user objects or meta are loaded.
+	 * is_post_status_viewable()), without attachments. Reading from the users
+	 * table drops IDs whose user was deleted, so no user objects or meta are
+	 * loaded. The check for each user stops at its first matching post.
 	 *
 	 * @since 1.3.8
 	 *
 	 * @param int[] $ids User IDs.
 	 *
-	 * @return int[] The IDs that pass, in the order given.
+	 * @return int[]|null The IDs that pass, in the order given, or null when the query failed.
 	 */
-	private function users_with_viewable_posts( array $ids ): array {
+	private function users_with_viewable_posts( array $ids ): ?array {
 		global $wpdb;
 
 		$ids      = array_values( array_unique( array_filter( array_map( 'intval', $ids ) ) ) );
@@ -594,15 +633,23 @@ class RestApi {
 
 		$found = $wpdb->get_col(
 			$wpdb->prepare(
-				"SELECT DISTINCT p.post_author
-				 FROM $wpdb->posts p
-				 INNER JOIN $wpdb->users u ON u.ID = p.post_author
-				 WHERE p.post_author IN ($id_holders)
-				 AND p.post_type IN ($type_holders)
-				 AND p.post_status IN ($status_holders)",
+				"SELECT u.ID
+				 FROM $wpdb->users u
+				 WHERE u.ID IN ($id_holders)
+				 AND EXISTS (
+					SELECT 1 FROM $wpdb->posts p
+					WHERE p.post_author = u.ID
+					AND p.post_type IN ($type_holders)
+					AND p.post_status IN ($status_holders)
+					LIMIT 1
+				 )",
 				array_merge( $ids, $types, $statuses )
 			)
 		);
+
+		if ( $wpdb->last_error ) {
+			return null;
+		}
 
 		$found = array_flip( array_map( 'intval', $found ) );
 
