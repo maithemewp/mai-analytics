@@ -3,7 +3,7 @@ Updated: 2026-11-19 by Claude (mai-analytics review-pr fixes session)
 
 ## Now
 - `pr-review-toolkit:review-pr` ran on `main..develop` with all six aspects. Findings and mai-coordinator's rulings are in the shared notes folder (`2026-11-19-mai-analytics-review-findings.md`).
-- The ruled fixes are built on `feat/review-pr-fixes`, in the worktree `~/Plugins/_wip/mai-analytics-review-pr`. There is one commit per finding, and an independent review fixed one more issue. The suite passes with 346 tests; develop has 298. The branch is not merged yet: the merge waits on the coordinator's grant, then the short smoke on the shared production-copy site.
+- The ruled fixes are built on `feat/review-pr-fixes`, in the worktree `~/Plugins/_wip/mai-analytics-review-pr`. There is one commit per finding. The independent review led to three more fixes, the last two ruled by the coordinator: a failed app trending count no longer stamps an object synced, the provider catchup event has its handler again (it fataled from 1.1.1 to 1.3.7), and a stopped provider sync counts the app views of objects it didn't reach. The suite passes with 349 tests; develop had 298.
 - Routes whose answer changed on this branch:
   - **`POST /admin/sync-now`:** 429 `mai_analytics_busy` (new code) when a sync holds the lock, 503 `mai_analytics_database_error` when a buffer read failed, both with Retry-After 1, instead of 200 "complete".
   - **`GET /admin/top/posts`, `/top/terms`, `/top/authors`, `/admin/filters`:** 503 `mai_analytics_database_error` on a failed query instead of 200 with empty or zero data. Filters cache nothing then.
@@ -15,16 +15,16 @@ Updated: 2026-11-19 by Claude (mai-analytics review-pr fixes session)
   - **`main`:** bf3ba96, Release 1.3.7. **`settings`** and **`trending`:** old 2023 branches. Leave them alone.
 
 ## Next
-1. The coordinator rules on the merge, and on the two older bugs the independent review found (in its report, not fixed here): the catchup hook calls a missing `Cron::maybe_provider_sync()`, and a provider sync that stops mid-run drops the app views of unprocessed objects.
-2. A Health check for a stuck old-table migration waits on Mike's wording (drafted and sent to the coordinator).
+1. Merge into `develop` under the coordinator's grant (given 2026-11-19 once the catchup and stopped-run fixes were green), smoke the shared production-copy site, and report. The coordinator pushes.
+2. A Health check for a stuck old-table migration, and a message for a failed filters load on the dashboard, wait on Mike's wording.
 3. Release only when Mike asks, after the whole stack passes. No tags and no tag talk before then. The draft changelog below goes into `CHANGES.md` on that commit.
 
 ## Blocked / waiting on
-- The merge grant and the rulings above. mai-coordinator's files (`STATE.md`, `SITE-LOCK.md`, `ALIGNMENT.md`) are in the shared production-copy site's folder; find it with `ls ~/Herd/*/SITE-LOCK.md`. Never edit them.
+- Mike's wording for the two items in Next. mai-coordinator's files (`STATE.md`, `SITE-LOCK.md`, `ALIGNMENT.md`) are in the shared production-copy site's folder; find it with `ls ~/Herd/*/SITE-LOCK.md`. Never edit them.
 
 ## Verify
 - Before any suite, read the Status section of that folder's `SITE-LOCK.md`. Don't run during a claimed device run, or with `uptime` showing a 1-minute load of 10 or more. Never use the site itself without a claim.
-- Run the suite in a worktree after `composer install`: `WP_TESTS_DIR=/tmp/wordpress-tests-lib vendor/bin/phpunit`. 346 tests.
+- Run the suite in a worktree after `composer install`: `WP_TESTS_DIR=/tmp/wordpress-tests-lib vendor/bin/phpunit`. 349 tests.
 - A reboot clears `/tmp`. If `/tmp/wordpress-tests-lib/includes/functions.php` is missing, run `bin/install-wp-tests.sh wp_maianalytics_tests root '' localhost latest true` from the worktree.
 - Then restore `vendor/`: `composer install --no-dev`, `git checkout -- vendor/composer/installed.json vendor/composer/installed.php`, then `php ~/Plugins/mai-analytics/vendor/bin/deployable-guard check --root=<path relative to the main checkout>`. It must print "OK: committed autoloader is deployable as-is."
 - Commit no `vendor/` change on a feature branch.
@@ -47,7 +47,8 @@ Updated: 2026-11-19 by Claude (mai-analytics review-pr fixes session)
 * Fixed: A sync that could not read new views skipped them, in both modes. They are now counted on the next run.
 * Fixed: A failed trending read during a sync cleared trending counts.
 * Fixed: In provider mode, a view of one post type archive kept every other archive from syncing until the next run.
-* Fixed: A provider sync could count an app view twice when it was saved during a long run.
+* Fixed: A provider sync could count an app view twice when it was saved during a long run, and lost the app views of pages it had not reached when it stopped early.
+* Fixed: The provider sync's catchup event failed with a fatal error each time it fired, so a sync that stopped early was not continued until the next scheduled sync.
 * Fixed: Moving views from an old table could drop that table after a failed copy, and the move failed on WordPress 6.1.
 * Fixed: A failed change to the views table during an update was reported as success.
 * Fixed: `wp mai-analytics health` exited 0 when a check failed, and `--fix` said the cron was rescheduled even when it wasn't.
