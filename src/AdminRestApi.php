@@ -871,15 +871,27 @@ class AdminRestApi {
 	}
 
 	/**
-	 * Triggers an immediate provider sync.
+	 * Runs a sync now: the self-hosted sync, or a provider sync after a quick
+	 * connection check.
+	 *
+	 * @since 1.3.8 A sync that did not run answers 429 mai_analytics_busy or
+	 *              503 mai_analytics_database_error instead of "complete".
 	 *
 	 * @param WP_REST_Request $request The incoming request.
 	 *
-	 * @return WP_REST_Response Status message.
+	 * @return WP_REST_Response Status message, or 429, 501, 502 or 503 when the
+	 *                          sync did not run or the provider failed.
 	 */
 	public function sync_now( WP_REST_Request $request ): WP_REST_Response {
+		global $wpdb;
+
 		if ( 'self_hosted' === Settings::get( 'data_source' ) ) {
-			Sync::sync();
+			$not_run = Sync::sync();
+
+			if ( $not_run ) {
+				return $this->sync_error( $not_run );
+			}
+
 			return new WP_REST_Response( [ 'message' => 'Self-hosted sync complete.' ] );
 		}
 
@@ -908,13 +920,21 @@ class AdminRestApi {
 		$since      = $last_sync ? gmdate( 'Y-m-d H:i:s', $last_sync ) : '1970-01-01 00:00:00';
 		$queue_size = count( Database::get_distinct_objects_since( $since ) );
 
+		if ( $wpdb->last_error ) {
+			return $this->sync_error( ErrorCode::DatabaseError );
+		}
+
 		if ( 0 === $queue_size ) {
 			return new WP_REST_Response( [ 'message' => __( 'Provider connected. No pages in the queue. Try "Warm Stats" to fetch all stats.', 'mai-analytics' ) ] );
 		}
 
 		Sync::clear_provider_error();
 
-		ProviderSync::sync();
+		$not_run = ProviderSync::sync();
+
+		if ( in_array( $not_run, [ ErrorCode::Busy, ErrorCode::DatabaseError, ErrorCode::ProviderUnavailable ], true ) ) {
+			return $this->sync_error( $not_run );
+		}
 
 		$error = Sync::get_last_error()['message'];
 
@@ -923,6 +943,26 @@ class AdminRestApi {
 		}
 
 		return new WP_REST_Response( [ 'message' => sprintf( __( 'Sync complete. Processed %d objects.', 'mai-analytics' ), $queue_size ) ] );
+	}
+
+	/**
+	 * Builds the error for a sync that did not run.
+	 *
+	 * @since 1.3.8
+	 *
+	 * @param ErrorCode $code Why it did not run, as Sync::sync() or ProviderSync::sync() returned it.
+	 *
+	 * @return WP_REST_Response
+	 */
+	private function sync_error( ErrorCode $code ): WP_REST_Response {
+		$message = match ( $code ) {
+			ErrorCode::Busy                => __( 'A sync is already running. Try again in a few minutes.', 'mai-analytics' ),
+			ErrorCode::DatabaseError       => __( 'The sync could not read the saved views, so nothing was changed. Try again.', 'mai-analytics' ),
+			ErrorCode::ProviderUnavailable => __( 'The provider is not available.', 'mai-analytics' ),
+			default                        => __( 'The sync did not run. Try again.', 'mai-analytics' ),
+		};
+
+		return Errors::response( $code, $message );
 	}
 
 	/**

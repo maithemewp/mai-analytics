@@ -69,12 +69,21 @@ class ProviderSync {
 	 *                    if a recent provider error is on file. Used by the
 	 *                    `wp mai-analytics sync --force` CLI flag.
 	 *
-	 * @return void
+	 * @since 1.3.8 Returns why the sync did not run, or null when it ran.
+	 *
+	 * @return ErrorCode|null ErrorCode::Busy when another sync holds the lock,
+	 *                        ErrorCode::ProviderRequestFailed when a recent
+	 *                        provider error holds it back,
+	 *                        ErrorCode::ProviderUnavailable when there is no
+	 *                        usable provider, ErrorCode::DatabaseError when a
+	 *                        buffer read failed and nothing was changed, or
+	 *                        null when it ran. A provider failure during the run
+	 *                        is recorded by the provider, see Sync::get_last_error().
 	 */
-	public static function sync( bool $force = false ): void {
+	public static function sync( bool $force = false ): ?ErrorCode {
 		// Concurrency lock.
 		if ( get_transient( 'mai_analytics_provider_syncing' ) ) {
-			return;
+			return ErrorCode::Busy;
 		}
 
 		// Circuit breaker: skip this run rather than hammer a recently-failed
@@ -88,7 +97,7 @@ class ProviderSync {
 
 		if ( $remaining > 0 ) {
 			self::schedule_catchup( time() + $remaining + 60 );
-			return;
+			return ErrorCode::ProviderRequestFailed;
 		}
 
 		set_transient( 'mai_analytics_provider_syncing', 1, 15 * MINUTE_IN_SECONDS );
@@ -109,7 +118,7 @@ class ProviderSync {
 
 		if ( ! $provider || ! $provider->is_available() ) {
 			delete_transient( 'mai_analytics_provider_syncing' );
-			return;
+			return ErrorCode::ProviderUnavailable;
 		}
 
 		// Provider handles its own API auth (e.g., SiteKit binds its GA4 client to
@@ -139,13 +148,12 @@ class ProviderSync {
 		$objects = Database::get_distinct_objects_since( $last_sync_date );
 
 		if ( $wpdb->last_error ) {
-			self::stop_after_read_error( $stored, 'the queued objects', $wpdb->last_error );
-			return;
+			return self::stop_after_read_error( $stored, 'the queued objects', $wpdb->last_error );
 		}
 
 		if ( ! $objects ) {
 			self::finish_sync( $wpdb, $table, $retention_days, $started_at );
-			return;
+			return null;
 		}
 
 		// New app views since the last sync, read once for every object before
@@ -166,8 +174,7 @@ class ProviderSync {
 		);
 
 		if ( $wpdb->last_error ) {
-			self::stop_after_read_error( $stored, 'the new app views', $wpdb->last_error );
-			return;
+			return self::stop_after_read_error( $stored, 'the new app views', $wpdb->last_error );
 		}
 
 		$app_new = [];
@@ -203,6 +210,8 @@ class ProviderSync {
 		}
 
 		self::finish_sync( $wpdb, $table, $retention_days, $started_at );
+
+		return null;
 	}
 
 	/**
@@ -450,9 +459,9 @@ class ProviderSync {
 	 * @param string $what   What could not be read, for the log.
 	 * @param string $error  The database error.
 	 *
-	 * @return void
+	 * @return ErrorCode ErrorCode::DatabaseError, for sync() to return.
 	 */
-	private static function stop_after_read_error( mixed $stored, string $what, string $error ): void {
+	private static function stop_after_read_error( mixed $stored, string $what, string $error ): ErrorCode {
 		mai_analytics_logger()->error( sprintf( 'Provider sync could not read %s from the buffer: %s. Nothing was changed, and they will be counted on the next run.', $what, $error ) );
 
 		if ( false === $stored ) {
@@ -462,6 +471,8 @@ class ProviderSync {
 		}
 
 		set_transient( 'mai_analytics_provider_syncing', 1, 5 * MINUTE_IN_SECONDS );
+
+		return ErrorCode::DatabaseError;
 	}
 
 	/**

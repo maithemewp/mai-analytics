@@ -219,7 +219,7 @@ class CLI {
 
 		if ( 'self_hosted' === $data_source ) {
 			WP_CLI::log( 'Running buffer sync...' );
-			Sync::sync();
+			$not_run = Sync::sync();
 		} else {
 			// Warn-and-exit (not error-and-exit) when the breaker is fresh:
 			// `WP_CLI::warning` keeps exit code 0 so monitoring wrappers
@@ -239,7 +239,12 @@ class CLI {
 			}
 
 			WP_CLI::log( sprintf( 'Running provider sync (%s)...', $data_source ) );
-			ProviderSync::sync( $force );
+			$not_run = ProviderSync::sync( $force );
+		}
+
+		// A sync that did not run never says complete. Each exits with code 1.
+		if ( $not_run ) {
+			WP_CLI::error( self::sync_not_run_message( $not_run ) );
 		}
 
 		if ( $verbose ) {
@@ -523,9 +528,32 @@ class CLI {
 		update_option( 'mai_analytics_synced', 0 );
 		delete_transient( 'mai_analytics_syncing' );
 
-		Sync::sync();
+		$not_run = Sync::sync();
+
+		if ( $not_run ) {
+			WP_CLI::error( 'The views were seeded, but ' . lcfirst( self::sync_not_run_message( $not_run ) ) );
+		}
 
 		WP_CLI::success( 'Seed complete. Run `wp mai-analytics stats` to see results.' );
+	}
+
+	/**
+	 * Says why a sync did not run.
+	 *
+	 * @since 1.3.8
+	 *
+	 * @param ErrorCode $code What Sync::sync() or ProviderSync::sync() returned.
+	 *
+	 * @return string
+	 */
+	private static function sync_not_run_message( ErrorCode $code ): string {
+		return match ( $code ) {
+			ErrorCode::Busy                  => 'A sync is already running. Try again in a few minutes.',
+			ErrorCode::DatabaseError         => 'The sync could not read the buffer table, so nothing was changed. The log has the database error.',
+			ErrorCode::ProviderUnavailable   => 'The provider is not available. Run "wp mai-analytics health" for details.',
+			ErrorCode::ProviderRequestFailed => 'A recent provider error is still in its backoff window. Pass --force to bypass.',
+			default                          => 'The sync did not run.',
+		};
 	}
 
 	/**

@@ -665,6 +665,140 @@ class Test_Admin_REST_API extends WP_UnitTestCase {
 		$this->assertSame( 'down', $data['message'] );
 	}
 
+	/**
+	 * Registers a provider that answers 5 views for every path and window.
+	 */
+	private function register_working_provider(): void {
+		add_filter( 'mai_analytics_providers', function () {
+			return [ new class() implements \Mai\Analytics\WebViewProvider {
+				public function get_slug(): string { return 'working_provider'; }
+				public function get_label(): string { return 'Working'; }
+				public function is_available(): bool { return true; }
+				public function get_batch_size(): int { return 50; }
+				public function get_settings_fields(): array { return []; }
+
+				public function get_views( array $paths, array $windows ): ?array {
+					return array_fill_keys( $paths, array_fill_keys( array_keys( $windows ), 5 ) );
+				}
+			} ];
+		} );
+
+		update_option( 'mai_analytics_settings', [ 'data_source' => 'working_provider', 'sync_user' => 1 ] );
+	}
+
+	/**
+	 * Runs Sync Now while every buffer query containing `$marker` fails.
+	 */
+	private function sync_now_with_failing( string $marker ): WP_REST_Response {
+		global $wpdb;
+
+		$table      = Database::get_table_name();
+		$suppressed = $wpdb->suppress_errors( true );
+		$break      = function ( $query ) use ( $marker, $table ) {
+			if ( str_contains( $query, $marker ) && str_contains( $query, $table ) ) {
+				return str_replace( $table, 'mai_analytics_missing_table', $query );
+			}
+
+			return $query;
+		};
+
+		add_filter( 'query', $break );
+
+		try {
+			return $this->post_admin( 'sync-now' );
+		} finally {
+			remove_filter( 'query', $break );
+			$wpdb->suppress_errors( $suppressed );
+		}
+	}
+
+	/**
+	 * Asserts a sync that did not run: its code, status, retry wait and header.
+	 */
+	private function assert_sync_not_run( WP_REST_Response $response, ErrorCode $code ): void {
+		$data = $response->get_data();
+
+		$this->assertSame( $code->status(), $response->get_status() );
+		$this->assertSame( $code->value, $data['code'] );
+		$this->assertSame( $code->status(), $data['data']['status'] );
+		$this->assertSame( 1, $data['data']['retry_after'] );
+		$this->assertSame( '1', $response->get_headers()['Retry-After'] );
+		$this->assertStringNotContainsString( 'complete', $data['message'] );
+	}
+
+	public function test_sync_now_self_hosted_runs(): void {
+		$this->as_admin();
+		update_option( 'mai_analytics_settings', [ 'data_source' => 'self_hosted' ] );
+
+		$post_id = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+		Database::insert_view( $post_id, 'post' );
+
+		$response = $this->post_admin( 'sync-now' );
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertSame( [ 'message' => 'Self-hosted sync complete.' ], $response->get_data() );
+		$this->assertSame( 1, (int) get_post_meta( $post_id, 'mai_views', true ) );
+	}
+
+	public function test_sync_now_self_hosted_busy_answers_429(): void {
+		$this->as_admin();
+		update_option( 'mai_analytics_settings', [ 'data_source' => 'self_hosted' ] );
+		set_transient( 'mai_analytics_syncing', 1, 60 );
+
+		$response = $this->post_admin( 'sync-now' );
+		delete_transient( 'mai_analytics_syncing' );
+
+		$this->assert_sync_not_run( $response, ErrorCode::Busy );
+	}
+
+	public function test_sync_now_self_hosted_read_failure_answers_503(): void {
+		$this->as_admin();
+		update_option( 'mai_analytics_settings', [ 'data_source' => 'self_hosted' ] );
+		Database::insert_view( self::factory()->post->create( [ 'post_status' => 'publish' ] ), 'post' );
+
+		$response = $this->sync_now_with_failing( 'COUNT(*) as cnt' );
+		delete_transient( 'mai_analytics_syncing' );
+
+		$this->assert_sync_not_run( $response, ErrorCode::DatabaseError );
+	}
+
+	public function test_sync_now_provider_runs(): void {
+		$this->as_admin();
+		$this->register_working_provider();
+
+		$post_id = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+		Database::insert_view( $post_id, 'post' );
+
+		$response = $this->post_admin( 'sync-now' );
+
+		$this->assertSame( 200, $response->get_status() );
+		$this->assertSame( [ 'message' => 'Sync complete. Processed 1 objects.' ], $response->get_data() );
+		$this->assertSame( 5, (int) get_post_meta( $post_id, 'mai_views_web', true ) );
+	}
+
+	public function test_sync_now_provider_busy_answers_429(): void {
+		$this->as_admin();
+		$this->register_working_provider();
+		Database::insert_view( self::factory()->post->create( [ 'post_status' => 'publish' ] ), 'post' );
+		set_transient( 'mai_analytics_provider_syncing', 1, 60 );
+
+		$response = $this->post_admin( 'sync-now' );
+		delete_transient( 'mai_analytics_provider_syncing' );
+
+		$this->assert_sync_not_run( $response, ErrorCode::Busy );
+	}
+
+	public function test_sync_now_provider_queue_read_failure_answers_503(): void {
+		$this->as_admin();
+		$this->register_working_provider();
+		Database::insert_view( self::factory()->post->create( [ 'post_status' => 'publish' ] ), 'post' );
+
+		$response = $this->sync_now_with_failing( 'SELECT DISTINCT object_id, object_type, object_key' );
+		delete_transient( 'mai_analytics_provider_syncing' );
+
+		$this->assert_sync_not_run( $response, ErrorCode::DatabaseError );
+	}
+
 	public function test_warm_in_self_hosted_mode(): void {
 		$this->as_admin();
 		update_option( 'mai_analytics_settings', [ 'data_source' => 'self_hosted' ] );

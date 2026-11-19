@@ -204,10 +204,11 @@ Every error carries `code`, `message` and `data.status`. Errors on the view rout
 - **400 `mai_analytics_invalid_request`:** an argument is missing or wrong. A caller who fails the permission check gets core's 401 or 403 `rest_forbidden` first.
 - **403 `mai_analytics_bot`:** in self-hosted mode, a view from a bot user agent.
 - **404 `mai_analytics_not_found`:** the item is missing or not publicly viewable.
+- **429 `mai_analytics_busy`:** Sync Now found another sync running. The response sends `Retry-After: 1`.
 - **501 `mai_analytics_provider_unavailable`:** Sync Now has no working provider set up.
 - **501 `mai_analytics_provider_required`:** Warm was called in self-hosted mode.
 - **502 `mai_analytics_provider_request_failed`:** the provider answered with an error.
-- **503 `mai_analytics_database_error`:** a query failed. The response sends `Retry-After: 1`, so try again.
+- **503 `mai_analytics_database_error`:** a query failed. For Sync Now, nothing was changed. The response sends `Retry-After: 1`, so try again.
 
 ## How It Works
 

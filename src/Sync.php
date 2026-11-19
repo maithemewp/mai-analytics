@@ -10,12 +10,16 @@ class Sync {
 	 * Views are split by source (web/app) into separate meta keys, with a computed total.
 	 * Trending is a single merged key from all sources.
 	 *
-	 * @return void
+	 * @since 1.3.8 Returns why the sync did not run, or null when it ran.
+	 *
+	 * @return ErrorCode|null ErrorCode::Busy when another sync holds the lock,
+	 *                        ErrorCode::DatabaseError when a buffer read failed
+	 *                        and nothing was changed, or null when it ran.
 	 */
-	public static function sync(): void {
+	public static function sync(): ?ErrorCode {
 		// Prevent concurrent syncs from double-counting.
 		if ( get_transient( 'mai_analytics_syncing' ) ) {
-			return;
+			return ErrorCode::Busy;
 		}
 
 		set_transient( 'mai_analytics_syncing', 1, 5 * MINUTE_IN_SECONDS );
@@ -56,8 +60,7 @@ class Sync {
 		);
 
 		if ( $wpdb->last_error ) {
-			self::stop_after_read_error( $stored, 'new views', $wpdb->last_error );
-			return;
+			return self::stop_after_read_error( $stored, 'new views', $wpdb->last_error );
 		}
 
 		// The trending window (all sources merged).
@@ -72,8 +75,7 @@ class Sync {
 		);
 
 		if ( $wpdb->last_error ) {
-			self::stop_after_read_error( $stored, 'the trending window', $wpdb->last_error );
-			return;
+			return self::stop_after_read_error( $stored, 'the trending window', $wpdb->last_error );
 		}
 
 		// Objects with views older than the window, whose trending may need clearing.
@@ -90,8 +92,7 @@ class Sync {
 		);
 
 		if ( $wpdb->last_error ) {
-			self::stop_after_read_error( $stored, 'the views older than the trending window', $wpdb->last_error );
-			return;
+			return self::stop_after_read_error( $stored, 'the views older than the trending window', $wpdb->last_error );
 		}
 
 		// 1. Increment lifetime views by source for new views since last sync.
@@ -184,6 +185,8 @@ class Sync {
 		// "after boundary" side of the next sync's query.
 		update_option( 'mai_analytics_synced', $started_at, false );
 		delete_transient( 'mai_analytics_syncing' );
+
+		return null;
 	}
 
 	/**
@@ -200,9 +203,9 @@ class Sync {
 	 * @param string $what   What could not be read, for the log.
 	 * @param string $error  The database error.
 	 *
-	 * @return void
+	 * @return ErrorCode ErrorCode::DatabaseError, for sync() to return.
 	 */
-	private static function stop_after_read_error( mixed $stored, string $what, string $error ): void {
+	private static function stop_after_read_error( mixed $stored, string $what, string $error ): ErrorCode {
 		mai_analytics_logger()->error( sprintf( 'Sync could not read %s from the buffer: %s. Nothing was changed, and the views will be counted on the next run.', $what, $error ) );
 
 		if ( false === $stored ) {
@@ -210,6 +213,8 @@ class Sync {
 		} else {
 			update_option( 'mai_analytics_synced', $stored, false );
 		}
+
+		return ErrorCode::DatabaseError;
 	}
 
 	/**

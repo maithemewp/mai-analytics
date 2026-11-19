@@ -36,7 +36,7 @@ final class Errors {
 		$status         = $code->status();
 		$data['status'] = $status;
 
-		if ( ErrorCode::DatabaseError === $code ) {
+		if ( $code->is_retryable() ) {
 			$data['retry_after'] = 1;
 		}
 
@@ -51,7 +51,7 @@ final class Errors {
 
 		$response = new WP_REST_Response( $body, $status );
 
-		if ( ErrorCode::DatabaseError === $code ) {
+		if ( $code->is_retryable() ) {
 			$response->header( 'Retry-After', '1' );
 		}
 

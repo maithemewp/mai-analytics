@@ -54,6 +54,58 @@ class Test_CLI extends WP_UnitTestCase {
 	}
 
 	/**
+	 * Runs `wp mai-analytics sync` and returns the exit it ended with, or null.
+	 */
+	private function run_sync(): ?string {
+		try {
+			( new CLI() )->sync( [], [] );
+		} catch ( RuntimeException $e ) {
+			return $e->getMessage();
+		}
+
+		return null;
+	}
+
+	public function test_sync_says_complete_when_it_ran(): void {
+		update_option( 'mai_analytics_settings', [ 'data_source' => 'self_hosted' ] );
+
+		$this->assertNull( $this->run_sync() );
+		$this->assertStringStartsWith( 'Sync complete.', (string) end( WP_CLI::$lines ) );
+	}
+
+	public function test_sync_busy_exits_1(): void {
+		update_option( 'mai_analytics_settings', [ 'data_source' => 'self_hosted' ] );
+		set_transient( 'mai_analytics_syncing', 1, 60 );
+
+		$exit = $this->run_sync();
+		delete_transient( 'mai_analytics_syncing' );
+
+		$this->assertSame( 'WP-CLI exit 1', $exit );
+		$this->assertSame( 'A sync is already running. Try again in a few minutes.', WP_CLI::$errors[0][0] );
+		$this->assertEmpty( preg_grep( '/complete/', WP_CLI::$lines ) );
+	}
+
+	public function test_sync_read_failure_exits_1(): void {
+		global $wpdb;
+
+		update_option( 'mai_analytics_settings', [ 'data_source' => 'self_hosted' ] );
+
+		$table      = Database::get_table_name();
+		$suppressed = $wpdb->suppress_errors( true );
+		$break      = fn( $query ) => str_contains( $query, 'COUNT(*) as cnt' ) ? str_replace( $table, 'mai_analytics_missing_table', $query ) : $query;
+
+		add_filter( 'query', $break );
+		$exit = $this->run_sync();
+		remove_filter( 'query', $break );
+		$wpdb->suppress_errors( $suppressed );
+		delete_transient( 'mai_analytics_syncing' );
+
+		$this->assertSame( 'WP-CLI exit 1', $exit );
+		$this->assertStringStartsWith( 'The sync could not read the buffer table', WP_CLI::$errors[0][0] );
+		$this->assertEmpty( preg_grep( '/complete/', WP_CLI::$lines ) );
+	}
+
+	/**
 	 * Counts the failed health checks with the cron hook missing.
 	 */
 	private function failed_checks(): int {

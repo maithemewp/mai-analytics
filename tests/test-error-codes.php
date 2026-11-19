@@ -21,7 +21,14 @@ class Test_Error_Codes extends WP_UnitTestCase {
 			'ProviderRequired'      => [ ErrorCode::ProviderRequired, 'mai_analytics_provider_required', 501 ],
 			'ProviderRequestFailed' => [ ErrorCode::ProviderRequestFailed, 'mai_analytics_provider_request_failed', 502 ],
 			'DatabaseError'         => [ ErrorCode::DatabaseError, 'mai_analytics_database_error', 503 ],
+			'Busy'                  => [ ErrorCode::Busy, 'mai_analytics_busy', 429 ],
 		];
+	}
+
+	public function test_only_429_and_503_are_retryable(): void {
+		foreach ( ErrorCode::cases() as $code ) {
+			$this->assertSame( in_array( $code->status(), [ 429, 503 ], true ), $code->is_retryable(), $code->name );
+		}
 	}
 
 	/**
