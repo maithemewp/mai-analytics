@@ -1,8 +1,8 @@
 # State
-Updated: 2026-11-18 by Claude (mai-analytics build session)
+Updated: 2026-11-19 by Claude (mai-analytics build session)
 
 ## Now
-The alignment pass is built, plan Tasks 0 to 8, one commit each, plus the fixes from an independent review: the db retry transient is read only when the version is behind, trending primes meta and terms only for the rows it returns, attachments stay uncounted (mai-coordinator's decision), and the author rule uses the post rule's viewable sets. The suite passes: 265 tests, against a develop baseline of 205. develop is fast-forwarded to it locally, with mai-coordinator's grant, and not pushed. Nothing is versioned or released. Version stays 1.3.7.
+The alignment pass is built, plan Tasks 0 to 8, one commit each, plus the fixes from an independent review: the db retry transient is read only when the version is behind, trending primes meta and terms only for the rows it returns, attachments stay uncounted (mai-coordinator's decision), and the author rule uses the post rule's viewable sets. On top of that, 7aeb681 stops the "translation loading triggered too early" notice: the update checker schedules its event on plugins_loaded the first time it loads, which ran the translated cron label before after_setup_theme (present since v1.3.7). The suite passes: 267 tests, against a develop baseline of 205. develop is fast-forwarded to it locally, with mai-coordinator's grant, and not pushed. Nothing is versioned or released. Version stays 1.3.7.
 
 Draft changelog lines, for `CHANGES.md` on the release commit only, with its version and date:
 
@@ -19,6 +19,7 @@ Draft changelog lines, for `CHANGES.md` on the release commit only, with its ver
 * Fixed: Deactivating left three scheduled tasks behind, and uninstalling left two.
 * Fixed: The database version could be recorded when the table had not been created.
 * Fixed: Sync Now answered a server error for a setup problem.
+* Fixed: The first page load after activation could print a "translation loading triggered too early" notice.
 
 ## Next
 1. Mike says whether to push `develop`. It also carries the spec and plan commits that were already ahead of `origin/develop`.
