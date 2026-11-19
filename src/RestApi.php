@@ -390,17 +390,18 @@ class RestApi {
 		}
 
 		// Drop items a caller may not see, checked in bulk.
-		$key     = 'post_type' === $type ? 'object_key' : 'object_id';
-		$visible = $this->visible_ids( $type, array_map( fn( $r ) => $r->{$key}, array_values( $results ) ) );
+		$row_key = fn( $row ) => 'post_type' === $type ? $row->object_key : (int) $row->object_id;
+		$visible = $this->visible_ids( $type, array_map( $row_key, $results ) );
 
 		if ( null === $visible ) {
 			return $this->read_error();
 		}
 
 		$visible = array_flip( $visible );
-		$results = array_filter( $results, fn( $row ) => isset( $visible[ 'post_type' === $type ? $row->object_key : (int) $row->object_id ] ) );
+		$results = array_filter( $results, fn( $row ) => isset( $visible[ $row_key( $row ) ] ) );
 
-		$results = array_slice( array_values( $results ), 0, $per_page );
+		// array_slice() renumbers the keys array_filter() left.
+		$results = array_slice( $results, 0, $per_page );
 
 		$this->prime_for_output( $type, array_map( fn( $r ) => (int) ( $r->object_id ?? 0 ), $results ) );
 
