@@ -43,7 +43,7 @@ class Test_Plain_Text extends WP_UnitTestCase {
 	public function test_no_em_dash_outside_comments(): void {
 		$found = [];
 
-		foreach ( $this->code_tokens( [ 'src', 'includes' ] ) as [ $text, $line, $file ] ) {
+		foreach ( $this->code_tokens( [ 'src', 'includes', 'uninstall.php', 'mai-analytics.php' ] ) as [ $text, $line, $file ] ) {
 			if ( str_contains( $text, "\u{2014}" ) ) {
 				$found[] = "$file:$line";
 			}
