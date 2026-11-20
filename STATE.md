@@ -1,31 +1,27 @@
 # State
-Updated: 2026-11-19 by Claude (mai-analytics review-pr fixes session)
+Updated: 2026-11-20 by Claude (mai-analytics e2e session)
 
 ## Now
-- `pr-review-toolkit:review-pr` ran on `main..develop` with all six aspects. Findings and mai-coordinator's rulings are in the shared notes folder (`2026-11-19-mai-analytics-review-findings.md`).
-- The ruled fixes were built on `feat/review-pr-fixes` and fast-forwarded into `develop` at 9e3497c, smoked clean on the shared production-copy site, and pushed by mai-coordinator on 2026-11-19. There is one commit per finding. The independent review led to three more fixes, the last two ruled by the coordinator: a failed app trending count no longer stamps an object synced, the provider catchup event has its handler again (it fataled from 1.1.1 to 1.3.7), and a stopped provider sync counts the app views of objects it didn't reach. Health also gained an "Old views table" check, worded by the coordinator. The suite passes with 353 tests, run under a load of about 20; develop had 298.
-- Routes whose answer changed on this branch:
-  - **`POST /admin/sync-now`:** 429 `mai_analytics_busy` (new code) when a sync holds the lock, 503 `mai_analytics_database_error` when a buffer read failed, both with Retry-After 1, instead of 200 "complete".
-  - **`GET /admin/top/posts`, `/top/terms`, `/top/authors`, `/admin/filters`:** 503 `mai_analytics_database_error` on a failed query instead of 200 with empty or zero data. Filters cache nothing then.
-  - **`GET /views/trending`:** a `taxonomy` filter that is unknown or not publicly viewable answers 200 `[]` and reads nothing.
-  - **`wp mai-analytics sync` and `seed`:** exit 1 with a reason when the sync didn't run.
-- `feat/filters-notice`, in `~/Plugins/_wip/mai-analytics-filters-notice`: a notice above the dashboard filters when their request fails. 354 tests pass, and the notice was checked in headless Chrome. It waits on the coordinator's merge grant. No site step is needed.
+- mai-analytics is NOT cleared for release (mai-coordinator, 2026-11-20). About 1,900 lines changed since v1.3.7 had only unit tests and one smoke.
+- `bin/e2e.js` is built on `feat/e2e`, in the worktree `~/Plugins/_wip/analytics-e2e`, cut from develop at 24d8ab5. It adds the script and docs only. The plugin code is develop's. Its scenarios and rules were ruled by the coordinator: the 1.3.7 data is written directly on the run's own posts (no link swap, no `seed`), and uninstall stays out.
+- Checked so far off the site: `node --check`, the refusal without a claim (exit 2), headless Chrome through Playwright, and the real Matomo provider reading the fake Matomo's answers over localhost (a scratch unit test). The script has not run on a site yet.
 - Branches (`origin` is GitHub maithemewp/mai-analytics):
-  - **`develop`:** the main checkout `~/Plugins/mai-analytics`, which the shared production-copy site loads. On origin at 9e3497c.
-  - **`feat/review-pr-fixes`:** merged. Its worktree is removed.
-  - **`feat/filters-notice`:** the filters notice, cut from develop at 9e3497c.
+  - **`develop`:** the main checkout `~/Plugins/mai-analytics`, which the shared production-copy site loads. On origin at 24d8ab5: the review-pr fixes and the filters notice.
+  - **`feat/e2e`:** the e2e script. Don't delete the worktree or the branch.
+  - **`feat/filters-notice`:** merged into develop.
   - **`main`:** bf3ba96, Release 1.3.7. **`settings`** and **`trending`:** old 2023 branches. Leave them alone.
 
 ## Next
-1. Merge `feat/filters-notice` into `develop` when the coordinator grants it. The coordinator pushes.
+1. Send mai-coordinator the claim for the first run, then run it under the grant: `--only harness-self-check` first, then every scenario. Report each failure the run finds in the plugin to the coordinator before any fix.
 2. Release only when Mike asks, after the whole stack passes. No tags and no tag talk before then. The draft changelog below goes into `CHANGES.md` on that commit.
 
 ## Blocked / waiting on
-- The merge grant for `feat/filters-notice`. mai-coordinator's files (`STATE.md`, `SITE-LOCK.md`, `ALIGNMENT.md`) are in the shared production-copy site's folder; find it with `ls ~/Herd/*/SITE-LOCK.md`. Never edit them.
+- The coordinator's grant for the e2e run. mai-coordinator's files (`STATE.md`, `SITE-LOCK.md`, `ALIGNMENT.md`) are in the shared production-copy site's folder; find it with `ls ~/Herd/*/SITE-LOCK.md`. Never edit them.
 
 ## Verify
 - Before any suite, read the Status section of that folder's `SITE-LOCK.md`. Don't run during a claimed device run. The load-under-10 rule is for device runs only (mai-coordinator, 2026-11-19), so a suite may run under load; rerun a timing-sensitive failure alone before calling it real. Never use the site itself without a claim.
 - Run the suite in a worktree after `composer install`: `WP_TESTS_DIR=/tmp/wordpress-tests-lib vendor/bin/phpunit`. 354 tests.
+- The e2e, under a claim only: `MAI_AUTH_SITE_OK=1 NODE_PATH=~/node_modules node bin/e2e.js --base https://example.test --wp /path/to/wordpress`. The README's Testing section says what it covers and what it leaves out.
 - A reboot clears `/tmp`. If `/tmp/wordpress-tests-lib/includes/functions.php` is missing, run `bin/install-wp-tests.sh wp_maianalytics_tests root '' localhost latest true` from the worktree.
 - Then restore `vendor/`: `composer install --no-dev`, `git checkout -- vendor/composer/installed.json vendor/composer/installed.php`, then `php ~/Plugins/mai-analytics/vendor/bin/deployable-guard check --root=<path relative to the main checkout>`. It must print "OK: committed autoloader is deployable as-is."
 - Commit no `vendor/` change on a feature branch.
@@ -61,6 +57,9 @@ Updated: 2026-11-19 by Claude (mai-analytics review-pr fixes session)
 * Fixed: The first page load after activation could print a "translation loading triggered too early" notice.
 
 ## Gotchas
+- The tracker is off on a non-production site. The e2e turns it on with a must-use file, only for requests carrying its run's cookie.
+- The shared production-copy site sets WP_HTTP_BLOCK_EXTERNAL. Core always lets `localhost` through (`wp-includes/class-wp-http.php`, `block_request()`), so the fake Matomo URL must use `localhost`, not `127.0.0.1`.
+- A view saved in the same second a sync started falls on its boundary and is skipped by the next sync (`viewed_at > boundary`). The e2e waits a second before such a view.
 - The shared production-copy site loads the main checkout through a symlink. Keep it on `develop` with docs-only commits, and do code work in a worktree on a feature branch.
 - Mai Publisher bundles this plugin, and its releases are David's. A site running only the bundled copy never gets the activation, deactivation or uninstall fixes.
 - Every `mai_analytics_*` code string lives in `src/ErrorCode.php`, except `{slug}_invalid_request`, which `RestErrors` builds. `tests/test-error-codes.php` pins them all as literals.

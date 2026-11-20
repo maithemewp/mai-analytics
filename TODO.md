@@ -4,6 +4,12 @@
 
 - Merged into `develop` on 2026-11-19, after the alignment pass. Waiting on the release decision.
 
+## End-to-end tests (2026-11-20)
+
+- `bin/e2e.js` is built on `feat/e2e`. It waits on a claim from mai-coordinator for its first run on the shared production-copy site, starting with `--only harness-self-check`. Any plugin failure it finds goes to the coordinator before a fix.
+- Site Kit and Jetpack have unit tests only. Nothing runs them end to end, because both need a connected account. This is a known gap, not coverage.
+- Uninstall has unit tests only (`tests/test-uninstall.php`). The e2e leaves it out on purpose: on a shared site it would delete the site's own options and table.
+
 ## Do at the release
 
 - Commit the no-dev `vendor/composer/installed.php` and `installed.json`. The committed copies were written by a dev install (`'dev' => true`, dev packages listed). Keep both tracked (mai-coordinator, 2026-11-18), because mai-package-loader reads `installed.php` at runtime. Steps and the loader lines are in STATE.md, "Vendor".
@@ -29,5 +35,6 @@
 - The single-item routes do the same (review-pr, 2026-11-19, coordinator's ruling: later). `validate_object()` turns a failed `get_post()` or `get_term()` into 404, while a user already answers 503 (`src/RestApi.php`, `validate_object()`). `get_views()` turns a failed meta read into 200 with zeros. A cached getter runs no query, so `last_error` can't tell; count `$EZSQL_ERROR` around the read, as `Database::create_table()` does. The app ignores both 404 and 503 from `useView`.
 - A failed meta read during a sync overwrites lifetime counts (review-pr, 2026-11-19, coordinator's ruling: later). `Sync::update_meta()` in increment mode reads, adds and writes (`src/Sync.php`, `update_meta()`). When core's meta read fails, `update_meta_cache()` gets no rows (`wp-includes/meta.php:1204`) and caches an empty list for the object anyway (`:1226-1232`), so `$current` is 0 and the run's delta replaces the lifetime count. Then `Stats::recompute_total()` writes `mai_views` from it, which Mai Publisher reads. Checked in WordPress 7.1.4; still to check in 6.1, the plugin's floor. It needs the read to fail and the write after it to work. Fix with an atomic SQL increment, or by counting `$EZSQL_ERROR` around the read and stopping the sync with the boundary put back.
 - Log lines can't be tested: `mai_analytics_logger()` returns a shared `Mai_Logger` (`includes/functions.php:15-18`) with no filter or other seam to watch it. mai-logger is shared across the stack, so a seam is a change there, not here (mai-coordinator, 2026-11-19). Until then the activation, create-table and sync-read messages are checked by reading only.
-- No JS test setup exists for the admin screens. The filters notice was checked by running the real dashboard script in headless Chrome against stubbed REST answers. A Jest or Playwright suite would make that repeatable.
+- No unit-level JS tests exist for the admin screens. `bin/e2e.js` now drives the real dashboard in headless Chrome on a site, filters notice included.
+- In provider mode, the web rows of objects a stopped sync didn't reach stay in the buffer for good. The boundary moves past them, so no later sync selects them, and `finish_sync()` prunes only app rows (`src/ProviderSync.php`, `finish_sync()`). Until they are a week old they also count toward `GET /views/trending`. Found while writing the e2e, not walked yet.
 - A provider that is unavailable still moves the provider sync's boundary (`ProviderSync::sync()`, written before the availability check), so app views since the last sync are skipped. Found while fixing the failed-read case; not walked yet.
