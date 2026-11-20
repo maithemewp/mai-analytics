@@ -76,13 +76,105 @@
  * Prints one PASS, FAIL, or SKIP line per check and a summary. Exits 1 on any
  * failure, 2 when it refuses to start, and 130 when stopped by a signal.
  */
-const { execFileSync } = require( 'child_process' );
+const { execFileSync, spawnSync } = require( 'child_process' );
 const crypto = require( 'crypto' );
 const fs = require( 'fs' );
 const http = require( 'http' );
 const os = require( 'os' );
 const path = require( 'path' );
 const tls = require( 'tls' );
+
+// The fake Matomo runs in a child process of its own, started by this same
+// file, so it keeps answering while this script waits on a wp command.
+if ( process.env.MAI_ANALYTICS_E2E_FAKE_PORT ) {
+	runFake( Number( process.env.MAI_ANALYTICS_E2E_FAKE_PORT ) );
+	return;
+}
+
+// The fake Matomo's process. It answers API.getBulkRequest the way Matomo
+// does, from counts per path, and logs every request. POST /__e2e sets its
+// state ({ reset, counts, failFrom }), and any /__e2e request answers the log.
+// From request number `failFrom` on it answers 500. It exits once its parent
+// has gone. Self-contained, because it runs before the rest of this file.
+function runFake( port ) {
+	const parent = process.ppid;
+	const state = { counts: {}, failFrom: null, requests: [] };
+	const key = ( url ) => {
+		try {
+			const u = new URL( url );
+			return u.pathname + u.search;
+		} catch ( e ) {
+			return String( url );
+		}
+	};
+	const handler = ( req, res ) => {
+		let body = '';
+		req.on( 'data', ( c ) => ( body += c ) );
+		req.on( 'end', () => {
+			if ( req.url.startsWith( '/__e2e' ) ) {
+				if ( 'POST' === req.method ) {
+					const c = JSON.parse( body || '{}' );
+					if ( c.reset ) {
+						state.counts = c.counts || {};
+						state.requests = [];
+						state.failFrom = null;
+					}
+					if ( 'failFrom' in c ) {
+						state.failFrom = c.failFrom;
+					}
+				}
+				res.writeHead( 200, { 'Content-Type': 'application/json' } );
+				res.end( JSON.stringify( { requests: state.requests } ) );
+				return;
+			}
+			const p = new URLSearchParams( body );
+			const subs = [];
+			for ( const [ k, v ] of p ) {
+				const m = /^urls\[(\d+)\]$/.exec( k );
+				if ( m ) {
+					subs[ Number( m[ 1 ] ) ] = Object.fromEntries( new URLSearchParams( v ) );
+				}
+			}
+			state.requests.push( {
+				url: req.url,
+				method: p.get( 'method' ),
+				idSite: p.get( 'idSite' ),
+				token: p.get( 'token_auth' ),
+				subs,
+			} );
+			if ( null !== state.failFrom && state.requests.length >= state.failFrom ) {
+				res.writeHead( 500, { 'Content-Type': 'text/html' } );
+				res.end( '<h1>e2e fake Matomo is down</h1>' );
+				return;
+			}
+			const out = subs.map( ( s ) => {
+				const c = state.counts[ key( s.pageUrl ) ] || {};
+				const v = 'year' === s.period ? c.all_time || 0 : c.trending || 0;
+				return v ? { e2e: [ { nb_visits: v } ] } : [];
+			} );
+			res.writeHead( 200, { 'Content-Type': 'application/json' } );
+			res.end( JSON.stringify( out ) );
+		} );
+	};
+	// 127.0.0.1 and ::1, since WordPress may resolve localhost to either.
+	for ( const host of [ '127.0.0.1', '::1' ] ) {
+		http.createServer( handler )
+			.on( 'error', ( e ) => {
+				if ( '127.0.0.1' === host ) {
+					console.error( 'the fake Matomo could not listen on 127.0.0.1:' + port + ' (' + e.code + ')' );
+					process.exit( 3 );
+				}
+			} )
+			.listen( port, host );
+	}
+	setInterval( () => {
+		try {
+			process.kill( parent, 0 );
+		} catch ( e ) {
+			process.exit( 0 );
+		}
+	}, 1000 );
+}
 
 const { chromium } = require(
 	require.resolve( 'playwright', {
@@ -306,24 +398,23 @@ function wpRun( argv ) {
 }
 
 // Runs a wp command that may fail on purpose. Answers the exit code, stdout and
-// stderr instead of throwing.
+// stderr (where WP-CLI writes warnings and errors) instead of throwing.
 function wpTry( argv ) {
 	gate();
-	try {
-		const out = execFileSync( 'wp', argv, {
-			cwd: args.wp,
-			stdio: [ 'ignore', 'pipe', 'pipe' ],
-			encoding: 'utf8',
-			detached: true,
-		} );
-		return { code: 0, out: out.trim(), err: '' };
-	} catch ( e ) {
-		return {
-			code: e.status ?? 1,
-			out: String( e.stdout || '' ).trim(),
-			err: cleanErr( e.stderr ),
-		};
-	}
+	const r = spawnSync( 'wp', argv, {
+		cwd: args.wp,
+		stdio: [ 'ignore', 'pipe', 'pipe' ],
+		encoding: 'utf8',
+		detached: true,
+	} );
+	return {
+		code: r.status ?? 1,
+		out: String( r.stdout || '' ).trim(),
+		err: String( r.stderr || '' )
+			.split( '\n' )
+			.filter( ( l ) => l.trim() && ! /^(PHP )?(Deprecated|Notice)/.test( l ) )
+			.join( '\n' ),
+	};
 }
 
 // Runs PHP with `$d` set to the given data, passed as base64 JSON so no value
@@ -520,10 +611,12 @@ const opt = ( name ) =>
 const setOpt = ( name, value ) =>
 	php( 'update_option( $d["n"], $d["v"], false );', { n: name, v: value } );
 
-// The five view meta values of one object, null for a key with no row.
+// The five view meta values of one object, null for a key with no row. Reads
+// the raw rows, since the plugin registers the keys with a default of 0
+// (src/Meta.php), which get_post_meta() would answer for a missing row.
 const metaOf = ( type, id ) =>
 	phpJson(
-		'$f = [ "post" => "get_post_meta", "term" => "get_term_meta", "user" => "get_user_meta" ][ $d["type"] ]; $o = []; foreach ( $d["keys"] as $k ) { $v = $f( (int) $d["id"], $k, true ); $o[ $k ] = "" === $v ? null : (int) $v; } echo wp_json_encode( $o );',
+		'$o = []; foreach ( $d["keys"] as $k ) { $v = get_metadata_raw( $d["type"], (int) $d["id"], $k, true ); $o[ $k ] = null === $v ? null : (int) $v; } echo wp_json_encode( $o );',
 		{ type, id, keys: META_KEYS }
 	);
 
@@ -782,106 +875,69 @@ async function views( type, id, n = 1, source = 'web' ) {
 }
 
 // ---------------------------------------------------------------------------
-// The fake Matomo. It answers API.getBulkRequest the way Matomo does, from
-// counts the scenario sets per path, and logs every request.
+// The fake Matomo, in its own process (see runFake() at the top). The site
+// calls it at `localhost`, which WordPress lets through WP_HTTP_BLOCK_EXTERNAL
+// (wp-includes/class-wp-http.php, block_request()).
 // ---------------------------------------------------------------------------
 
-const fake = {
-	counts: {},
-	failFrom: Infinity,
-	requests: [],
-	servers: [],
-};
+let fakeChild = null;
+const FAKE_URL = 'http://localhost:' + FAKE_PORT + '/';
 
-function fakeHandler( req, res ) {
-	let body = '';
-	req.on( 'data', ( c ) => ( body += c ) );
-	req.on( 'end', () => {
-		const p = new URLSearchParams( body );
-		const subs = [];
-		for ( const [ k, v ] of p ) {
-			const m = /^urls\[(\d+)\]$/.exec( k );
-			if ( m ) {
-				subs[ Number( m[ 1 ] ) ] = Object.fromEntries( new URLSearchParams( v ) );
-			}
-		}
-		fake.requests.push( {
-			url: req.url,
-			method: p.get( 'method' ),
-			idSite: p.get( 'idSite' ),
-			token: p.get( 'token_auth' ),
-			subs,
-		} );
-		if ( fake.requests.length >= fake.failFrom ) {
-			res.writeHead( 500, { 'Content-Type': 'text/html' } );
-			res.end( '<h1>e2e fake Matomo is down</h1>' );
-			return;
-		}
-		const out = subs.map( ( s ) => {
-			let key = s.pageUrl;
-			try {
-				key = pathKey( s.pageUrl );
-			} catch ( e ) {
-				// Unparsable, so it has no counts.
-			}
-			const c = fake.counts[ key ] || {};
-			const v = 'year' === s.period ? c.all_time || 0 : c.trending || 0;
-			return v ? { e2e: [ { nb_visits: v } ] } : [];
-		} );
-		res.writeHead( 200, { 'Content-Type': 'application/json' } );
-		res.end( JSON.stringify( out ) );
-	} );
+async function fakeControl( body ) {
+	const r = await fetch(
+		'http://127.0.0.1:' + FAKE_PORT + '/__e2e',
+		body ? { method: 'POST', body: JSON.stringify( body ) } : {}
+	);
+	return r.json();
 }
 
-// Listens on 127.0.0.1 and ::1, since WordPress may resolve localhost to either.
-// WordPress lets a request to `localhost` through WP_HTTP_BLOCK_EXTERNAL
-// (wp-includes/class-wp-http.php, block_request()).
 async function startFake() {
-	for ( const host of [ '127.0.0.1', '::1' ] ) {
-		const server = http.createServer( fakeHandler );
+	const { spawn } = require( 'child_process' );
+	fakeChild = spawn( process.execPath, [ __filename ], {
+		env: { ...process.env, MAI_ANALYTICS_E2E_FAKE_PORT: String( FAKE_PORT ) },
+		stdio: [ 'ignore', 'inherit', 'inherit' ],
+	} );
+	for ( let i = 0; i < 50 && null === fakeChild.exitCode; i++ ) {
 		try {
-			await new Promise( ( resolve, reject ) => {
-				server.once( 'error', reject );
-				server.listen( FAKE_PORT, host, resolve );
-			} );
-			fake.servers.push( server );
+			await fakeControl();
+			return;
 		} catch ( e ) {
-			if ( '127.0.0.1' === host ) {
-				throw new Error(
-					'the fake Matomo could not listen on 127.0.0.1:' + FAKE_PORT + ' (' + e.code + '). Pick another --fake-port.'
-				);
-			}
+			await sleep( 100 );
 		}
 	}
+	throw new Error( 'the fake Matomo did not start on 127.0.0.1:' + FAKE_PORT + '. Pick another --fake-port.' );
 }
 
 function stopFake() {
-	for ( const s of fake.servers ) {
-		s.close();
-		s.closeAllConnections?.();
+	if ( fakeChild && null === fakeChild.exitCode ) {
+		fakeChild.kill();
 	}
-	fake.servers = [];
+	fakeChild = null;
 }
 
-const FAKE_URL = 'http://localhost:' + FAKE_PORT + '/';
+// Every request the fake got since its last reset.
+const fakeLog = async () => ( await fakeControl() ).requests;
 
-function resetFake( countsByUrl = {} ) {
-	fake.counts = {};
+// From the nth request since the last reset on, the fake answers 500. Null
+// turns that off.
+const failFrom = ( n ) => fakeControl( { failFrom: n } );
+
+// Clears the log and the failure, and sets the counts, keyed by URL.
+async function resetFake( countsByUrl = {} ) {
+	const counts = {};
 	for ( const [ url, c ] of Object.entries( countsByUrl ) ) {
-		fake.counts[ pathKey( url ) ] = c;
+		counts[ pathKey( url ) ] = c;
 	}
-	fake.failFrom = Infinity;
-	fake.requests = [];
+	await fakeControl( { reset: true, counts } );
 }
 
 // Proves the site reaches the fake before a provider scenario relies on it.
+// Each scenario resets the fake afterwards, which clears this request.
 function fakeReachable() {
-	const before = fake.requests.length;
 	const got = php(
 		'$r = wp_remote_post( $d . "index.php", [ "body" => [ "module" => "API", "method" => "API.getBulkRequest", "format" => "json" ], "timeout" => 10 ] ); echo is_wp_error( $r ) ? "error: " . $r->get_error_message() : wp_remote_retrieve_response_code( $r );',
 		FAKE_URL
 	);
-	fake.requests.splice( before );
 	if ( '200' !== got ) {
 		throw new Error( 'the site cannot reach the fake Matomo at ' + FAKE_URL + ': ' + got );
 	}
@@ -910,14 +966,14 @@ const matomo = () => ( {
 } );
 
 // Empties the buffer, sets the settings, marks both syncs as a minute old so
-// no fallback sync fires, clears locks, the provider error and the per-archive
-// options, deletes view meta on the run's objects, and clears the catchup and
+// no fallback sync fires, clears locks, the cached dashboard filters, the
+// provider error and the per-archive options, deletes view meta on the run's objects, and clears the catchup and
 // one-off prune events.
 function freshState( settings ) {
 	php(
 		BUFFER_TABLE +
 			' $wpdb->query( "DELETE FROM $t" );' +
-			' foreach ( [ "mai_analytics_syncing", "mai_analytics_provider_syncing" ] as $k ) { delete_transient( $k ); }' +
+			' foreach ( [ "mai_analytics_syncing", "mai_analytics_provider_syncing", "mai_analytics_admin_filters" ] as $k ) { delete_transient( $k ); }' +
 			' update_option( "mai_analytics_settings", $d["settings"], false );' +
 			' update_option( "mai_analytics_synced", time() - 60, false ); update_option( "mai_analytics_provider_last_sync", time() - 60, false );' +
 			' \\Mai\\Analytics\\Sync::clear_provider_error();' +
@@ -1030,6 +1086,21 @@ async function waitRows( type, id, source, want, key = '', timeout = 10000 ) {
 		await sleep( 500 );
 	} while ( Date.now() < until );
 	return got;
+}
+
+// Opens a URL. A refused connection is tried once more, and the retry is
+// printed as a note, since the first full run met one on the site's own host.
+async function open( page, url ) {
+	try {
+		return await page.goto( url, { waitUntil: 'load' } );
+	} catch ( e ) {
+		if ( ! /ERR_CONNECTION_REFUSED/.test( e.message ) ) {
+			throw e;
+		}
+		note( 'retried ' + url + ' once after ERR_CONNECTION_REFUSED' );
+		await sleep( 2000 );
+		return page.goto( url, { waitUntil: 'load' } );
+	}
 }
 
 // Whether a page's HTML holds the tracker's beacon. wp_json_encode() escapes
@@ -1176,7 +1247,7 @@ SCENARIOS[ 'tracker-web' ] = async () => {
 	];
 	for ( const [ what, url, type, id, key ] of pages ) {
 		const page = await newPage( { as: visitor } );
-		await page.goto( url, { waitUntil: 'load' } );
+		await open( page, url );
 		const html = await page.content();
 		const route = 'post_type' === type ? 'view/post_type/' + key : 'view/' + type + '/' + id;
 		check( 'a view of ' + what + ' prints the beacon for ' + route, html.includes( 'sendBeacon' ) && html.includes( route.replace( /\//g, '\\/' ) ), url );
@@ -1185,12 +1256,12 @@ SCENARIOS[ 'tracker-web' ] = async () => {
 
 	// The tracker is off on a non-production site unless something turns it on.
 	const off = await newPage( { as: visitor, track: false } );
-	await off.goto( post.url, { waitUntil: 'load' } );
+	await open( off, post.url );
 	check( 'without the tracking filter a local site prints no beacon', ! hasBeacon( await off.content() ) );
 
 	// Editors are never counted.
 	const editor = await newPage( { as: admin } );
-	await editor.goto( post.url, { waitUntil: 'load' } );
+	await open( editor, post.url );
 	check( 'a signed-in editor gets no beacon', ! hasBeacon( await editor.content() ) );
 
 	await sleep( 1500 );
@@ -1199,7 +1270,7 @@ SCENARIOS[ 'tracker-web' ] = async () => {
 	if ( 'yes' === php( 'echo \\Mai\\Analytics\\BotFilter::is_bot( $d ) ? "yes" : "no";', BOT_UA ) ) {
 		const bot = await newPage( { as: visitor, ua: BOT_UA } );
 		const beacon = bot.waitForResponse( ( r ) => r.url().includes( '/mai-analytics/v1/view/post/' + post.id ), { timeout: 10000 } ).catch( () => null );
-		await bot.goto( post.url, { waitUntil: 'load' } );
+		await open( bot, post.url );
 		const r = await beacon;
 		check( "a bot's beacon is refused", ! r || 403 === r.status(), r && r.status() );
 		await sleep( 1000 );
@@ -1388,7 +1459,12 @@ SCENARIOS[ 'rest-admin' ] = async () => {
 	r = await rest( 'GET', API + 'admin/top/archives', { as } );
 	check( 'top archives lists the e2e post type', 200 === r.status && JSON.stringify( r.json.items || [] ).includes( CPT ), r.text.slice( 0, 300 ) );
 	r = await rest( 'GET', API + 'admin/filters', { as } );
-	check( 'filters lists posts and the e2e post type', 200 === r.status && JSON.stringify( r.json ).includes( '"post"' ) && JSON.stringify( r.json ).includes( CPT ), r.text.slice( 0, 300 ) );
+	// Filters lists only post types and taxonomies with counted views.
+	check(
+		'filters lists posts and categories, which have views',
+		200 === r.status && ( r.json.post_types || [] ).some( ( x ) => 'post' === x.slug ) && ( r.json.taxonomies || [] ).some( ( x ) => 'category' === x.slug ),
+		r.text.slice( 0, 300 )
+	);
 	r = await rest( 'GET', API + 'admin/search?type=author&search=' + encodeURIComponent( PREFIX + 'ra-author' ), { as } );
 	check( 'search finds the author', 200 === r.status && ( Array.isArray( r.json ) ? r.json : [] ).some( ( x ) => x.id === author.id ), r.text.slice( 0, 300 ) );
 	r = await rest( 'GET', API + 'admin/search?type=term&taxonomy=category&search=' + encodeURIComponent( PREFIX + 'ra-cat' ), { as } );
@@ -1442,17 +1518,21 @@ SCENARIOS.dashboard = async () => {
 	const b = createPost( 'db-b', { author: author.id } );
 	await views( 'post', a.id, 3 );
 	await views( 'post', b.id, 1 );
+	// The authors tab counts views of author archives, not of their posts.
+	await views( 'user', author.id, 2 );
 	runCron( 'mai_analytics_cron_sync' );
 	const dash = BASE + '/wp-admin/admin.php?page=mai-analytics';
 
 	const page = await newPage( { as: admin, track: false } );
-	await page.goto( dash, { waitUntil: 'load' } );
+	await open( page, dash );
 	await page.waitForFunction( () => document.querySelector( '.mai-analytics-table tbody tr' ), null, { timeout: 20000 } ).catch( () => {} );
 	const table = await textOf( page, '.mai-analytics-table tbody' );
 	check( 'the posts table lists A and B', !! table && table.includes( PREFIX + 'db-a' ) && table.includes( PREFIX + 'db-b' ), table );
 	equal( 'the Total Views card shows 4', await textOf( page, '[data-card="views"] .mai-analytics-card__value' ), '4' );
 	check( 'the filters notice stays hidden', await page.evaluate( () => document.getElementById( 'mai-analytics-filters-error' )?.hidden ) );
-	check( 'the post type filter has its options', await page.evaluate( () => document.querySelectorAll( '#mai-analytics-post-type option' ).length > 1 ) );
+	// The filters load into Tom Select's own list, not the select's options.
+	await page.waitForFunction( () => 'post' in ( document.getElementById( 'mai-analytics-post-type' )?.tomselect?.options || {} ), null, { timeout: 15000 } ).catch( () => {} );
+	check( 'the post type filter offers Posts', await page.evaluate( () => 'post' in ( document.getElementById( 'mai-analytics-post-type' )?.tomselect?.options || {} ) ) );
 	for ( const tab of [ 'terms', 'authors', 'archives' ] ) {
 		await page.click( '.mai-analytics-tabs .nav-tab[data-tab="' + tab + '"]' );
 		await sleep( 1500 );
@@ -1460,15 +1540,15 @@ SCENARIOS.dashboard = async () => {
 		check( 'the ' + tab + ' tab loads', ! /Could not load/.test( empty || '' ), empty );
 	}
 	await page.click( '.mai-analytics-tabs .nav-tab[data-tab="authors"]' );
-	await sleep( 1500 );
-	check( 'the authors tab lists the author', ( ( await textOf( page, '.mai-analytics-table tbody' ) ) || '' ).includes( PREFIX + 'db-author' ) );
+	await page.waitForFunction( ( n ) => ( document.querySelector( '.mai-analytics-table tbody' )?.innerText || '' ).includes( n ), PREFIX + 'db-author', { timeout: 15000 } ).catch( () => {} );
+	check( 'the authors tab lists the author', ( ( await textOf( page, '.mai-analytics-table tbody' ) ) || '' ).includes( PREFIX + 'db-author' ), await textOf( page, '.mai-analytics-table tbody' ) );
 
 	// The filters request fails: the notice shows, and the table still loads.
 	const broken = await newPage( { as: admin, track: false } );
 	await broken.route( /\/mai-analytics\/v1\/admin\/filters/, ( route ) =>
 		route.fulfill( { status: 503, contentType: 'application/json', body: JSON.stringify( { code: 'mai_analytics_database_error', message: 'e2e', data: { status: 503 } } ) } )
 	);
-	await broken.goto( dash, { waitUntil: 'load' } );
+	await open( broken, dash );
 	await broken.waitForFunction( () => ! document.getElementById( 'mai-analytics-filters-error' )?.hidden, null, { timeout: 15000 } ).catch( () => {} );
 	equal( 'a failed filters request shows the notice', await textOf( broken, '#mai-analytics-filters-error' ), 'Could not load the filters. Reload the page to try again.' );
 	await broken.waitForFunction( () => document.querySelector( '.mai-analytics-table tbody tr' ), null, { timeout: 15000 } ).catch( () => {} );
@@ -1477,7 +1557,7 @@ SCENARIOS.dashboard = async () => {
 	// The settings tab's health check.
 	noteHealthPost();
 	const settings = await newPage( { as: admin, track: false } );
-	await settings.goto( dash + '&tab=settings', { waitUntil: 'load' } );
+	await open( settings, dash + '&tab=settings' );
 	await settings.click( '#mai-analytics-health-check' );
 	await settings.waitForFunction( () => /passed/.test( document.getElementById( 'mai-analytics-health-results' )?.innerText || '' ), null, { timeout: 30000 } ).catch( () => {} );
 	check( 'Run Health Check shows its results', /\d+ passed, \d+ failed/.test( ( await textOf( settings, '#mai-analytics-health-results' ) ) || '' ), await textOf( settings, '#mai-analytics-health-results' ) );
@@ -1544,7 +1624,7 @@ SCENARIOS[ 'provider-sync' ] = async () => {
 	const p2 = createPost( 'ps-2' );
 	createPost( 'ps-cpt', { type: CPT } );
 	const archive = archiveUrl();
-	resetFake( {
+	await resetFake( {
 		[ p1.url ]: { trending: 7, all_time: 40 },
 		[ p2.url ]: { trending: 0, all_time: 3 },
 		[ term.url ]: { trending: 5, all_time: 10 },
@@ -1565,13 +1645,14 @@ SCENARIOS[ 'provider-sync' ] = async () => {
 
 	const before = Number( opt( 'mai_analytics_provider_last_sync' ) );
 	runCron( 'mai_analytics_cron_sync' );
-	check( 'the sync asked the fake Matomo', fake.requests.length > 0, fake.requests.length );
+	const log = await fakeLog();
+	check( 'the sync asked the fake Matomo', log.length > 0, log.length );
 	check(
 		'every request is API.getBulkRequest with the site ID and token',
-		fake.requests.every( ( q ) => 'API.getBulkRequest' === q.method && '1' === q.idSite && 'e2e-' + RUN === q.token && '/index.php' === q.url ),
-		JSON.stringify( fake.requests.map( ( q ) => [ q.method, q.idSite, q.url ] ) )
+		log.every( ( q ) => 'API.getBulkRequest' === q.method && '1' === q.idSite && 'e2e-' + RUN === q.token && '/index.php' === q.url ),
+		JSON.stringify( log.map( ( q ) => [ q.method, q.idSite, q.url ] ) )
 	);
-	const subs = fake.requests.flatMap( ( q ) => q.subs ).filter( ( s ) => s && pathKey( s.pageUrl ) === pathKey( p1.url ) );
+	const subs = log.flatMap( ( q ) => q.subs ).filter( ( s ) => s && pathKey( s.pageUrl ) === pathKey( p1.url ) );
 	check(
 		'P1 is asked about for the last 7 days and the last 5 years',
 		subs.some( ( s ) => 'day' === s.period && 'last7' === s.date ) && subs.some( ( s ) => 'year' === s.period && 'last5' === s.date ),
@@ -1608,7 +1689,7 @@ SCENARIOS[ 'provider-sync' ] = async () => {
 	check( 'and with nothing queued says the provider is connected', 200 === r.status && /No pages in the queue/.test( r.json.message || '' ), r.text.slice( 0, 200 ) );
 
 	const page = await newPage( { as: admin, track: false } );
-	await page.goto( BASE + '/wp-admin/admin.php?page=mai-analytics&tab=settings', { waitUntil: 'load' } );
+	await open( page, BASE + '/wp-admin/admin.php?page=mai-analytics&tab=settings' );
 	await page.click( '#mai-analytics-sync-now' );
 	await page.waitForFunction( () => /queue|complete|failed|error/i.test( document.querySelector( '#mai-analytics-sync-now' )?.parentNode.querySelector( '.mai-analytics-btn-status' )?.innerText || '' ), null, { timeout: 30000 } ).catch( () => {} );
 	const status = await page.evaluate( () => document.querySelector( '#mai-analytics-sync-now' )?.parentNode.querySelector( '.mai-analytics-btn-status' )?.innerText || '' );
@@ -1619,13 +1700,13 @@ SCENARIOS[ 'provider-breaker' ] = async () => {
 	freshState( matomo() );
 	fakeReachable();
 	const p1 = createPost( 'pb-1' );
-	resetFake( { [ p1.url ]: { trending: 7, all_time: 40 } } );
+	await resetFake( { [ p1.url ]: { trending: 7, all_time: 40 } } );
 	await views( 'post', p1.id, 1 );
 	runCron( 'mai_analytics_cron_sync' );
 	check( 'a first good sync gives P1 40', sameList( counts( 'post', p1.id ), [ 40, 40, 0, 7 ] ), JSON.stringify( counts( 'post', p1.id ) ) );
 	const synced = metaOf( 'post', p1.id ).mai_views_synced_at;
 
-	fake.failFrom = fake.requests.length + 1;
+	await failFrom( ( await fakeLog() ).length + 1 );
 	await sleep( 1100 );
 	await views( 'post', p1.id, 1 );
 	runCron( 'mai_analytics_cron_sync' );
@@ -1635,11 +1716,11 @@ SCENARIOS[ 'provider-breaker' ] = async () => {
 	equal( 'and its synced time is not moved', metaOf( 'post', p1.id ).mai_views_synced_at, synced );
 	equal( 'the queued row is consumed', rowsFor( bufferRows(), 'post', p1.id, 'web' ), 0 );
 
-	const asked = fake.requests.length;
+	const asked = ( await fakeLog() ).length;
 	await views( 'post', p1.id, 1 );
 	const now = Math.floor( Date.now() / 1000 );
 	runCron( 'mai_analytics_cron_sync' );
-	equal( 'the next sync is held back by the breaker and asks nothing', fake.requests.length, asked );
+	equal( 'the next sync is held back by the breaker and asks nothing', ( await fakeLog() ).length, asked );
 	const at = nextScheduled( 'mai_analytics_provider_catchup' );
 	check( 'and schedules a catchup for after the backoff', at >= now + 60 && at <= now + 400, at - now );
 	equal( 'the queued row waits', rowsFor( bufferRows(), 'post', p1.id, 'web' ), 1 );
@@ -1657,7 +1738,7 @@ SCENARIOS[ 'provider-stopped' ] = async () => {
 	// batch's ten requests (ten paths each) and fails from the eleventh, so the
 	// second batch fails, the run stops, and the third is never reached.
 	const bulk = createBulkPosts( 201, admin.id );
-	resetFake( Object.fromEntries( bulk.map( ( p ) => [ p.url, { trending: 2, all_time: 5 } ] ) ) );
+	await resetFake( Object.fromEntries( bulk.map( ( p ) => [ p.url, { trending: 2, all_time: 5 } ] ) ) );
 	insertRows( [
 		...bulk.map( ( p ) => ( { id: p.id, type: 'post', source: 'web', ago: 30 } ) ),
 		{ id: bulk[ 150 ].id, type: 'post', source: 'app', ago: 30 },
@@ -1665,18 +1746,19 @@ SCENARIOS[ 'provider-stopped' ] = async () => {
 		{ id: bulk[ 180 ].id, type: 'post', source: 'app', ago: 30 },
 		{ id: bulk[ 200 ].id, type: 'post', source: 'app', ago: 30 },
 	] );
-	fake.failFrom = 11;
+	await failFrom( 11 );
 	const now = Math.floor( Date.now() / 1000 );
 	runCron( 'mai_analytics_cron_sync' );
 
-	equal( 'the run sent eleven requests and stopped', fake.requests.length, 11 );
+	equal( 'the run sent eleven requests and stopped', ( await fakeLog() ).length, 11 );
+	// Raw rows, null when absent (the keys have a registered default of 0).
 	const webCounts = phpJson(
-		'echo wp_json_encode( array_map( fn( $id ) => get_post_meta( (int) $id, "mai_views_web", true ), $d ) );',
+		'echo wp_json_encode( array_map( fn( $id ) => get_metadata_raw( "post", (int) $id, "mai_views_web", true ), $d ) );',
 		bulk.map( ( p ) => p.id )
 	);
 	equal( 'the first batch of 100 has web counts', webCounts.slice( 0, 100 ).filter( ( v ) => '5' === v ).length, 100 );
-	equal( 'the failed second batch has none', webCounts.slice( 100, 200 ).filter( ( v ) => '' !== v ).length, 0 );
-	equal( 'nor does the unreached third', webCounts[ 200 ], '' );
+	equal( 'the failed second batch has none', webCounts.slice( 100, 200 ).filter( ( v ) => null !== v ).length, 0 );
+	equal( 'nor does the unreached third', webCounts[ 200 ], null );
 	check( 'the failed batch still adds its app views', sameList( counts( 'post', bulk[ 150 ].id ), [ 1, 0, 1, 0 ] ) && sameList( counts( 'post', bulk[ 180 ].id ), [ 2, 0, 2, 0 ] ), JSON.stringify( [ counts( 'post', bulk[ 150 ].id ), counts( 'post', bulk[ 180 ].id ) ] ) );
 	check( 'and so does the unreached batch', sameList( counts( 'post', bulk[ 200 ].id ), [ 1, 0, 1, 0 ] ), JSON.stringify( counts( 'post', bulk[ 200 ].id ) ) );
 	const rows = bufferRows();
@@ -1688,16 +1770,16 @@ SCENARIOS[ 'provider-stopped' ] = async () => {
 
 	// The catchup fires while the error is fresh: the breaker holds it back.
 	runCron( 'mai_analytics_provider_catchup' );
-	equal( 'a catchup inside the backoff asks nothing', fake.requests.length, 11 );
+	equal( 'a catchup inside the backoff asks nothing', ( await fakeLog() ).length, 11 );
 	check( 'and schedules itself again', nextScheduled( 'mai_analytics_provider_catchup' ) > 0 );
 
 	// Matomo is back, a new view of the unreached post comes in, and the backoff
 	// is over: the catchup finishes the work.
-	fake.failFrom = Infinity;
+	await failFrom( null );
 	await sleep( 1100 );
 	await views( 'post', bulk[ 200 ].id, 1 );
 	runCron( 'mai_analytics_provider_catchup', { backoffZero: true } );
-	equal( 'the catchup asks about the one queued post', fake.requests.length, 12 );
+	equal( 'the catchup asks about the one queued post', ( await fakeLog() ).length, 12 );
 	check( 'which gets its web count, its app view kept, trending 2 plus 1', sameList( counts( 'post', bulk[ 200 ].id ), [ 6, 5, 1, 3 ] ), JSON.stringify( counts( 'post', bulk[ 200 ].id ) ) );
 	equal( 'the error is cleared', php( 'echo \\Mai\\Analytics\\Sync::get_last_error()["message"];' ), '' );
 	equal( 'no catchup is left', nextScheduled( 'mai_analytics_provider_catchup' ), 0 );
@@ -1709,21 +1791,22 @@ SCENARIOS[ 'provider-warm' ] = async () => {
 	fakeReachable();
 	const p1 = createPost( 'pw-1' );
 	const p2 = createPost( 'pw-2' );
-	resetFake( { [ p1.url ]: { trending: 8, all_time: 50 }, [ p2.url ]: { trending: 0, all_time: 6 } } );
+	await resetFake( { [ p1.url ]: { trending: 8, all_time: 50 }, [ p2.url ]: { trending: 0, all_time: 6 } } );
 	const ids = p1.id + ',' + p2.id;
 
 	let r = wpTry( [ 'mai-analytics', 'warm', '--type=post', '--ids=' + ids, '--force' ] );
 	check( 'warm updates the two posts', 0 === r.code && /Warm complete\. Updated 2 objects/.test( r.out ), r.out + r.err );
 	check( 'P1 gets 50, trending 8', sameList( counts( 'post', p1.id ), [ 50, 50, 0, 8 ] ), JSON.stringify( counts( 'post', p1.id ) ) );
 	check( 'P2 gets 6, with no trending row', sameList( counts( 'post', p2.id ), [ 6, 6, 0, 0 ] ) && null === metaOf( 'post', p2.id ).mai_trending );
-	const asked = fake.requests.flatMap( ( q ) => q.subs ).filter( Boolean ).map( ( s ) => pathKey( s.pageUrl ) );
+	const asked = ( await fakeLog() ).flatMap( ( q ) => q.subs ).filter( Boolean ).map( ( s ) => pathKey( s.pageUrl ) );
 	check( 'and asks about those two only', asked.length > 0 && asked.every( ( k ) => k === pathKey( p1.url ) || k === pathKey( p2.url ) ), JSON.stringify( [ ...new Set( asked ) ] ) );
 
-	const sent = fake.requests.length;
+	const sent = ( await fakeLog() ).length;
 	r = wpTry( [ 'mai-analytics', 'warm', '--type=post', '--ids=' + ids ] );
-	check( 'without --force it skips posts synced within the hour', 0 === r.code && /Updated 0 objects/.test( r.out ) && fake.requests.length === sent, r.out + r.err + ' requests: ' + ( fake.requests.length - sent ) );
+	const more = ( await fakeLog() ).length - sent;
+	check( 'without --force it skips posts synced within the hour', 0 === r.code && /Updated 0 objects/.test( r.out ) && 0 === more, r.out + r.err + ' requests: ' + more );
 
-	fake.failFrom = fake.requests.length + 1;
+	await failFrom( sent + more + 1 );
 	r = wpTry( [ 'mai-analytics', 'warm', '--type=post', '--ids=' + ids, '--force' ] );
 	check( 'a failing Matomo updates nothing and says so', 0 === r.code && /Updated 0 of 2 objects/.test( r.out ), r.out + r.err );
 	check( 'and keeps the counts', sameList( counts( 'post', p1.id ), [ 50, 50, 0, 8 ] ), JSON.stringify( counts( 'post', p1.id ) ) );
@@ -1783,7 +1866,7 @@ SCENARIOS.upgrade = async () => {
 	await fetch( BASE + '/', { headers: { 'User-Agent': UA } } );
 	equal( 'a second request schedules no second prune', cronEvents().filter( ( e ) => 'mai_analytics_prune_trending_now' === e[ 0 ] ).length, 1 );
 
-	resetFake( { [ u1.url ]: { trending: 6, all_time: 25 }, [ u2.url ]: { trending: 1, all_time: 4 } } );
+	await resetFake( { [ u1.url ]: { trending: 6, all_time: 25 }, [ u2.url ]: { trending: 1, all_time: 4 } } );
 	let ran = true;
 	try {
 		runCron( 'mai_analytics_provider_catchup' );
