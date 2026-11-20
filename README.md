@@ -331,3 +331,46 @@ add_filter( 'mai_analytics_tracking_enabled', '__return_true' );
 ```
 
 Provider sync, dashboard, CLI, and all read operations work on any environment.
+
+## Testing
+
+### Unit tests
+
+Run them in a checkout with the dev dependencies installed:
+
+```bash
+WP_TESTS_DIR=/tmp/wordpress-tests-lib vendor/bin/phpunit
+```
+
+If `/tmp/wordpress-tests-lib` is missing, set it up first with `bin/install-wp-tests.sh <db name> <db user> <db password> localhost latest true`.
+
+### End-to-end tests
+
+`bin/e2e.js` runs the plugin on a real local site, in headless Chrome and through WP-CLI:
+
+```bash
+NODE_PATH=~/node_modules node bin/e2e.js --base https://example.test --wp /path/to/wordpress
+```
+
+It needs Node 22.19 or newer, Playwright on `NODE_PATH`, Chrome, and WP-CLI. It only runs against a local site, and only when the site's buffer table and view meta are empty. A site whose WordPress folder holds `SITE-LOCK.md` is shared, so the run refuses it unless `MAI_AUTH_SITE_OK=1` says the site was claimed first.
+
+It covers:
+
+- The tracker, from a page view of a post, a category, an author and a post type archive to a buffer row. Bots, editors, private posts and attachments are not counted.
+- The self-hosted sync, from the buffer to the view meta, run through its cron hook.
+- The public routes: recording and reading views, and trending with its filters and errors.
+- The admin routes as an admin, a subscriber and a signed-out visitor, including Sync Now's 429 while a sync is running.
+- The dashboard in headless Chrome, including the notice when the filters can't load, and the health check.
+- The WP-CLI commands.
+- Activation and deactivation, and their cron events.
+- The provider sync against a fake Matomo the script runs on localhost: a full sync, a failing Matomo and its circuit breaker, a sync that stops early, the catchup event that finishes it, and warm.
+- The upgrade from 1.3.7, with data written the way 1.3.7 wrote it, and the catchup event 1.3.7 left behind.
+
+It saves every `mai_analytics` option row first and puts each back byte for byte, deletes everything it made, and exits 1 on any failure. The comment at the top of the script lists everything it changes.
+
+Not covered end to end:
+
+- **Site Kit and Jetpack.** They need a connected Google or WordPress.com account. Only the unit tests cover them, so these are a known gap.
+- **Uninstall.** It deletes the site's own options and table, so only `tests/test-uninstall.php` covers it.
+- **`wp mai-analytics seed`**, which writes views on random real posts, and **`update-bots`**, which fetches from GitHub.
+- **The REST warm route in provider mode**, which walks every post on the site. `wp mai-analytics warm --ids` is covered instead.
