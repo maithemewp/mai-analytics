@@ -7,7 +7,7 @@
 ## End-to-end tests (2026-11-20)
 
 - `bin/e2e.js` on `feat/e2e` ran fully green on the shared production-copy site at 69dfa56 (2026-11-20): 237 checks, against develop 24d8ab5.
-- `fix/provider-unreached`, cut from `feat/e2e`: a stopped or failed provider sync lists the objects it did not sync, and the catchup syncs them. Web rows past retention are pruned. Waits on its own e2e claim, then a merge grant.
+- `fix/provider-unreached`, cut from `feat/e2e`: a stopped or failed provider sync lists the objects it did not sync, and the catchup syncs them. Web rows past retention are pruned. Its e2e ran green at 01af9d8. Waits on the coordinator's merge.
 - Site Kit and Jetpack have unit tests only. Nothing runs them end to end, because both need a connected account. This is a known gap, not coverage.
 - Uninstall has unit tests only (`tests/test-uninstall.php`). The e2e leaves it out on purpose: on a shared site it would delete the site's own options and table.
 

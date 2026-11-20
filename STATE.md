@@ -8,7 +8,8 @@ Updated: 2026-11-20 by Claude (mai-analytics e2e session)
   - Every object a run did not sync goes in the option `mai_analytics_provider_unreached`: the objects of a batch the provider failed, and those a stopped run never reached. The next sync takes up to 500 of them first, whether or not they were viewed again. An entry leaves only when its sync succeeded or the object is gone. A failed read stops the run with nothing changed. Writes are read back and tried twice.
   - Health shows how many items are on the list ("Items waiting for the provider"): pass when none, warn with the count, fail when the list can't be read. Uninstall deletes the option, and deactivation keeps it.
   - The unreached items' web rows stay and keep counting toward trending until retention (mai-coordinator, 2026-11-20).
-  - 365 unit tests pass. The e2e's provider-stopped scenario checks that the catchup alone syncs the 101 listed posts and leaves the list empty. That has not run on a site yet.
+  - When items are listed after a failed batch, the catchup is booked for after the provider backoff, as the breaker path does (mai-coordinator, 2026-11-20).
+  - 367 unit tests pass. The e2e ran GREEN on the shared production-copy site at 01af9d8 by symlink swap (2026-11-20): 242 checks, no retries. The catchup alone synced the 101 listed posts and left the list empty.
 - Branches (`origin` is GitHub maithemewp/mai-analytics):
   - **`develop`:** the main checkout `~/Plugins/mai-analytics`, which the shared production-copy site loads. On origin at 24d8ab5: the review-pr fixes and the filters notice.
   - **`feat/e2e`:** the e2e script, at 69dfa56. Don't delete the worktree or the branch.
@@ -17,16 +18,15 @@ Updated: 2026-11-20 by Claude (mai-analytics e2e session)
   - **`main`:** bf3ba96, Release 1.3.7. **`settings`** and **`trending`:** old 2023 branches. Leave them alone.
 
 ## Next
-1. Claim the shared site for `fix/provider-unreached`'s own e2e run. It needs the site's plugin link pointed at the worktree for the run, and back after.
-2. Merge `feat/e2e` and `fix/provider-unreached` into `develop` only on the coordinator's grant.
-3. Release only when Mike asks, after the whole stack passes. No tags and no tag talk before then. The draft changelog below goes into `CHANGES.md` on that commit.
+1. Merge `feat/e2e` and `fix/provider-unreached` into `develop` only on the coordinator's grant.
+2. Release only when Mike asks, after the whole stack passes. No tags and no tag talk before then. The draft changelog below goes into `CHANGES.md` on that commit.
 
 ## Blocked / waiting on
-- The coordinator's grant for `fix/provider-unreached`'s e2e run. mai-coordinator's files (`STATE.md`, `SITE-LOCK.md`, `ALIGNMENT.md`) are in the shared production-copy site's folder; find it with `ls ~/Herd/*/SITE-LOCK.md`. Never edit them.
+- The coordinator's merge of `feat/e2e` and `fix/provider-unreached` into develop. mai-coordinator's files (`STATE.md`, `SITE-LOCK.md`, `ALIGNMENT.md`) are in the shared production-copy site's folder; find it with `ls ~/Herd/*/SITE-LOCK.md`. Never edit them.
 
 ## Verify
 - Before any suite, read the Status section of that folder's `SITE-LOCK.md`. Don't run during a claimed device run. The load-under-10 rule is for device runs only (mai-coordinator, 2026-11-19), so a suite may run under load; rerun a timing-sensitive failure alone before calling it real. Never use the site itself without a claim.
-- Run the suite in a worktree after `composer install`: `WP_TESTS_DIR=/tmp/wordpress-tests-lib vendor/bin/phpunit`. 365 tests on `fix/provider-unreached`.
+- Run the suite in a worktree after `composer install`: `WP_TESTS_DIR=/tmp/wordpress-tests-lib vendor/bin/phpunit`. 367 tests on `fix/provider-unreached`.
 - The e2e, under a claim only: `MAI_AUTH_SITE_OK=1 NODE_PATH=~/node_modules node bin/e2e.js --base https://example.test --wp /path/to/wordpress`. The README's Testing section says what it covers and what it leaves out.
 - A reboot clears `/tmp`. If `/tmp/wordpress-tests-lib/includes/functions.php` is missing, run `bin/install-wp-tests.sh wp_maianalytics_tests root '' localhost latest true` from the worktree.
 - Then restore `vendor/`: `composer install --no-dev`, `git checkout -- vendor/composer/installed.json vendor/composer/installed.php`, then `php ~/Plugins/mai-analytics/vendor/bin/deployable-guard check --root=<path relative to the main checkout>`. It must print "OK: committed autoloader is deployable as-is."
