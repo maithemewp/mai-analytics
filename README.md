@@ -292,6 +292,8 @@ Three layers ensure sync always runs, even if WP-Cron fails:
 
 Both `Sync::sync()` and `ProviderSync::sync()` have transient-based concurrency locks that prevent stacking. The last-sync timestamp is written at the START of sync so fallback triggers don't re-fire while sync is running.
 
+A provider sync can stop early: after ten minutes, or when the provider fails and the circuit breaker trips. Every object it did not sync, whether its batch failed or it was never reached, goes on a list in the `mai_analytics_provider_unreached` option, and a catchup event is scheduled. The next provider sync, usually that catchup, syncs the listed objects first, at most 500 per run, whether or not they were viewed again. An object leaves the list only once its sync succeeds, or once it no longer exists. If the list can't be read, the sync changes nothing and tries again later. Buffer rows of any source are pruned once they are older than the retention period.
+
 ### Why this scales
 
 - **Page load: zero DB writes.** Cached pages serve the beacon script without PHP.

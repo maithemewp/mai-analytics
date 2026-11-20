@@ -2,25 +2,29 @@
 Updated: 2026-11-20 by Claude (mai-analytics e2e session)
 
 ## Now
-- mai-analytics is NOT cleared for release (mai-coordinator, 2026-11-20). About 1,900 lines changed since v1.3.7 had only unit tests and one smoke.
-- `bin/e2e.js` is built on `feat/e2e`, in the worktree `~/Plugins/_wip/analytics-e2e`, cut from develop at 24d8ab5. It adds the script and docs only. The plugin code is develop's. Its scenarios and rules were ruled by the coordinator: the 1.3.7 data is written directly on the run's own posts (no link swap, no `seed`), and uninstall stays out.
-- Checked so far off the site: `node --check`, the refusal without a claim (exit 2), headless Chrome through Playwright, and the real Matomo provider reading the fake Matomo's answers over localhost (a scratch unit test). The script has not run on a site yet.
+- `bin/e2e.js` ran fully green on the shared production-copy site on 2026-11-20: `feat/e2e` 69dfa56 against develop 24d8ab5, 237 checks, no retries, teardown clean. Earlier runs found only harness bugs, no plugin failure. Logs and saved option rows are in the coordinator's shared notes folder.
+- `fix/provider-unreached`, in `~/Plugins/_wip/analytics-unreached`, cut from `feat/e2e` 69dfa56. It holds the stopped-sync fix ruled by the coordinator:
+  - The provider sync prunes web rows past retention, not only app rows.
+  - Every object a run did not sync goes in the option `mai_analytics_provider_unreached`: the objects of a batch the provider failed, and those a stopped run never reached. The next sync takes up to 500 of them first, whether or not they were viewed again. An entry leaves only when its sync succeeded or the object is gone. A failed read stops the run with nothing changed. Writes are read back and tried twice.
+  - 362 unit tests pass. The e2e's provider-stopped scenario checks that the catchup alone syncs the 101 listed posts and leaves the list empty. That has not run on a site yet.
 - Branches (`origin` is GitHub maithemewp/mai-analytics):
   - **`develop`:** the main checkout `~/Plugins/mai-analytics`, which the shared production-copy site loads. On origin at 24d8ab5: the review-pr fixes and the filters notice.
-  - **`feat/e2e`:** the e2e script. Don't delete the worktree or the branch.
+  - **`feat/e2e`:** the e2e script, at 69dfa56. Don't delete the worktree or the branch.
+  - **`fix/provider-unreached`:** the stopped-sync fix, on top of `feat/e2e`.
   - **`feat/filters-notice`:** merged into develop.
   - **`main`:** bf3ba96, Release 1.3.7. **`settings`** and **`trending`:** old 2023 branches. Leave them alone.
 
 ## Next
-1. Send mai-coordinator the claim for the first run, then run it under the grant: `--only harness-self-check` first, then every scenario. Report each failure the run finds in the plugin to the coordinator before any fix.
-2. Release only when Mike asks, after the whole stack passes. No tags and no tag talk before then. The draft changelog below goes into `CHANGES.md` on that commit.
+1. Claim the shared site for `fix/provider-unreached`'s own e2e run. It needs the site's plugin link pointed at the worktree for the run, and back after.
+2. Merge `feat/e2e` and `fix/provider-unreached` into `develop` only on the coordinator's grant.
+3. Release only when Mike asks, after the whole stack passes. No tags and no tag talk before then. The draft changelog below goes into `CHANGES.md` on that commit.
 
 ## Blocked / waiting on
-- The coordinator's grant for the e2e run. mai-coordinator's files (`STATE.md`, `SITE-LOCK.md`, `ALIGNMENT.md`) are in the shared production-copy site's folder; find it with `ls ~/Herd/*/SITE-LOCK.md`. Never edit them.
+- The coordinator's grant for `fix/provider-unreached`'s e2e run. mai-coordinator's files (`STATE.md`, `SITE-LOCK.md`, `ALIGNMENT.md`) are in the shared production-copy site's folder; find it with `ls ~/Herd/*/SITE-LOCK.md`. Never edit them.
 
 ## Verify
 - Before any suite, read the Status section of that folder's `SITE-LOCK.md`. Don't run during a claimed device run. The load-under-10 rule is for device runs only (mai-coordinator, 2026-11-19), so a suite may run under load; rerun a timing-sensitive failure alone before calling it real. Never use the site itself without a claim.
-- Run the suite in a worktree after `composer install`: `WP_TESTS_DIR=/tmp/wordpress-tests-lib vendor/bin/phpunit`. 354 tests.
+- Run the suite in a worktree after `composer install`: `WP_TESTS_DIR=/tmp/wordpress-tests-lib vendor/bin/phpunit`. 362 tests on `fix/provider-unreached`.
 - The e2e, under a claim only: `MAI_AUTH_SITE_OK=1 NODE_PATH=~/node_modules node bin/e2e.js --base https://example.test --wp /path/to/wordpress`. The README's Testing section says what it covers and what it leaves out.
 - A reboot clears `/tmp`. If `/tmp/wordpress-tests-lib/includes/functions.php` is missing, run `bin/install-wp-tests.sh wp_maianalytics_tests root '' localhost latest true` from the worktree.
 - Then restore `vendor/`: `composer install --no-dev`, `git checkout -- vendor/composer/installed.json vendor/composer/installed.php`, then `php ~/Plugins/mai-analytics/vendor/bin/deployable-guard check --root=<path relative to the main checkout>`. It must print "OK: committed autoloader is deployable as-is."
@@ -45,6 +49,7 @@ Updated: 2026-11-20 by Claude (mai-analytics e2e session)
 * Fixed: A failed trending read during a sync cleared trending counts.
 * Fixed: In provider mode, a view of one post type archive kept every other archive from syncing until the next run.
 * Fixed: A provider sync could count an app view twice when it was saved during a long run, and lost the app views of pages it had not reached when it stopped early.
+* Fixed: A provider sync that stopped early, or whose provider failed for a batch, left those pages without their provider counts until each was viewed again. They are now listed, and the next sync fetches them. Their queued rows also stayed in the views table for good, and are now removed after the retention period.
 * Fixed: The provider sync's catchup event failed with a fatal error each time it fired, so a sync that stopped early was not continued until the next scheduled sync.
 * Fixed: Moving views from an old table could drop that table after a failed copy, and the move failed on WordPress 6.1.
 * Fixed: A failed change to the views table during an update was reported as success.

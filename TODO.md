@@ -6,7 +6,8 @@
 
 ## End-to-end tests (2026-11-20)
 
-- `bin/e2e.js` is built on `feat/e2e`. It waits on a claim from mai-coordinator for its first run on the shared production-copy site, starting with `--only harness-self-check`. Any plugin failure it finds goes to the coordinator before a fix.
+- `bin/e2e.js` on `feat/e2e` ran fully green on the shared production-copy site at 69dfa56 (2026-11-20): 237 checks, against develop 24d8ab5.
+- `fix/provider-unreached`, cut from `feat/e2e`: a stopped or failed provider sync lists the objects it did not sync, and the catchup syncs them. Web rows past retention are pruned. Waits on its own e2e claim, then a merge grant.
 - Site Kit and Jetpack have unit tests only. Nothing runs them end to end, because both need a connected account. This is a known gap, not coverage.
 - Uninstall has unit tests only (`tests/test-uninstall.php`). The e2e leaves it out on purpose: on a shared site it would delete the site's own options and table.
 
@@ -36,5 +37,5 @@
 - A failed meta read during a sync overwrites lifetime counts (review-pr, 2026-11-19, coordinator's ruling: later). `Sync::update_meta()` in increment mode reads, adds and writes (`src/Sync.php`, `update_meta()`). When core's meta read fails, `update_meta_cache()` gets no rows (`wp-includes/meta.php:1204`) and caches an empty list for the object anyway (`:1226-1232`), so `$current` is 0 and the run's delta replaces the lifetime count. Then `Stats::recompute_total()` writes `mai_views` from it, which Mai Publisher reads. Checked in WordPress 7.1.4; still to check in 6.1, the plugin's floor. It needs the read to fail and the write after it to work. Fix with an atomic SQL increment, or by counting `$EZSQL_ERROR` around the read and stopping the sync with the boundary put back.
 - Log lines can't be tested: `mai_analytics_logger()` returns a shared `Mai_Logger` (`includes/functions.php:15-18`) with no filter or other seam to watch it. mai-logger is shared across the stack, so a seam is a change there, not here (mai-coordinator, 2026-11-19). Until then the activation, create-table and sync-read messages are checked by reading only.
 - No unit-level JS tests exist for the admin screens. `bin/e2e.js` now drives the real dashboard in headless Chrome on a site, filters notice included.
-- In provider mode, the web rows of objects a stopped sync didn't reach stay in the buffer for good. The boundary moves past them, so no later sync selects them, and `finish_sync()` prunes only app rows (`src/ProviderSync.php`, `finish_sync()`). Until they are a week old they also count toward `GET /views/trending`. Found while writing the e2e, not walked yet.
+- The web rows of objects a stopped provider sync didn't reach still count toward `GET /views/trending` for up to a week, its longest period, since they stay behind the boundary until retention prunes them. The list now syncs those objects, but their rows are not deleted then. Deleting them would change what trending answers, so it is the coordinator's call.
 - A provider that is unavailable still moves the provider sync's boundary (`ProviderSync::sync()`, written before the availability check), so app views since the last sync are skipped. Found while fixing the failed-read case; not walked yet.
