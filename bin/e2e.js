@@ -1796,7 +1796,9 @@ SCENARIOS[ 'provider-stopped' ] = async () => {
 	equal( "the third batch's web row is kept", rowsFor( rows, 'post', bulk[ 200 ].id, 'web' ), 1 );
 	check( 'the provider error is on file', /HTTP 500/.test( php( 'echo \\Mai\\Analytics\\Sync::get_last_error()["message"];' ) ) );
 	const at = nextScheduled( 'mai_analytics_provider_catchup' );
-	check( 'a catchup is scheduled about a minute out', at >= now + 30 && at <= now + 180, at - now );
+	// The run stopped on a provider failure, so the catchup waits out the
+	// five-minute backoff, as the breaker path does.
+	check( 'a catchup is scheduled for after the backoff', at >= now + 300 && at <= now + 400, at - now );
 
 	// The run lists every post it did not sync: the failed second batch and
 	// the unreached third, in ID order.
