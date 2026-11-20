@@ -932,8 +932,10 @@ async function resetFake( countsByUrl = {} ) {
 }
 
 // Proves the site reaches the fake before a provider scenario relies on it.
-// Each scenario resets the fake afterwards, which clears this request.
-function fakeReachable() {
+// Resets the fake first, since the scenario before may have left it failing.
+// Each scenario resets it again afterwards, which clears this request.
+async function fakeReachable() {
+	await resetFake();
 	const got = php(
 		'$r = wp_remote_post( $d . "index.php", [ "body" => [ "module" => "API", "method" => "API.getBulkRequest", "format" => "json" ], "timeout" => 10 ] ); echo is_wp_error( $r ) ? "error: " . $r->get_error_message() : wp_remote_retrieve_response_code( $r );',
 		FAKE_URL
@@ -1617,7 +1619,7 @@ SCENARIOS.cli = async () => {
 
 SCENARIOS[ 'provider-sync' ] = async () => {
 	freshState( matomo() );
-	fakeReachable();
+	await fakeReachable();
 	const author = createUser( 'ps-author', 'author' );
 	const term = createTerm( 'ps-cat' );
 	const p1 = createPost( 'ps-1', { author: author.id, terms: [ term.id ] } );
@@ -1698,7 +1700,7 @@ SCENARIOS[ 'provider-sync' ] = async () => {
 
 SCENARIOS[ 'provider-breaker' ] = async () => {
 	freshState( matomo() );
-	fakeReachable();
+	await fakeReachable();
 	const p1 = createPost( 'pb-1' );
 	await resetFake( { [ p1.url ]: { trending: 7, all_time: 40 } } );
 	await views( 'post', p1.id, 1 );
@@ -1733,7 +1735,7 @@ SCENARIOS[ 'provider-breaker' ] = async () => {
 
 SCENARIOS[ 'provider-stopped' ] = async () => {
 	freshState( matomo() );
-	fakeReachable();
+	await fakeReachable();
 	// 201 objects make three batches of up to 100. The fake answers the first
 	// batch's ten requests (ten paths each) and fails from the eleventh, so the
 	// second batch fails, the run stops, and the third is never reached.
@@ -1788,7 +1790,7 @@ SCENARIOS[ 'provider-stopped' ] = async () => {
 
 SCENARIOS[ 'provider-warm' ] = async () => {
 	freshState( matomo() );
-	fakeReachable();
+	await fakeReachable();
 	const p1 = createPost( 'pw-1' );
 	const p2 = createPost( 'pw-2' );
 	await resetFake( { [ p1.url ]: { trending: 8, all_time: 50 }, [ p2.url ]: { trending: 0, all_time: 6 } } );
@@ -1820,7 +1822,7 @@ SCENARIOS[ 'provider-warm' ] = async () => {
 // version back, and checks what the first request and the cron events do.
 SCENARIOS.upgrade = async () => {
 	freshState( matomo() );
-	fakeReachable();
+	await fakeReachable();
 	const author = createUser( 'up-author', 'author' );
 	const u1 = createPost( 'up-1', { author: author.id } );
 	const u2 = createPost( 'up-2', { author: author.id } );
