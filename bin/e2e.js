@@ -996,7 +996,8 @@ const matomo = () => ( {
 
 // Empties the buffer, sets the settings, marks both syncs as a minute old so
 // no fallback sync fires, clears locks, the cached dashboard filters, the
-// provider error and the per-archive options, deletes view meta on the run's objects, and clears the catchup and
+// provider error, the provider's list of unsynced items (so one scenario's
+// leftovers never ride into the next) and the per-archive options, deletes view meta on the run's objects, and clears the catchup and
 // one-off prune events.
 function freshState( settings ) {
 	php(
@@ -1005,7 +1006,7 @@ function freshState( settings ) {
 			' foreach ( [ "mai_analytics_syncing", "mai_analytics_provider_syncing", "mai_analytics_admin_filters" ] as $k ) { delete_transient( $k ); }' +
 			' update_option( "mai_analytics_settings", $d["settings"], false );' +
 			' update_option( "mai_analytics_synced", time() - 60, false ); update_option( "mai_analytics_provider_last_sync", time() - 60, false );' +
-			' \\Mai\\Analytics\\Sync::clear_provider_error();' +
+			' \\Mai\\Analytics\\Sync::clear_provider_error(); delete_option( "mai_analytics_provider_unreached" );' +
 			' foreach ( [ "", "_web", "_app" ] as $s ) { update_option( "mai_analytics_post_type_views" . $s, [], false ); } update_option( "mai_analytics_post_type_trending", [], false ); update_option( "mai_analytics_post_type_views_synced_at", [], false );' +
 			' foreach ( $d["posts"] as $id ) { foreach ( $d["keys"] as $k ) { delete_post_meta( (int) $id, $k ); } }' +
 			' foreach ( $d["terms"] as $id ) { foreach ( $d["keys"] as $k ) { delete_term_meta( (int) $id, $k ); } }' +
