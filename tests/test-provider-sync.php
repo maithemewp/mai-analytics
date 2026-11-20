@@ -18,6 +18,7 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 		delete_option( 'mai_analytics_post_type_trending' );
 		delete_option( 'mai_analytics_post_type_views_synced_at' );
 		delete_option( 'mai_analytics_provider_error' );
+		delete_option( 'mai_analytics_provider_unreached' );
 
 		// Remove any previously registered provider filters.
 		remove_all_filters( 'mai_analytics_providers' );
@@ -38,6 +39,8 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 		delete_option( 'mai_analytics_post_type_trending' );
 		delete_option( 'mai_analytics_post_type_views_synced_at' );
 		delete_option( 'mai_analytics_provider_error' );
+		delete_option( 'mai_analytics_provider_unreached' );
+		wp_clear_scheduled_hook( ProviderSync::CATCHUP_HOOK );
 		parent::tearDown();
 	}
 
@@ -908,6 +911,285 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 		}
 
 		$this->assertSame( 1, get_option( 'mai_analytics_post_type_views_app' )['mai_doc'] ?? null );
+	}
+
+	/**
+	 * Registers a provider whose batches fail while `$failing` is true, setting
+	 * the provider error as a real provider does, and records the paths asked.
+	 *
+	 * @param bool  $failing Whether the next calls fail. Read on every call.
+	 * @param array $asked   Every path asked, in order.
+	 * @param int   $size    The provider's batch size.
+	 *
+	 * @return void
+	 */
+	private function register_switchable_provider( bool &$failing, array &$asked, int $size = 50 ): void {
+		$this->register_mock_provider( 10, true, $size, function ( $paths, $windows ) use ( &$failing, &$asked ) {
+			array_push( $asked, ...$paths );
+
+			if ( $failing ) {
+				Sync::set_provider_error( 'simulated batch failure' );
+				return null;
+			}
+
+			Sync::clear_provider_error();
+
+			return array_fill_keys( $paths, array_fill_keys( array_keys( $windows ), 10 ) );
+		} );
+	}
+
+	/**
+	 * Stores a list of unreached objects straight in the option.
+	 *
+	 * @param array $entries Entries as [ object_type, object_id, object_key ].
+	 *
+	 * @return void
+	 */
+	private function store_unreached( array $entries ): void {
+		update_option( ProviderSync::UNREACHED_OPTION, $entries, false );
+	}
+
+	/**
+	 * A stopped run lists every object it did not sync: the one whose batch
+	 * failed and the ones it never reached. The boundary still moves past their
+	 * buffer rows, so without the list nothing would sync them again.
+	 *
+	 * @since 1.3.8
+	 *
+	 * @return void
+	 */
+	public function test_stopped_run_lists_the_objects_it_did_not_sync(): void {
+		$failing = true;
+		$asked   = [];
+		$this->register_switchable_provider( $failing, $asked, 1 );
+
+		$posts = self::factory()->post->create_many( 3, [ 'post_status' => 'publish' ] );
+		sort( $posts );
+
+		foreach ( $posts as $post_id ) {
+			Database::insert_view( $post_id, 'post', 'web' );
+		}
+
+		ProviderSync::sync();
+
+		$this->assertCount( 1, $asked, 'The run stopped after its first batch.' );
+		$this->assertSame(
+			array_map( fn( $id ) => [ 'post', $id, '' ], $posts ),
+			ProviderSync::unreached_objects()
+		);
+		$this->assertNotFalse( wp_next_scheduled( ProviderSync::CATCHUP_HOOK ) );
+	}
+
+	/**
+	 * The catchup syncs the listed objects with no new view of them, and the
+	 * list is gone once each synced.
+	 *
+	 * @since 1.3.8
+	 *
+	 * @return void
+	 */
+	public function test_catchup_syncs_listed_objects_without_new_views(): void {
+		$failing = true;
+		$asked   = [];
+		$this->register_switchable_provider( $failing, $asked, 1 );
+
+		$posts = self::factory()->post->create_many( 3, [ 'post_status' => 'publish' ] );
+
+		foreach ( $posts as $post_id ) {
+			Database::insert_view( $post_id, 'post', 'web' );
+		}
+
+		ProviderSync::sync();
+
+		$failing = false;
+		Sync::clear_provider_error();
+		wp_clear_scheduled_hook( ProviderSync::CATCHUP_HOOK );
+
+		ProviderSync::sync();
+
+		foreach ( $posts as $post_id ) {
+			$this->assertSame( 10, (int) get_post_meta( $post_id, 'mai_views_web', true ) );
+		}
+
+		$this->assertSame( [], ProviderSync::unreached_objects() );
+		$this->assertFalse( get_option( ProviderSync::UNREACHED_OPTION ) );
+		$this->assertFalse( wp_next_scheduled( ProviderSync::CATCHUP_HOOK ) );
+	}
+
+	/**
+	 * A listed object stays listed until a sync of it succeeds.
+	 *
+	 * @since 1.3.8
+	 *
+	 * @return void
+	 */
+	public function test_listed_object_stays_until_its_sync_succeeds(): void {
+		$failing = true;
+		$asked   = [];
+		$this->register_switchable_provider( $failing, $asked );
+
+		$post_id = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+		$this->store_unreached( [ [ 'post', $post_id, '' ] ] );
+
+		ProviderSync::sync();
+
+		$this->assertCount( 1, $asked );
+		$this->assertSame( [ [ 'post', $post_id, '' ] ], ProviderSync::unreached_objects() );
+		$this->assertSame( '', get_post_meta( $post_id, 'mai_views_web', true ) );
+
+		$failing = false;
+		Sync::clear_provider_error();
+		ProviderSync::sync();
+
+		$this->assertSame( 10, (int) get_post_meta( $post_id, 'mai_views_web', true ) );
+		$this->assertSame( [], ProviderSync::unreached_objects() );
+	}
+
+	/**
+	 * An object deleted since it was listed has nothing left to sync, so it
+	 * leaves the list instead of waiting there for good.
+	 *
+	 * @since 1.3.8
+	 *
+	 * @return void
+	 */
+	public function test_listed_object_that_no_longer_exists_leaves_the_list(): void {
+		$failing = false;
+		$asked   = [];
+		$this->register_switchable_provider( $failing, $asked );
+
+		$this->store_unreached( [ [ 'post', 999999999, '' ] ] );
+
+		ProviderSync::sync();
+
+		$this->assertSame( [], ProviderSync::unreached_objects() );
+	}
+
+	/**
+	 * A list that cannot be read stops the run with nothing changed, as a
+	 * failed buffer read does. It never reads as "nothing to do".
+	 *
+	 * @since 1.3.8
+	 *
+	 * @return void
+	 */
+	public function test_failed_read_of_the_list_does_nothing(): void {
+		global $wpdb;
+
+		$failing = false;
+		$asked   = [];
+		$this->register_switchable_provider( $failing, $asked );
+
+		$listed = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+		$queued = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+		$this->store_unreached( [ [ 'post', $listed, '' ] ] );
+		Database::insert_view( $queued, 'post', 'web' );
+
+		$previous = time() - HOUR_IN_SECONDS;
+		update_option( 'mai_analytics_provider_last_sync', $previous, false );
+
+		$suppressed = $wpdb->suppress_errors( true );
+		$options    = $wpdb->options;
+		$break      = function ( $query ) use ( $options ) {
+			if ( str_contains( $query, 'SELECT option_value' ) && str_contains( $query, ProviderSync::UNREACHED_OPTION ) ) {
+				return str_replace( $options, 'mai_analytics_missing_table', $query );
+			}
+
+			return $query;
+		};
+
+		add_filter( 'query', $break );
+
+		try {
+			$result = ProviderSync::sync();
+		} finally {
+			remove_filter( 'query', $break );
+			$wpdb->suppress_errors( $suppressed );
+		}
+
+		$this->assertSame( \Mai\Analytics\ErrorCode::DatabaseError, $result );
+		$this->assertSame( [], $asked, 'Nothing was asked of the provider.' );
+		$this->assertSame( $previous, (int) get_option( 'mai_analytics_provider_last_sync' ) );
+		$this->assertSame( [ [ 'post', $listed, '' ] ], ProviderSync::unreached_objects() );
+		$this->assertSame( '', get_post_meta( $queued, 'mai_views_web', true ) );
+	}
+
+	/**
+	 * A stored value that is not a list is a failed read too.
+	 *
+	 * @since 1.3.8
+	 *
+	 * @return void
+	 */
+	public function test_list_that_is_not_a_list_does_nothing(): void {
+		$failing = false;
+		$asked   = [];
+		$this->register_switchable_provider( $failing, $asked );
+
+		update_option( ProviderSync::UNREACHED_OPTION, 'not a list', false );
+		Database::insert_view( self::factory()->post->create( [ 'post_status' => 'publish' ] ), 'post', 'web' );
+
+		$this->assertNull( ProviderSync::unreached_objects() );
+		$this->assertSame( \Mai\Analytics\ErrorCode::DatabaseError, ProviderSync::sync() );
+		$this->assertSame( [], $asked );
+	}
+
+	/**
+	 * One run takes at most UNREACHED_PER_RUN listed objects. The rest stay
+	 * listed, and a catchup is scheduled for them.
+	 *
+	 * @since 1.3.8
+	 *
+	 * @return void
+	 */
+	public function test_one_run_takes_at_most_the_cap_from_the_list(): void {
+		$failing = false;
+		$asked   = [];
+		$this->register_switchable_provider( $failing, $asked, 100 );
+
+		$posts = self::factory()->post->create_many( ProviderSync::UNREACHED_PER_RUN + 3, [ 'post_status' => 'publish' ] );
+		sort( $posts );
+		$this->store_unreached( array_map( fn( $id ) => [ 'post', $id, '' ], $posts ) );
+
+		ProviderSync::sync();
+
+		$this->assertCount( ProviderSync::UNREACHED_PER_RUN, $asked );
+		$this->assertSame(
+			array_map( fn( $id ) => [ 'post', $id, '' ], array_slice( $posts, ProviderSync::UNREACHED_PER_RUN ) ),
+			ProviderSync::unreached_objects()
+		);
+		$this->assertNotFalse( wp_next_scheduled( ProviderSync::CATCHUP_HOOK ) );
+	}
+
+	/**
+	 * The provider sync prunes web rows past retention, not only app rows, so
+	 * no row outlives retention in provider mode.
+	 *
+	 * @since 1.3.8
+	 *
+	 * @return void
+	 */
+	public function test_provider_sync_prunes_web_rows_past_retention(): void {
+		global $wpdb;
+
+		$failing = false;
+		$asked   = [];
+		$this->register_switchable_provider( $failing, $asked );
+
+		$post_id = self::factory()->post->create( [ 'post_status' => 'publish' ] );
+		update_option( 'mai_analytics_provider_last_sync', time() - MINUTE_IN_SECONDS, false );
+
+		$wpdb->insert( Database::get_table_name(), [
+			'object_id'   => $post_id,
+			'object_type' => 'post',
+			'object_key'  => '',
+			'viewed_at'   => gmdate( 'Y-m-d H:i:s', time() - 20 * DAY_IN_SECONDS ),
+			'source'      => 'web',
+		] );
+
+		ProviderSync::sync();
+
+		$this->assertSame( 0, (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM ' . Database::get_table_name() . ' WHERE object_id = %d', $post_id ) ) );
 	}
 
 	/**

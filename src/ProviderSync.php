@@ -22,6 +22,27 @@ class ProviderSync {
 	public const CATCHUP_HOOK = 'mai_analytics_provider_catchup';
 
 	/**
+	 * Option that lists the objects a provider sync did not sync: those in a
+	 * batch the provider failed, and those a stopped run never reached. Each
+	 * entry is [ object_type, object_id, object_key ]. The next sync, usually
+	 * the catchup, syncs them whether or not they were viewed again, and an
+	 * entry leaves the list only once its sync succeeded. Not autoloaded.
+	 *
+	 * @since 1.3.8
+	 */
+	public const UNREACHED_OPTION = 'mai_analytics_provider_unreached';
+
+	/**
+	 * Most listed objects one sync takes. The rest stay listed for the next.
+	 * 500 is five Matomo batches of 100, or 50 bulk requests at its default
+	 * chunk of 10. The list itself is small: 10,000 entries measured 0.5 MB,
+	 * written in 14 ms and read in 3 ms.
+	 *
+	 * @since 1.3.8
+	 */
+	public const UNREACHED_PER_RUN = 500;
+
+	/**
 	 * Builds the default trending+all-time windows pair for a sync/warm pass.
 	 *
 	 * @param int    $trending_days How many days back the trending window covers.
@@ -144,12 +165,25 @@ class ProviderSync {
 			$retention_days = $trending_days;
 		}
 
+		// Objects an earlier run did not sync. A list that can't be read stops
+		// the run with nothing changed, so it is never taken as an empty one.
+		$listed = self::unreached_objects();
+
+		if ( null === $listed ) {
+			return self::stop_after_read_error( $stored, 'the list of objects an earlier run did not sync (' . self::UNREACHED_OPTION . ')', $wpdb->last_error ?: 'the stored value is not a list' );
+		}
+
+		$later = array_slice( $listed, self::UNREACHED_PER_RUN );
+
 		// Get distinct objects from buffer since last sync.
-		$objects = Database::get_distinct_objects_since( $last_sync_date );
+		$queued = Database::get_distinct_objects_since( $last_sync_date );
 
 		if ( $wpdb->last_error ) {
-			return self::stop_after_read_error( $stored, 'the queued objects', $wpdb->last_error );
+			return self::stop_after_read_error( $stored, 'the queued objects from the buffer', $wpdb->last_error );
 		}
+
+		// Listed objects first, then the queued ones not already among them.
+		$objects = self::merge_objects( array_slice( $listed, 0, self::UNREACHED_PER_RUN ), (array) $queued );
 
 		if ( ! $objects ) {
 			self::finish_sync( $wpdb, $table, $retention_days, $started_at );
@@ -174,7 +208,7 @@ class ProviderSync {
 		);
 
 		if ( $wpdb->last_error ) {
-			return self::stop_after_read_error( $stored, 'the new app views', $wpdb->last_error );
+			return self::stop_after_read_error( $stored, 'the new app views from the buffer', $wpdb->last_error );
 		}
 
 		$app_new = [];
@@ -186,6 +220,7 @@ class ProviderSync {
 		$batch_size = $provider->get_batch_size();
 		$batches    = array_chunk( $objects, $batch_size );
 		$processed  = 0;
+		$settled    = [];
 
 		foreach ( $batches as $batch ) {
 			// Stop if we've been running for 10 minutes.
@@ -193,7 +228,7 @@ class ProviderSync {
 				break;
 			}
 
-			self::process_batch( $provider, $batch, $wpdb, $table, $app_new, $trending_days );
+			$settled += self::process_batch( $provider, $batch, $wpdb, $table, $app_new, $trending_days );
 			$processed++;
 
 			// Bail mid-run if the batch we just ran tripped the breaker. The
@@ -204,12 +239,38 @@ class ProviderSync {
 			}
 		}
 
-		// Schedule catchup if batches remain. The boundary still moves to
-		// $started_at below, so add the app views of the objects this run
-		// didn't reach now. They were read above, and the next run counts
-		// only views after $started_at, so each is counted once.
-		if ( $processed < count( $batches ) ) {
-			self::add_unreached_app_views( array_merge( ...array_slice( $batches, $processed ) ), $app_new );
+		$reached   = $processed ? array_merge( ...array_slice( $batches, 0, $processed ) ) : [];
+		$unreached = $processed < count( $batches ) ? array_merge( ...array_slice( $batches, $processed ) ) : [];
+
+		// The boundary still moves to $started_at below, so add the app views
+		// of the objects this run didn't reach now. They were read above, and
+		// the next run counts only views after $started_at, so each is counted
+		// once.
+		if ( $unreached ) {
+			self::add_unreached_app_views( $unreached, $app_new );
+		}
+
+		// List every object this run did not sync, and the listed ones it left
+		// for later, so the catchup syncs them without waiting for a new view.
+		$pending = [];
+
+		foreach ( array_merge( $reached, $unreached ) as $obj ) {
+			if ( ! isset( $settled[ self::object_ref( $obj ) ] ) ) {
+				$pending[ self::object_ref( $obj ) ] = self::entry( $obj );
+			}
+		}
+
+		foreach ( self::merge_objects( $later, [] ) as $obj ) {
+			$pending[ self::object_ref( $obj ) ] ??= self::entry( $obj );
+		}
+
+		$pending = array_values( $pending );
+
+		if ( $pending !== $listed ) {
+			self::save_unreached( $pending );
+		}
+
+		if ( $pending ) {
 			self::schedule_catchup( time() + 60 );
 		}
 
@@ -219,9 +280,149 @@ class ProviderSync {
 	}
 
 	/**
+	 * The objects an earlier provider sync did not sync, from UNREACHED_OPTION.
+	 *
+	 * Read straight from the options table, so a failed query is told apart
+	 * from a missing option. An entry that is not [ type, ID, key ] is dropped
+	 * and logged.
+	 *
+	 * @since 1.3.8
+	 *
+	 * @return array<int, array{0: string, 1: int, 2: string}>|null The entries,
+	 *     [] when none are listed, or null when the option could not be read or
+	 *     does not hold a list.
+	 */
+	public static function unreached_objects(): ?array {
+		global $wpdb;
+
+		$value = $wpdb->get_var( $wpdb->prepare( "SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", self::UNREACHED_OPTION ) );
+
+		if ( '' !== (string) $wpdb->last_error ) {
+			return null;
+		}
+
+		if ( null === $value ) {
+			return [];
+		}
+
+		$stored = maybe_unserialize( (string) $value );
+
+		if ( ! is_array( $stored ) ) {
+			return null;
+		}
+
+		$entries = [];
+		$dropped = 0;
+
+		foreach ( $stored as $entry ) {
+			$entry = is_array( $entry ) ? array_values( $entry ) : [];
+
+			if (
+				3 !== count( $entry )
+				|| ! in_array( $entry[0], [ 'post', 'term', 'user', 'post_type' ], true )
+				|| ! is_numeric( $entry[1] ) || (int) $entry[1] < 0
+				|| ! is_string( $entry[2] )
+			) {
+				$dropped++;
+				continue;
+			}
+
+			$entries[] = [ $entry[0], (int) $entry[1], $entry[2] ];
+		}
+
+		if ( $dropped ) {
+			mai_analytics_logger()->error( sprintf( 'Dropped %d entries from the option %s that were not an object type, ID and key.', $dropped, self::UNREACHED_OPTION ) );
+		}
+
+		return $entries;
+	}
+
+	/**
+	 * Saves the list of objects a provider sync did not sync, and reads it
+	 * back. An empty list deletes the option. Tries twice, then logs.
+	 *
+	 * @since 1.3.8
+	 *
+	 * @param array<int, array{0: string, 1: int, 2: string}> $entries The entries to keep.
+	 *
+	 * @return bool True when the stored list reads back as `$entries`.
+	 */
+	private static function save_unreached( array $entries ): bool {
+		global $wpdb;
+
+		$error = '';
+
+		for ( $try = 1; $try <= 2; $try++ ) {
+			// update_option() compares with its cached copy, which a failed
+			// write may have left stale.
+			wp_cache_delete( self::UNREACHED_OPTION, 'options' );
+
+			if ( $entries ) {
+				update_option( self::UNREACHED_OPTION, $entries, false );
+			} else {
+				delete_option( self::UNREACHED_OPTION );
+			}
+
+			$error = (string) $wpdb->last_error;
+
+			if ( self::unreached_objects() === $entries ) {
+				return true;
+			}
+		}
+
+		mai_analytics_logger()->error( sprintf( 'Could not save the list of %d objects the provider sync did not sync (%s): %s. They sync again only when they are viewed again.', count( $entries ), self::UNREACHED_OPTION, $error ?: 'it did not read back as written' ) );
+
+		return false;
+	}
+
+	/**
+	 * Merges listed entries and buffer objects into one list of buffer-style
+	 * objects, listed ones first, each object once.
+	 *
+	 * @since 1.3.8
+	 *
+	 * @param array<int, array{0: string, 1: int, 2: string}> $entries Listed entries.
+	 * @param array<int, object>                              $queued  Buffer objects with object_id, object_type and object_key.
+	 *
+	 * @return array<int, object>
+	 */
+	private static function merge_objects( array $entries, array $queued ): array {
+		$objects = [];
+
+		foreach ( $entries as [ $type, $id, $key ] ) {
+			$obj              = new \stdClass();
+			$obj->object_id   = $id;
+			$obj->object_type = $type;
+			$obj->object_key  = $key;
+
+			$objects[ self::object_ref( $obj ) ] = $obj;
+		}
+
+		foreach ( $queued as $obj ) {
+			$objects[ self::object_ref( $obj ) ] ??= $obj;
+		}
+
+		return array_values( $objects );
+	}
+
+	/**
+	 * A buffer object as a list entry.
+	 *
+	 * @since 1.3.8
+	 *
+	 * @param object $obj A row with object_id, object_type and object_key.
+	 *
+	 * @return array{0: string, 1: int, 2: string}
+	 */
+	private static function entry( object $obj ): array {
+		return [ (string) $obj->object_type, (int) $obj->object_id, (string) $obj->object_key ];
+	}
+
+	/**
 	 * Processes a single batch of objects: fetches provider views and merges with app buffer.
 	 *
-	 * @since 1.3.8 Takes the new app views, read once by sync(), instead of the last sync date.
+	 * @since 1.3.8 Takes the new app views, read once by sync(), instead of the
+	 *              last sync date, and answers which objects it settled.
 	 *
 	 * @param WebViewProvider    $provider      The active provider instance.
 	 * @param array              $batch         Array of buffer objects with object_id, object_type, object_key.
@@ -230,9 +431,12 @@ class ProviderSync {
 	 * @param array<string, int> $app_new       New app views since the last sync, keyed by object_ref().
 	 * @param int                $trending_days Number of days for the trending window.
 	 *
-	 * @return void
+	 * @return array<string, true> The objects settled, keyed by object_ref(): those
+	 *                             synced (the same test that stamps them synced),
+	 *                             and those with no path left to sync.
 	 */
-	private static function process_batch( WebViewProvider $provider, array $batch, \wpdb $wpdb, string $table, array $app_new, int $trending_days ): void {
+	private static function process_batch( WebViewProvider $provider, array $batch, \wpdb $wpdb, string $table, array $app_new, int $trending_days ): array {
+		$settled  = [];
 		$path_map = [];
 
 		foreach ( $batch as $obj ) {
@@ -251,6 +455,9 @@ class ProviderSync {
 					(int) $obj->object_id
 				) );
 
+				// Nothing is left to sync, so it never stays listed.
+				$settled[ self::object_ref( $obj ) ] = true;
+
 				continue;
 			}
 
@@ -258,7 +465,7 @@ class ProviderSync {
 		}
 
 		if ( ! $path_map ) {
-			return;
+			return $settled;
 		}
 
 		$paths   = array_keys( $path_map );
@@ -363,6 +570,7 @@ class ProviderSync {
 				// trending count leaves trending stale too.
 				if ( null !== $web_total && null !== $app_trending ) {
 					$pt_synced[ $key ] = $now;
+					$settled[ self::object_ref( $obj ) ] = true;
 				}
 			} else {
 				// Posts, terms, users use meta.
@@ -393,24 +601,30 @@ class ProviderSync {
 				// See pt_synced comment above — only mark synced on real success.
 				if ( null !== $web_total && null !== $app_trending ) {
 					Stats::mark_synced( $id, $type, $now );
+					$settled[ self::object_ref( $obj ) ] = true;
 				}
+			}
+
+			// An object with no path left is settled too.
+			if ( ! $path ) {
+				$settled[ self::object_ref( $obj ) ] = true;
 			}
 
 			// Delete processed web buffer rows for this object. Intentional even
 			// when $path is null (path unresolved) or the provider call failed:
 			// the buffer's only job is to flag "this object needs a sync," and
 			// that job is done once we've attempted it, regardless of whether
-			// the provider had data. A future page view re-queues the object via
-			// a fresh buffer row, and the provider is queried for the object's
-			// full all-time count (not a delta), so nothing is permanently lost
-			// as long as the object is visited again.
+			// the provider had data. An object the provider failed for is listed
+			// in UNREACHED_OPTION by sync(), so the next sync fetches it again.
+			// The provider is queried for the full all-time count, not a delta.
 			//
 			// This loop — and therefore this delete — only runs when at least
 			// one object in the batch resolved a path. When EVERY object in
 			// the batch is unresolvable, `$path_map` stays empty and the early
-			// `return;` above fires first, so an all-unresolvable batch's rows
-			// are never reached here; they persist and retry on the next sync
-			// (each still logged via the error() call in the loop above).
+			// return above fires first, so an all-unresolvable batch's rows are
+			// never reached here. They stay behind the boundary until
+			// finish_sync() prunes them at retention (each still logged via the
+			// error() call in the loop above).
 			$wpdb->query(
 				$wpdb->prepare(
 					"DELETE FROM $table
@@ -432,6 +646,8 @@ class ProviderSync {
 			update_option( 'mai_analytics_post_type_trending', $pt_trending, false );
 			update_option( 'mai_analytics_post_type_views_synced_at', $pt_synced, false );
 		}
+
+		return $settled;
 	}
 
 	/**
@@ -467,7 +683,7 @@ class ProviderSync {
 	 * @return ErrorCode ErrorCode::DatabaseError, for sync() to return.
 	 */
 	private static function stop_after_read_error( mixed $stored, string $what, string $error ): ErrorCode {
-		mai_analytics_logger()->error( sprintf( 'Provider sync could not read %s from the buffer: %s. Nothing was changed, and they will be counted on the next run.', $what, $error ) );
+		mai_analytics_logger()->error( sprintf( 'Provider sync could not read %s: %s. Nothing was changed, and they will be counted on the next run.', $what, $error ) );
 
 		if ( false === $stored ) {
 			delete_option( 'mai_analytics_provider_last_sync' );
