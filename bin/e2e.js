@@ -108,6 +108,9 @@ function runFake( port ) {
 		}
 	};
 	const handler = ( req, res ) => {
+		// No keep-alive. The parent's event loop sits blocked during each wp
+		// command, so it can miss an idle socket's close and reuse a dead one.
+		res.setHeader( 'Connection', 'close' );
 		let body = '';
 		req.on( 'data', ( c ) => ( body += c ) );
 		req.on( 'end', () => {
@@ -427,7 +430,10 @@ function php( code, data = null ) {
 	] );
 }
 
-const phpJson = ( code, data ) => JSON.parse( php( code, data ) || 'null' );
+// The JSON a PHP snippet echoed, from its last line: in WP-CLI the plugin's
+// logger prints its own lines (such as the trending prune's INFO) first.
+const phpJson = ( code, data ) =>
+	JSON.parse( php( code, data ).split( '\n' ).filter( ( l ) => l.trim() ).pop() || 'null' );
 
 // ---------------------------------------------------------------------------
 // Option rows
@@ -827,6 +833,27 @@ function sessionFor( user ) {
 
 let REST_ROOT = '';
 
+// A request to the site. A socket-level failure (a refused or reset
+// connection, or a kept-alive socket the server had closed while this script
+// sat blocked on a wp command) is tried once more and printed as a note. A
+// second failure throws with the URL and the cause.
+async function siteFetch( url, opts = {} ) {
+	gate();
+	for ( let attempt = 1; ; attempt++ ) {
+		try {
+			return await fetch( url, opts );
+		} catch ( e ) {
+			const cause = e.cause?.code || e.cause?.message || e.message;
+			if ( attempt > 1 ) {
+				throw new Error( 'fetch failed twice for ' + url + ' (' + cause + ') at ' + new Date().toISOString() );
+			}
+			note( 'retried ' + ( opts.method || 'GET' ) + ' ' + url + ' once after ' + cause + ' at ' + new Date().toISOString() );
+			await sleep( 1000 );
+			gate();
+		}
+	}
+}
+
 // Calls a route relative to rest_url(). `as` is a user to sign in as, by
 // cookie and nonce. `body` is sent as JSON.
 async function rest( method, route, { as, body, ua = UA } = {} ) {
@@ -842,7 +869,7 @@ async function rest( method, route, { as, body, ua = UA } = {} ) {
 		headers[ 'X-WP-Nonce' ] = s.nonce;
 	}
 	gate();
-	const res = await fetch( REST_ROOT + route.replace( /^\/+/, '' ), {
+	const res = await siteFetch( REST_ROOT + route.replace( /^\/+/, '' ), {
 		method,
 		headers,
 		body: undefined !== body ? JSON.stringify( body ) : undefined,
@@ -1234,7 +1261,7 @@ SCENARIOS[ 'tracker-web' ] = async () => {
 	// A site behind restricted-site-access sends a signed-out visitor to the
 	// sign-in page. The tracker is then tested as a signed-in subscriber.
 	gate();
-	const probe = await fetch( post.url, { redirect: 'manual', headers: { 'User-Agent': UA } } );
+	const probe = await siteFetch( post.url, { redirect: 'manual', headers: { 'User-Agent': UA } } );
 	let visitor;
 	if ( probe.status >= 300 && probe.status < 400 ) {
 		visitor = createUser( 'tw-visitor' );
@@ -1855,7 +1882,7 @@ SCENARIOS.upgrade = async () => {
 	);
 
 	gate();
-	const home = await fetch( BASE + '/', { headers: { 'User-Agent': UA } } );
+	const home = await siteFetch( BASE + '/', { headers: { 'User-Agent': UA } } );
 	check( 'the first request after the update loads', home.status < 500, home.status );
 	equal( 'it records the code version', opt( 'mai_analytics_version' ), codeVersion );
 	const pruneNow = nextScheduled( 'mai_analytics_prune_trending_now' );
@@ -1865,7 +1892,7 @@ SCENARIOS.upgrade = async () => {
 	equal( 'the buffer rows are untouched', bufferCount(), rowsBefore );
 	check( "and so are U1's counts", sameList( counts( 'post', u1.id ), [ 12, 10, 2, 4 ] ), JSON.stringify( counts( 'post', u1.id ) ) );
 	gate();
-	await fetch( BASE + '/', { headers: { 'User-Agent': UA } } );
+	await siteFetch( BASE + '/', { headers: { 'User-Agent': UA } } );
 	equal( 'a second request schedules no second prune', cronEvents().filter( ( e ) => 'mai_analytics_prune_trending_now' === e[ 0 ] ).length, 1 );
 
 	await resetFake( { [ u1.url ]: { trending: 6, all_time: 25 }, [ u2.url ]: { trending: 1, all_time: 4 } } );
