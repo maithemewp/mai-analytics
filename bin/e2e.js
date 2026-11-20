@@ -1797,19 +1797,32 @@ SCENARIOS[ 'provider-stopped' ] = async () => {
 	const at = nextScheduled( 'mai_analytics_provider_catchup' );
 	check( 'a catchup is scheduled about a minute out', at >= now + 30 && at <= now + 180, at - now );
 
+	// The run lists every post it did not sync: the failed second batch and
+	// the unreached third, in ID order.
+	const unsynced = bulk.slice( 100 ).map( ( p ) => [ 'post', p.id, '' ] );
+	const listed = () => phpJson( 'echo wp_json_encode( \\Mai\\Analytics\\ProviderSync::unreached_objects() );' );
+	check( 'the run lists the 101 posts it did not sync', sameList( listed(), unsynced ), JSON.stringify( listed() ).slice( 0, 200 ) );
+
 	// The catchup fires while the error is fresh: the breaker holds it back.
 	runCron( 'mai_analytics_provider_catchup' );
 	equal( 'a catchup inside the backoff asks nothing', ( await fakeLog() ).length, 11 );
 	check( 'and schedules itself again', nextScheduled( 'mai_analytics_provider_catchup' ) > 0 );
+	check( 'and leaves the list as it was', sameList( listed(), unsynced ), JSON.stringify( listed() ).slice( 0, 200 ) );
 
-	// Matomo is back, a new view of the unreached post comes in, and the backoff
-	// is over: the catchup finishes the work.
+	// Matomo is back and the backoff is over. With no new view of any of them,
+	// the catchup alone syncs the listed posts: two batches, 100 and 1, so
+	// eleven more requests.
 	await failFrom( null );
-	await sleep( 1100 );
-	await views( 'post', bulk[ 200 ].id, 1 );
 	runCron( 'mai_analytics_provider_catchup', { backoffZero: true } );
-	equal( 'the catchup asks about the one queued post', ( await fakeLog() ).length, 12 );
-	check( 'which gets its web count, its app view kept, trending 2 plus 1', sameList( counts( 'post', bulk[ 200 ].id ), [ 6, 5, 1, 3 ] ), JSON.stringify( counts( 'post', bulk[ 200 ].id ) ) );
+	equal( 'the catchup asks about the listed posts', ( await fakeLog() ).length, 22 );
+	const after = phpJson(
+		'echo wp_json_encode( array_map( fn( $id ) => get_metadata_raw( "post", (int) $id, "mai_views_web", true ), $d ) );',
+		bulk.slice( 100 ).map( ( p ) => p.id )
+	);
+	equal( 'all 101 now have their web counts', after.filter( ( v ) => '5' === v ).length, 101 );
+	check( 'the failed batch keeps its app views, trending 2 plus app', sameList( counts( 'post', bulk[ 150 ].id ), [ 6, 5, 1, 3 ] ) && sameList( counts( 'post', bulk[ 180 ].id ), [ 7, 5, 2, 4 ] ), JSON.stringify( [ counts( 'post', bulk[ 150 ].id ), counts( 'post', bulk[ 180 ].id ) ] ) );
+	check( 'and so does the unreached post', sameList( counts( 'post', bulk[ 200 ].id ), [ 6, 5, 1, 3 ] ), JSON.stringify( counts( 'post', bulk[ 200 ].id ) ) );
+	check( 'nothing is left in the list', sameList( listed(), [] ) && null === opt( 'mai_analytics_provider_unreached' ), JSON.stringify( listed() ).slice( 0, 200 ) );
 	equal( 'the error is cleared', php( 'echo \\Mai\\Analytics\\Sync::get_last_error()["message"];' ), '' );
 	equal( 'no catchup is left', nextScheduled( 'mai_analytics_provider_catchup' ), 0 );
 	equal( 'the lock is released', php( 'echo get_transient( "mai_analytics_provider_syncing" ) ? 1 : 0;' ), '0' );
