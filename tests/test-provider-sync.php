@@ -981,6 +981,55 @@ class Test_Provider_Sync extends WP_UnitTestCase {
 	}
 
 	/**
+	 * A run whose batch failed books the catchup for after the backoff, as the
+	 * breaker path does, not for a minute out, when the breaker would refuse it.
+	 *
+	 * @since 1.3.8
+	 *
+	 * @return void
+	 */
+	public function test_failed_batch_books_the_catchup_after_the_backoff(): void {
+		$failing = true;
+		$asked   = [];
+		$this->register_switchable_provider( $failing, $asked );
+
+		Database::insert_view( self::factory()->post->create( [ 'post_status' => 'publish' ] ), 'post', 'web' );
+
+		$before = time();
+		ProviderSync::sync();
+
+		$at = wp_next_scheduled( ProviderSync::CATCHUP_HOOK );
+
+		$this->assertNotFalse( $at );
+		$this->assertGreaterThanOrEqual( $before + 5 * MINUTE_IN_SECONDS, $at, 'The catchup waits out the 5-minute backoff.' );
+		$this->assertLessThanOrEqual( time() + 5 * MINUTE_IN_SECONDS + 60, $at );
+	}
+
+	/**
+	 * With no fresh provider error, the catchup is still a minute out.
+	 *
+	 * @since 1.3.8
+	 *
+	 * @return void
+	 */
+	public function test_capped_list_books_the_catchup_a_minute_out(): void {
+		$failing = false;
+		$asked   = [];
+		$this->register_switchable_provider( $failing, $asked );
+
+		// One listed item past the cap stays listed with no error on file.
+		$many = self::factory()->post->create_many( ProviderSync::UNREACHED_PER_RUN + 1, [ 'post_status' => 'publish' ] );
+		$this->store_unreached( array_map( fn( $id ) => [ 'post', $id, '' ], $many ) );
+
+		$before = time();
+		ProviderSync::sync();
+		$at = wp_next_scheduled( ProviderSync::CATCHUP_HOOK );
+
+		$this->assertGreaterThanOrEqual( $before + 60, $at );
+		$this->assertLessThan( $before + 5 * MINUTE_IN_SECONDS, $at );
+	}
+
+	/**
 	 * The catchup syncs the listed objects with no new view of them, and the
 	 * list is gone once each synced.
 	 *

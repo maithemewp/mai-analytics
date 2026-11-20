@@ -270,8 +270,11 @@ class ProviderSync {
 			self::save_unreached( $pending );
 		}
 
+		// After a failed batch the breaker refuses any run until the backoff
+		// ends, so book the catchup for then, as the breaker path above does.
+		// With no fresh error that is a minute out.
 		if ( $pending ) {
-			self::schedule_catchup( time() + 60 );
+			self::schedule_catchup( time() + Sync::seconds_until_provider_error_clear() + 60 );
 		}
 
 		self::finish_sync( $wpdb, $table, $retention_days, $started_at );
