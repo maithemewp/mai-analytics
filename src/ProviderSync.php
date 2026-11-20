@@ -540,21 +540,25 @@ class ProviderSync {
 	}
 
 	/**
-	 * Prunes old app buffer rows, updates last sync time, and releases the concurrency lock.
+	 * Prunes buffer rows past retention, updates last sync time, and releases the concurrency lock.
+	 *
+	 * @since 1.3.8 Prunes web rows too. A web row an earlier run didn't reach
+	 *              was otherwise never deleted.
 	 *
 	 * @param \wpdb  $wpdb           The WordPress database instance.
 	 * @param string $table          The buffer table name.
-	 * @param int    $retention_days Number of days to retain app buffer rows.
+	 * @param int    $retention_days Number of days to retain buffer rows.
 	 * @param int    $started_at     Unix timestamp captured at sync start, written
 	 *                               here as the boundary the next sync will use.
 	 *
 	 * @return void
 	 */
 	private static function finish_sync( \wpdb $wpdb, string $table, int $retention_days, int $started_at ): void {
-		// Prune old app buffer rows beyond retention.
+		// Prune rows past retention, app and web alike. A synced web row is
+		// deleted at once, so a web row this old is one no run reached.
 		$wpdb->query(
 			$wpdb->prepare(
-				"DELETE FROM $table WHERE source = 'app' AND viewed_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL %d DAY)",
+				"DELETE FROM $table WHERE viewed_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL %d DAY)",
 				$retention_days
 			)
 		);
