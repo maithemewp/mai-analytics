@@ -125,6 +125,21 @@ class Health {
 			$check( 'Provider', $registered->get_label(), true, $detail );
 		}
 
+		// Items a provider sync didn't finish wait in a list for the next one.
+		// Shown in every mode, so a list left from before a switch is visible.
+		$waiting = ProviderSync::unreached_objects();
+		$check(
+			'Provider',
+			'Items waiting for the provider',
+			[] === $waiting,
+			match ( true ) {
+				null === $waiting => "The list can't be read, so provider syncs stop until it can. The error log has the reason.",
+				[] === $waiting   => 'None.',
+				default           => sprintf( "%s didn't sync on the last run. The next provider sync fetches up to %s of them.", number_format( count( $waiting ) ), number_format( ProviderSync::UNREACHED_PER_RUN ) ),
+			},
+			null === $waiting
+		);
+
 		if ( 'self_hosted' !== $data_source && 'disabled' !== $data_source ) {
 			$provider = ProviderSync::get_provider();
 			$check( 'Provider', 'Provider found', (bool) $provider, $provider ? $provider->get_label() : 'no matching provider for ' . $data_source );

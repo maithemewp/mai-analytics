@@ -16,6 +16,7 @@ class Test_Uninstall extends WP_UnitTestCase {
 
 		add_option( 'maiXanalytics_keep', 'yes' );
 		update_option( 'mai_analytics_settings', [ 'data_source' => 'self_hosted' ] );
+		update_option( 'mai_analytics_provider_unreached', [ [ 'post', 1, '' ] ], false );
 		set_transient( 'mai_analytics_admin_filters', [ 'x' ] );
 		$post_id = self::factory()->post->create();
 		update_post_meta( $post_id, 'mai_views', 3 );
@@ -50,6 +51,7 @@ class Test_Uninstall extends WP_UnitTestCase {
 		$count = fn( string $name ): int => (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM $wpdb->options WHERE option_name = %s", $name ) );
 
 		$this->assertSame( 0, $count( 'mai_analytics_settings' ) );
+		$this->assertSame( 0, $count( 'mai_analytics_provider_unreached' ) );
 		$this->assertSame( 0, $count( '_transient_mai_analytics_admin_filters' ) );
 		$this->assertSame( 1, $count( 'maiXanalytics_keep' ) );
 		$this->assertSame( 0, (int) $wpdb->get_var( "SELECT COUNT(*) FROM $wpdb->postmeta WHERE meta_key = 'mai_views'" ) );
