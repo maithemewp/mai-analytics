@@ -6,7 +6,9 @@ Updated: 2026-11-20 by Claude (mai-analytics e2e session)
 - `fix/provider-unreached`, in `~/Plugins/_wip/analytics-unreached`, cut from `feat/e2e` 69dfa56. It holds the stopped-sync fix ruled by the coordinator:
   - The provider sync prunes web rows past retention, not only app rows.
   - Every object a run did not sync goes in the option `mai_analytics_provider_unreached`: the objects of a batch the provider failed, and those a stopped run never reached. The next sync takes up to 500 of them first, whether or not they were viewed again. An entry leaves only when its sync succeeded or the object is gone. A failed read stops the run with nothing changed. Writes are read back and tried twice.
-  - 362 unit tests pass. The e2e's provider-stopped scenario checks that the catchup alone syncs the 101 listed posts and leaves the list empty. That has not run on a site yet.
+  - Health shows how many items are on the list ("Items waiting for the provider"): pass when none, warn with the count, fail when the list can't be read. Uninstall deletes the option, and deactivation keeps it.
+  - The unreached items' web rows stay and keep counting toward trending until retention (mai-coordinator, 2026-11-20).
+  - 365 unit tests pass. The e2e's provider-stopped scenario checks that the catchup alone syncs the 101 listed posts and leaves the list empty. That has not run on a site yet.
 - Branches (`origin` is GitHub maithemewp/mai-analytics):
   - **`develop`:** the main checkout `~/Plugins/mai-analytics`, which the shared production-copy site loads. On origin at 24d8ab5: the review-pr fixes and the filters notice.
   - **`feat/e2e`:** the e2e script, at 69dfa56. Don't delete the worktree or the branch.
@@ -24,7 +26,7 @@ Updated: 2026-11-20 by Claude (mai-analytics e2e session)
 
 ## Verify
 - Before any suite, read the Status section of that folder's `SITE-LOCK.md`. Don't run during a claimed device run. The load-under-10 rule is for device runs only (mai-coordinator, 2026-11-19), so a suite may run under load; rerun a timing-sensitive failure alone before calling it real. Never use the site itself without a claim.
-- Run the suite in a worktree after `composer install`: `WP_TESTS_DIR=/tmp/wordpress-tests-lib vendor/bin/phpunit`. 362 tests on `fix/provider-unreached`.
+- Run the suite in a worktree after `composer install`: `WP_TESTS_DIR=/tmp/wordpress-tests-lib vendor/bin/phpunit`. 365 tests on `fix/provider-unreached`.
 - The e2e, under a claim only: `MAI_AUTH_SITE_OK=1 NODE_PATH=~/node_modules node bin/e2e.js --base https://example.test --wp /path/to/wordpress`. The README's Testing section says what it covers and what it leaves out.
 - A reboot clears `/tmp`. If `/tmp/wordpress-tests-lib/includes/functions.php` is missing, run `bin/install-wp-tests.sh wp_maianalytics_tests root '' localhost latest true` from the worktree.
 - Then restore `vendor/`: `composer install --no-dev`, `git checkout -- vendor/composer/installed.json vendor/composer/installed.php`, then `php ~/Plugins/mai-analytics/vendor/bin/deployable-guard check --root=<path relative to the main checkout>`. It must print "OK: committed autoloader is deployable as-is."
