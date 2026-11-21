@@ -1,6 +1,8 @@
 name: Tests
 
-# Runs the PHP suite on every push and pull request. This workflow used to run on
+# Runs the PHP suite on every push and pull request: on the latest WordPress with
+# current PHP (single site and multisite), on the PHP floor, and on the WordPress
+# floor. This workflow used to run on
 # pull requests to develop and main only, and this repo merges without pull
 # requests, so it never ran: until it moved to push, the suite had only ever run
 # on a Mac.
@@ -142,6 +144,68 @@ jobs:
 
       - name: Install the WordPress test harness
         run: bash bin/install-wp-tests.sh wordpress_test root root 127.0.0.1 latest
+
+      - name: Run the PHP suite
+        run: composer test
+
+  wp-floor:
+    name: WordPress floor
+    runs-on: ubuntu-latest
+
+    # The oldest WordPress the plugin claims to run on, with the oldest PHP. Both
+    # come from the plugin header ("Requires at least" and "Requires PHP"), so
+    # raising either floor moves this job with it. The other jobs use the latest
+    # WordPress.
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      WP_TESTS_DIR: /tmp/wordpress-tests-lib
+      WP_CORE_DIR: /tmp/wordpress
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Read the declared floors
+        id: floor
+        run: |
+          php=$(grep -m1 -E '^\s*\*\s*Requires PHP:' mai-analytics.php | grep -oE '[0-9]+(\.[0-9]+)+')
+          wp=$(grep -m1 -E '^\s*\*\s*Requires at least:' mai-analytics.php | grep -oE '[0-9]+(\.[0-9]+)+')
+          if [ -z "$php" ] || [ -z "$wp" ]; then
+            echo "::error::'Requires PHP' or 'Requires at least' is missing from the mai-analytics.php header."
+            exit 1
+          fi
+          echo "Declared floors: PHP $php, WordPress $wp"
+          echo "php=$php" >> "$GITHUB_OUTPUT"
+          echo "wp=$wp" >> "$GITHUB_OUTPUT"
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ steps.floor.outputs.php }}
+          extensions: dom, libxml, mbstring, json, mysqli
+          coverage: none
+          tools: composer
+
+      - name: Install dependencies
+        run: composer install --no-interaction --no-progress --prefer-dist --no-scripts
+
+      # A bare major.minor version installs that branch's latest point release
+      # and its test library.
+      - name: Install the WordPress test harness
+        env:
+          WP_FLOOR: ${{ steps.floor.outputs.wp }}
+        run: bash bin/install-wp-tests.sh wordpress_test root root 127.0.0.1 "$WP_FLOOR"
 
       - name: Run the PHP suite
         run: composer test
