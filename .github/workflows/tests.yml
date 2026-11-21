@@ -1,25 +1,39 @@
 name: Tests
 
-on:
-  pull_request:
-    branches:
-      - develop
-      - main
+# Runs the PHP suite on every push and pull request. This workflow used to run on
+# pull requests to develop and main only, and this repo merges without pull
+# requests, so it never ran: until it moved to push, the suite had only ever run
+# on a Mac.
+#
+# deployable.yml is a separate workflow and is untouched by this one. Each job
+# gets its own checkout, so a test job cannot contaminate the deployable check.
+#
+# bin/e2e.js is not run here. It needs a real WordPress site, a browser and a
+# claim on that site.
+
+on: [push, pull_request]
+
+# One run per branch at a time. A newer push cancels the run it replaces.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   phpunit:
-    name: PHPUnit (PHP 8.3)
+    name: PHP suite
     runs-on: ubuntu-latest
 
     services:
       mysql:
+        # The official image refuses to start without MYSQL_ROOT_PASSWORD or
+        # MYSQL_ALLOW_EMPTY_PASSWORD, hence the explicit password threaded below.
         image: mysql:8.0
         env:
           MYSQL_ROOT_PASSWORD: root
         ports:
           - 3306:3306
         options: >-
-          --health-cmd="mysqladmin ping -proot"
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
           --health-interval=10s
           --health-timeout=5s
           --health-retries=10
@@ -29,28 +43,105 @@ jobs:
       WP_CORE_DIR: /tmp/wordpress
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - name: Set up PHP 8.3
-        uses: shivammathur/setup-php@v2
+      - uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.3'
-          extensions: mysqli
+          # Current stable, the same PHP the suite runs on locally. The floor
+          # job below runs it on the oldest PHP the plugin claims.
+          php-version: '8.4'
+          extensions: dom, libxml, mbstring, json, mysqli
           coverage: none
           tools: composer
 
-      - name: Install the WordPress test suite
+      # The committed tree is --no-dev, so phpunit is not in it. composer.lock is
+      # committed, so this resolves the same versions every time. --no-scripts
+      # keeps a drifted lock from running the bot-pattern update and skips the
+      # local git hook, which a runner has no use for. All three VCS packages
+      # (mai-logger, mai-package-loader, deployable-guard) are public, so no
+      # token is needed.
+      - name: Install dependencies
+        run: composer install --no-interaction --no-progress --prefer-dist --no-scripts
+
+      - name: Install the WordPress test harness
+        run: bash bin/install-wp-tests.sh wordpress_test root root 127.0.0.1 latest
+
+      - name: Run the PHP suite
+        run: composer test
+
+      # The plugin runs on multisite too. The test library reads WP_MULTISITE.
+      - name: Run the PHP suite on multisite
+        env:
+          WP_MULTISITE: 1
+        run: composer test
+
+  floor:
+    name: PHP floor
+    runs-on: ubuntu-latest
+
+    # The oldest PHP the plugin claims to run on. This repo declares it in the
+    # plugin header ("Requires PHP"), not in composer.json, so the job reads it
+    # from there rather than repeating the number. Raising the floor moves this
+    # job with it.
+    #
+    # The suite's dev tooling (phpunit 9.6) installs on the floor, so the whole
+    # suite runs here too, not only a parse check.
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      WP_TESTS_DIR: /tmp/wordpress-tests-lib
+      WP_CORE_DIR: /tmp/wordpress
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Read the declared floor
+        id: floor
         run: |
-          chmod +x bin/install-wp-tests.sh
-          bash bin/install-wp-tests.sh wordpress_test root root 127.0.0.1 latest
+          floor=$(grep -m1 -E '^\s*\*\s*Requires PHP:' mai-analytics.php | grep -oE '[0-9]+(\.[0-9]+)+')
+          if [ -z "$floor" ]; then
+            echo "::error::No 'Requires PHP' found in the mai-analytics.php header."
+            exit 1
+          fi
+          echo "Declared floor: $floor"
+          echo "version=$floor" >> "$GITHUB_OUTPUT"
 
-      - name: Install Composer dependencies
-        # --no-scripts is a safety net: with composer.lock committed and in sync,
-        # post-update-cmd (bot-pattern regeneration) won't fire on install anyway,
-        # but it guards against a drifted lock silently mutating data/bot-patterns.php
-        # in CI. Dev deps (phpunit + polyfills) are fetched here (not committed).
-        run: composer install --prefer-dist --no-progress --no-scripts
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ steps.floor.outputs.version }}
+          extensions: dom, libxml, mbstring, json, mysqli
+          coverage: none
+          tools: composer
 
-      - name: Run PHPUnit
+      - name: Plugin code parses
+        run: |
+          find src includes -name '*.php' -print0 | xargs -0 -n1 php -l > /dev/null
+          php -l mai-analytics.php > /dev/null
+          php -l uninstall.php > /dev/null
+
+      # The deployed tree is this checkout as-is, with no composer on the server,
+      # so this is the same require a real request makes. It runs before
+      # composer install, which would replace the committed vendor/.
+      - name: The committed autoloader loads
+        run: php -r 'require "vendor/autoload.php"; echo "autoloader ok\n";'
+
+      - name: Install dependencies
+        run: composer install --no-interaction --no-progress --prefer-dist --no-scripts
+
+      - name: Install the WordPress test harness
+        run: bash bin/install-wp-tests.sh wordpress_test root root 127.0.0.1 latest
+
+      - name: Run the PHP suite
         run: composer test
